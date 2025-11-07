@@ -1,0 +1,5 @@
+rules:
+  - name: "Expected pass"
+    check: ./good.sh
+  - name: "Expected fail"
+    check: ./bad.sh
