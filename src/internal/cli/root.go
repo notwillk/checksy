@@ -6,10 +6,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/notwillk/workspace-doctor/internal/config"
 	"github.com/notwillk/workspace-doctor/internal/doctor"
 	"github.com/notwillk/workspace-doctor/internal/version"
+	"github.com/notwillk/workspace-doctor/schema"
 )
 
 // RootCommand wires the CLI surface area together.
@@ -60,7 +62,11 @@ func (r *RootCommand) runDiagnose(args []string) int {
 	flags.SetOutput(r.stderr)
 
 	var configPath string
+	var noFail bool
+	var severityFloor string
 	flags.StringVar(&configPath, "config", "", "path to workspace config file (defaults to .workspace-doctor.yaml/.yml)")
+	flags.BoolVar(&noFail, "no-fail", false, "always exit zero even when rules fail")
+	flags.StringVar(&severityFloor, "severity", "debug", "minimum rule severity to run (debug|info|warning|error)")
 
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -91,9 +97,16 @@ func (r *RootCommand) runDiagnose(args []string) int {
 		return 2
 	}
 
+	minSeverity, err := parseSeverityFlag(severityFloor)
+	if err != nil {
+		fmt.Fprintf(r.stderr, "%v\n", err)
+		return 2
+	}
+
 	report, err := doctor.Diagnose(doctor.Options{
-		Config:  cfg,
-		WorkDir: filepath.Dir(absConfigPath),
+		Config:      cfg,
+		WorkDir:     filepath.Dir(absConfigPath),
+		MinSeverity: minSeverity,
 	})
 	if err != nil {
 		fmt.Fprintf(r.stderr, "diagnose failed: %v\n", err)
@@ -130,6 +143,10 @@ func (r *RootCommand) runDiagnose(args []string) int {
 		fmt.Fprintf(r.stdout, "- %s\n", failure.Name())
 	}
 
+	if noFail {
+		return 0
+	}
+
 	return 3
 }
 
@@ -144,4 +161,19 @@ func (r *RootCommand) printUsage() {
 	fmt.Fprintln(r.stdout, "  schema     Print the JSON schema for workspace configuration")
 	fmt.Fprintln(r.stdout, "  version    Print the current build version")
 	fmt.Fprintln(r.stdout, "  help       Show this message")
+}
+
+func parseSeverityFlag(value string) (schema.Severity, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "debug":
+		return schema.SeverityDebug, nil
+	case "info":
+		return schema.SeverityInfo, nil
+	case "warning":
+		return schema.SeverityWarning, nil
+	case "error":
+		return schema.SeverityError, nil
+	default:
+		return "", fmt.Errorf("invalid severity %q: must be one of debug, info, warning, error", value)
+	}
 }

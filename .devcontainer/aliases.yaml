@@ -1,1 +1,2 @@
 build: just build
+dev: just dev

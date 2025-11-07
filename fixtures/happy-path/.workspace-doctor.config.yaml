@@ -1,5 +1,25 @@
 rules:
-  - name: "Expected pass"
-    check: ./good.sh
-  - name: "Expected fail"
-    check: ./bad.sh
+  - name: "Debug pass"
+    severity: debug
+    check: ./pass.sh debug
+  - name: "Debug fail"
+    severity: debug
+    check: ./fail.sh debug
+  - name: "Info pass"
+    severity: info
+    check: ./pass.sh info
+  - name: "Info fail"
+    severity: info
+    check: ./fail.sh info
+  - name: "Warning pass"
+    severity: warning
+    check: ./pass.sh warning
+  - name: "Warning fail"
+    severity: warning
+    check: ./fail.sh warning
+  - name: "Error pass"
+    severity: error
+    check: ./pass.sh error
+  - name: "Error fail"
+    severity: error
+    check: ./fail.sh error

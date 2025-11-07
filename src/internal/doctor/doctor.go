@@ -4,14 +4,25 @@ import (
 	"bytes"
 	"errors"
 	"os/exec"
+	"strings"
 
 	"github.com/notwillk/workspace-doctor/schema"
 )
 
+var severityOrder = map[schema.Severity]int{
+	schema.SeverityDebug:   0,
+	schema.SeverityInfo:    1,
+	schema.SeverityWarning: 2,
+	schema.SeverityError:   3,
+}
+
+const defaultRuleSeverity = schema.SeverityInfo
+
 // Options controls how workspace rules are executed.
 type Options struct {
-	Config  *schema.Config
-	WorkDir string
+	Config      *schema.Config
+	WorkDir     string
+	MinSeverity schema.Severity
 }
 
 // Report contains the outcomes of executing all configured rules.
@@ -73,8 +84,13 @@ func Diagnose(opts Options) (Report, error) {
 		workdir = "."
 	}
 
+	minSeverity := normalizeMinSeverity(opts.MinSeverity)
+
 	results := make([]RuleResult, 0, len(opts.Config.Rules))
 	for _, rule := range opts.Config.Rules {
+		if !ruleMeetsSeverity(rule, minSeverity) {
+			continue
+		}
 		results = append(results, runRule(rule, workdir))
 	}
 
@@ -82,8 +98,17 @@ func Diagnose(opts Options) (Report, error) {
 }
 
 func runRule(rule schema.Rule, workdir string) RuleResult {
-	cmd := exec.Command("bash", "-lc", rule.Check)
+	script := rule.Check
+	if script == "" {
+		script = "true"
+	}
+	if !strings.HasSuffix(script, "\n") {
+		script += "\n"
+	}
+
+	cmd := exec.Command("bash")
 	cmd.Dir = workdir
+	cmd.Stdin = strings.NewReader(script)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -97,4 +122,26 @@ func runRule(rule schema.Rule, workdir string) RuleResult {
 		Stdout: stdout.String(),
 		Stderr: stderr.String(),
 	}
+}
+
+func ruleMeetsSeverity(rule schema.Rule, min schema.Severity) bool {
+	ruleSeverity := normalizeRuleSeverity(rule.Severity)
+	return severityOrder[ruleSeverity] >= severityOrder[min]
+}
+
+func normalizeRuleSeverity(value schema.Severity) schema.Severity {
+	if _, ok := severityOrder[value]; ok {
+		return value
+	}
+	return defaultRuleSeverity
+}
+
+func normalizeMinSeverity(value schema.Severity) schema.Severity {
+	if value == "" {
+		return schema.SeverityDebug
+	}
+	if _, ok := severityOrder[value]; ok {
+		return value
+	}
+	return schema.SeverityDebug
 }

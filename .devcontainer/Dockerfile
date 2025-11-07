@@ -13,6 +13,7 @@ RUN apt-get update \
     bash \
     ca-certificates \
     curl \
+    entr \
     git \
     gnupg \
     just \
