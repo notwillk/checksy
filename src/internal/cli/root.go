@@ -15,10 +15,16 @@ import (
 	"github.com/notwillk/workspace-doctor/schema"
 )
 
+const configFlagDescription = "path to workspace config file (defaults to .workspace-doctor.yaml/.yml)"
+
 // RootCommand wires the CLI surface area together.
 type RootCommand struct {
 	stdout io.Writer
 	stderr io.Writer
+}
+
+type globalFlags struct {
+	configPath string
 }
 
 // NewRootCommand returns a ready-to-run command tree.
@@ -35,16 +41,25 @@ func NewRootCommand(stdout, stderr io.Writer) *RootCommand {
 
 // Run executes the CLI for the provided arguments and returns an exit code.
 func (r *RootCommand) Run(args []string) int {
-	if len(args) == 0 {
+	globals, remaining, err := parseGlobalFlags(args)
+	if err != nil {
+		fmt.Fprintf(r.stderr, "%v\n", err)
+		return 2
+	}
+
+	if len(remaining) == 0 {
 		r.printUsage()
 		return 1
 	}
 
-	switch args[0] {
+	cmd := remaining[0]
+	cmdArgs := remaining[1:]
+
+	switch cmd {
 	case "diagnose":
-		return r.runDiagnose(args[1:])
+		return r.runDiagnose(cmdArgs, globals)
 	case "schema":
-		return r.runSchema(args[1:])
+		return r.runSchema(cmdArgs)
 	case "version", "--version":
 		fmt.Fprintf(r.stdout, "workspace-doctor %s\n", version.Version)
 		return 0
@@ -52,21 +67,21 @@ func (r *RootCommand) Run(args []string) int {
 		r.printUsage()
 		return 0
 	default:
-		fmt.Fprintf(r.stderr, "Unknown command %q\n\n", args[0])
+		fmt.Fprintf(r.stderr, "Unknown command %q\n\n", cmd)
 		r.printUsage()
 		return 2
 	}
 }
 
-func (r *RootCommand) runDiagnose(args []string) int {
+func (r *RootCommand) runDiagnose(args []string, globals globalFlags) int {
 	flags := flag.NewFlagSet("diagnose", flag.ContinueOnError)
 	flags.SetOutput(r.stderr)
 
-	var configPath string
+	var localConfigPath string
 	var noFail bool
 	var severityFloor string
 	var applyFixes bool
-	flags.StringVar(&configPath, "config", "", "path to workspace config file (defaults to .workspace-doctor.yaml/.yml)")
+	flags.StringVar(&localConfigPath, "config", "", configFlagDescription)
 	flags.BoolVar(&noFail, "no-fail", false, "always exit zero even when rules fail")
 	flags.StringVar(&severityFloor, "severity", "debug", "minimum rule severity to run (debug|info|warning|error)")
 	flags.BoolVar(&applyFixes, "fix", false, "attempt to run fixes for failing rules when available")
@@ -76,6 +91,11 @@ func (r *RootCommand) runDiagnose(args []string) int {
 			return 0
 		}
 		return 2
+	}
+
+	configPath := globals.configPath
+	if localConfigPath != "" {
+		configPath = localConfigPath
 	}
 
 	resolvedConfigPath, err := config.ResolvePath(configPath)
@@ -134,13 +154,45 @@ func (r *RootCommand) printUsage() {
 	fmt.Fprintln(r.stdout, "workspace-doctor - inspect and troubleshoot development environments")
 	fmt.Fprintln(r.stdout)
 	fmt.Fprintln(r.stdout, "Usage:")
-	fmt.Fprintln(r.stdout, "  workspace-doctor <command> [flags]")
+	fmt.Fprintln(r.stdout, "  workspace-doctor [global flags] <command> [command flags]")
+	fmt.Fprintln(r.stdout)
+	fmt.Fprintln(r.stdout, "Global Flags:")
+	fmt.Fprintf(r.stdout, "  --config string   %s\n", configFlagDescription)
 	fmt.Fprintln(r.stdout)
 	fmt.Fprintln(r.stdout, "Available Commands:")
 	fmt.Fprintln(r.stdout, "  diagnose   Validate the workspace using config-defined rules")
 	fmt.Fprintln(r.stdout, "  schema     Print the JSON schema for workspace configuration")
 	fmt.Fprintln(r.stdout, "  version    Print the current build version")
 	fmt.Fprintln(r.stdout, "  help       Show this message")
+}
+
+func parseGlobalFlags(args []string) (globalFlags, []string, error) {
+	globals := globalFlags{}
+	remaining := make([]string, 0, len(args))
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		switch {
+		case arg == "--config" || arg == "-config":
+			if i+1 >= len(args) {
+				return globals, nil, fmt.Errorf("--config flag requires a value")
+			}
+			globals.configPath = args[i+1]
+			i++
+			continue
+		case strings.HasPrefix(arg, "--config="):
+			globals.configPath = strings.TrimPrefix(arg, "--config=")
+			continue
+		case strings.HasPrefix(arg, "-config="):
+			globals.configPath = strings.TrimPrefix(arg, "-config=")
+			continue
+		}
+
+		remaining = append(remaining, arg)
+	}
+
+	return globals, remaining, nil
 }
 
 func parseSeverityFlag(value string) (schema.Severity, error) {
