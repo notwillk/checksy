@@ -1,4 +1,4 @@
-FROM ubuntu:latest
+FROM ubuntu:24.04
 
 # Set up a non-root user
 ARG USERNAME=vscode
