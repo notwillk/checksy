@@ -3,4 +3,6 @@ set -euo pipefail
 
 severity="${1:-unspecified}"
 
-echo "PASS [$severity] $(date) $USER $(pwd)"
+user="${USER:-$(id -un 2>/dev/null || echo unknown)}"
+
+echo "PASS [$severity] $(date) $user $(pwd)"

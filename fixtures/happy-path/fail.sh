@@ -3,5 +3,7 @@ set -euo pipefail
 
 severity="${1:-unspecified}"
 
-echo "FAIL [$severity] $(date) $USER $(pwd)"
+user="${USER:-$(id -un 2>/dev/null || echo unknown)}"
+
+echo "FAIL [$severity] $(date) $user $(pwd)"
 exit 1
