@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -64,9 +65,11 @@ func (r *RootCommand) runDiagnose(args []string) int {
 	var configPath string
 	var noFail bool
 	var severityFloor string
+	var applyFixes bool
 	flags.StringVar(&configPath, "config", "", "path to workspace config file (defaults to .workspace-doctor.yaml/.yml)")
 	flags.BoolVar(&noFail, "no-fail", false, "always exit zero even when rules fail")
 	flags.StringVar(&severityFloor, "severity", "debug", "minimum rule severity to run (debug|info|warning|error)")
+	flags.BoolVar(&applyFixes, "fix", false, "attempt to run fixes for failing rules when available")
 
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -103,51 +106,28 @@ func (r *RootCommand) runDiagnose(args []string) int {
 		return 2
 	}
 
-	report, err := doctor.Diagnose(doctor.Options{
+	opts := doctor.Options{
 		Config:      cfg,
 		WorkDir:     filepath.Dir(absConfigPath),
 		MinSeverity: minSeverity,
-	})
+	}
+
+	var report doctor.Report
+	if applyFixes {
+		report, err = r.diagnoseWithFixes(opts)
+	} else {
+		report, err = doctor.Diagnose(opts)
+	}
 	if err != nil {
 		fmt.Fprintf(r.stderr, "diagnose failed: %v\n", err)
 		return 2
 	}
 
-	for _, result := range report.Rules {
-		icon := "✅"
-		if !result.Success() {
-			icon = "❌"
-		}
-		fmt.Fprintf(r.stdout, "%s %s\n", icon, result.Name())
-		if !result.Success() {
-			if result.Stdout != "" {
-				fmt.Fprintf(r.stderr, "%s stdout:\n%s\n", result.Name(), result.Stdout)
-			}
-			if result.Stderr != "" {
-				fmt.Fprintf(r.stderr, "%s stderr:\n%s\n", result.Name(), result.Stderr)
-			}
-			if result.Stdout == "" && result.Stderr == "" && result.Err != nil {
-				fmt.Fprintf(r.stderr, "%s error: %v\n", result.Name(), result.Err)
-			}
-		}
+	if !applyFixes {
+		r.printReportResults(report)
 	}
 
-	if !report.HasFailures() {
-		fmt.Fprintln(r.stdout, "All rules validated 😎")
-		return 0
-	}
-
-	failures := report.Failures()
-	fmt.Fprintf(r.stdout, "%d rules failed validation 😭\n", len(failures))
-	for _, failure := range failures {
-		fmt.Fprintf(r.stdout, "- %s\n", failure.Name())
-	}
-
-	if noFail {
-		return 0
-	}
-
-	return 3
+	return r.summarizeReport(report, noFail)
 }
 
 func (r *RootCommand) printUsage() {
@@ -176,4 +156,124 @@ func parseSeverityFlag(value string) (schema.Severity, error) {
 	default:
 		return "", fmt.Errorf("invalid severity %q: must be one of debug, info, warning, error", value)
 	}
+}
+
+func (r *RootCommand) printReportResults(report doctor.Report) {
+	for _, result := range report.Rules {
+		if result.Success() {
+			r.printRuleSuccess(result)
+			continue
+		}
+		r.printRuleFailure(result)
+	}
+}
+
+func (r *RootCommand) printRuleStatus(result doctor.RuleResult, icon string, includeOutput bool) {
+	fmt.Fprintf(r.stdout, "%s %s\n", icon, result.Name())
+	if !includeOutput || result.Success() {
+		return
+	}
+	if result.Stdout != "" {
+		fmt.Fprintf(r.stderr, "%s stdout:\n%s\n", result.Name(), result.Stdout)
+	}
+	if result.Stderr != "" {
+		fmt.Fprintf(r.stderr, "%s stderr:\n%s\n", result.Name(), result.Stderr)
+	}
+	if result.Stdout == "" && result.Stderr == "" && result.Err != nil {
+		fmt.Fprintf(r.stderr, "%s error: %v\n", result.Name(), result.Err)
+	}
+}
+
+func (r *RootCommand) printRuleSuccess(result doctor.RuleResult) {
+	r.printRuleStatus(result, "✅", false)
+}
+
+func (r *RootCommand) printRuleFailure(result doctor.RuleResult) {
+	r.printRuleStatus(result, "❌", true)
+}
+
+func (r *RootCommand) summarizeReport(report doctor.Report, noFail bool) int {
+	if !report.HasFailures() {
+		fmt.Fprintln(r.stdout, "All rules validated 😎")
+		return 0
+	}
+
+	failures := report.Failures()
+	fmt.Fprintf(r.stdout, "%d rules failed validation 😭\n", len(failures))
+	for _, failure := range failures {
+		fmt.Fprintf(r.stdout, "- %s\n", failure.Name())
+	}
+
+	if noFail {
+		return 0
+	}
+
+	return 3
+}
+
+func (r *RootCommand) diagnoseWithFixes(opts doctor.Options) (doctor.Report, error) {
+	if opts.Config == nil {
+		return doctor.Report{}, errors.New("no configuration supplied")
+	}
+
+	workdir := opts.WorkDir
+	if workdir == "" {
+		workdir = "."
+	}
+
+	rules := doctor.FilterRules(opts.Config, opts.MinSeverity)
+	results := make([]doctor.RuleResult, 0, len(rules))
+
+	for _, rule := range rules {
+		result := doctor.RunRule(rule, workdir)
+		if result.Success() {
+			r.printRuleSuccess(result)
+			results = append(results, result)
+			continue
+		}
+
+		if strings.TrimSpace(rule.Fix) == "" {
+			r.printRuleFailure(result)
+			results = append(results, result)
+			continue
+		}
+
+		r.printRuleStatus(result, "⚠️", false)
+
+		fixRule := schema.Rule{
+			Name:  fmt.Sprintf("%s fix", ruleDisplayName(rule)),
+			Check: rule.Fix,
+		}
+		fixResult := doctor.RunRule(fixRule, workdir)
+		if !fixResult.Success() {
+			r.printRuleFailure(fixResult)
+			r.printRuleFailure(result)
+			results = append(results, result)
+			continue
+		}
+
+		r.printRuleSuccess(fixResult)
+
+		result = doctor.RunRule(rule, workdir)
+		if result.Success() {
+			r.printRuleSuccess(result)
+		} else {
+			r.printRuleFailure(result)
+		}
+
+		results = append(results, result)
+	}
+
+	return doctor.Report{Rules: results}, nil
+}
+
+func ruleDisplayName(rule schema.Rule) string {
+	if rule.Name != "" {
+		return rule.Name
+	}
+	trimmed := strings.TrimSpace(rule.Check)
+	if trimmed != "" {
+		return trimmed
+	}
+	return "rule"
 }

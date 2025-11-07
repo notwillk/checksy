@@ -1,0 +1,9 @@
+rules:
+  - name: "Fix succeeds"
+    severity: info
+    check: ./failing-check.sh success
+    fix: ./fix-success.sh
+  - name: "Fix fails"
+    severity: info
+    check: ./failing-check.sh failure
+    fix: ./fix-failure.sh

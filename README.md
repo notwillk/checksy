@@ -28,11 +28,14 @@ workspace-doctor help
 # Run the workspace validation rules
 workspace-doctor diagnose --config path/to/.workspace-doctor.yaml
 
+# Attempt to auto-fix failures when fixes are defined
+workspace-doctor diagnose --fix --config path/to/.workspace-doctor.yaml
+
 # Emit the configuration JSON schema
 workspace-doctor schema --pretty > dist/config.schema.json
 ```
 
-The `diagnose` command executes each configured rule, printing ✅/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. The `schema` command reflects over the configuration struct in `schema/config.go` and outputs a machine-readable JSON Schema definition that downstream tooling can validate against.
+The `diagnose` command executes each configured rule, printing ✅/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command reflects over the configuration struct in `schema/config.go` and outputs a machine-readable JSON Schema definition that downstream tooling can validate against.
 
 
 ## Configuration

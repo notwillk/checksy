@@ -84,20 +84,34 @@ func Diagnose(opts Options) (Report, error) {
 		workdir = "."
 	}
 
-	minSeverity := normalizeMinSeverity(opts.MinSeverity)
-
-	results := make([]RuleResult, 0, len(opts.Config.Rules))
-	for _, rule := range opts.Config.Rules {
-		if !ruleMeetsSeverity(rule, minSeverity) {
-			continue
-		}
-		results = append(results, runRule(rule, workdir))
+	rules := FilterRules(opts.Config, opts.MinSeverity)
+	results := make([]RuleResult, 0, len(rules))
+	for _, rule := range rules {
+		results = append(results, RunRule(rule, workdir))
 	}
 
 	return Report{Rules: results}, nil
 }
 
-func runRule(rule schema.Rule, workdir string) RuleResult {
+// FilterRules returns the subset of rules that meet the provided minimum severity.
+func FilterRules(cfg *schema.Config, min schema.Severity) []schema.Rule {
+	if cfg == nil {
+		return nil
+	}
+
+	minSeverity := normalizeMinSeverity(min)
+	selected := make([]schema.Rule, 0, len(cfg.Rules))
+	for _, rule := range cfg.Rules {
+		if ruleMeetsSeverity(rule, minSeverity) {
+			selected = append(selected, rule)
+		}
+	}
+
+	return selected
+}
+
+// RunRule executes a single rule and captures its output.
+func RunRule(rule schema.Rule, workdir string) RuleResult {
 	script := rule.Check
 	if script == "" {
 		script = "true"
