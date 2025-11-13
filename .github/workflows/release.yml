@@ -1,45 +1,29 @@
 name: Release
 
 on:
-  release:
-    types:
-      - published
+  push:
+    tags:
+      - "v*.*.*"
 
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      packages: write
+      contents: write  # needed to create GitHub releases + upload assets
+
     env:
-      # Required so GoReleaser can create releases and upload artifacts.
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # GoReleaser needs tags + history
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: src/go.mod
-
-      - name: Validate release tag matches version constant
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag="${{ github.event.release.tag_name }}"
-          version=$(sed -n 's/^const Version = "\(.*\)"/\1/p' src/internal/version/version.go)
-          if [[ -z "$version" ]]; then
-            echo "unable to read version from src/internal/version/version.go"
-            exit 1
-          fi
-          if [[ "$tag" != "v$version" ]]; then
-            echo "release tag $tag must match version constant v$version"
-            exit 1
-          fi
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -48,4 +32,3 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

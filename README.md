@@ -2,6 +2,12 @@
 
 workspace-doctor is a Go-based command line utility intended to run lightweight health checks against a development workspace. The initial scaffolding provides a `diagnose` command that demonstrates how to add future checks and subcommands.
 
+## Installation
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/notwillk/workspace-doctor/main/scripts/install.sh | bash
+```
+
 ## Project Layout
 
 ```
@@ -21,7 +27,7 @@ The resulting binary can be copied anywhere on your `PATH` if desired. Running `
 
 ## Running
 
-```
+```bash
 # Show help
 workspace-doctor help
 
