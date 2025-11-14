@@ -18,16 +18,23 @@ Run tests locally if desired.
 
 ---
 
-## 2. Create a version tag
+## 2. Run the release script
 
-Choose a version number and create an annotated tag of the form `vX.Y.Z`:
+Use the helper script to bump the version, commit, tag, and push everything in one go. The script enforces that `main` is clean and up to date with `origin/main` before proceeding.
 
 ```bash
-git tag -a vX.Y.Z -m "workspace-doctor vX.Y.Z"
-git push origin vX.Y.Z
+./release.sh patch   # or minor / major
 ```
 
-This push is the **only** required action to start a release.
+The script:
+
+1. Reads the existing version from `src/internal/version/version.go`
+2. Increments it according to the argument
+3. Commits the version bump with message `Release vX.Y.Z`
+4. Creates an annotated tag `vX.Y.Z`
+5. Pushes `main` and the new tag to `origin`
+
+Once the tag is pushed, the release workflow starts automatically.
 
 ---
 
@@ -89,8 +96,7 @@ Confirm the installed version matches the release.
 ## Summary
 
 1. Ensure `main` is up to date  
-2. `git tag vX.Y.Z`  
-3. `git push origin vX.Y.Z`  
-4. CI + GoReleaser handle everything  
+2. Run `./release.sh patch|minor|major`  
+3. CI + GoReleaser handle everything once the tag is pushed  
 
 **Release is complete.**
