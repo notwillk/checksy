@@ -8,6 +8,12 @@ workspace-doctor is a Go-based command line utility intended to run lightweight 
 curl -fsSL https://raw.githubusercontent.com/notwillk/workspace-doctor/main/scripts/install.sh | bash
 ```
 
+## Uninstallation
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/notwillk/workspace-doctor/main/scripts/uninstall.sh | bash
+```
+
 ## Project Layout
 
 ```
