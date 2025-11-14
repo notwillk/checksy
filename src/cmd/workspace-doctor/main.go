@@ -1,13 +1,17 @@
 package main
 
 import (
-    "os"
+	"io"
+	"os"
 
-    "github.com/notwillk/workspace-doctor/internal/cli"
+	"github.com/notwillk/workspace-doctor/internal/cli"
 )
 
+func run(args []string, stdout, stderr io.Writer) int {
+	root := cli.NewRootCommand(stdout, stderr)
+	return root.Run(args)
+}
+
 func main() {
-    root := cli.NewRootCommand(os.Stdout, os.Stderr)
-    code := root.Run(os.Args[1:])
-    os.Exit(code)
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
