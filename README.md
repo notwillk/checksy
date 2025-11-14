@@ -48,9 +48,14 @@ workspace-doctor schema > dist/config.schema.json
 
 # Emit the configuration JSON schema (prettily)
 workspace-doctor schema --pretty > dist/config.schema.json
+
+# Only execute warn+ rules but fail only on errors
+workspace-doctor diagnose --check-severity=warn --fail-severity=error
 ```
 
-The `diagnose` command executes each configured rule, printing ✅/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command reflects over the configuration struct in `schema/config.go` and outputs a machine-readable JSON Schema definition that downstream tooling can validate against.
+The `diagnose` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command reflects over the configuration struct in `schema/config.go` and outputs a machine-readable JSON Schema definition that downstream tooling can validate against.
+
+Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. When omitted, checks default to running for warn+ rules and the command only fails for error-level rules. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but no longer abort the run.
 
 
 ## Configuration

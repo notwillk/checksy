@@ -20,14 +20,16 @@ const defaultRuleSeverity = schema.SeverityError
 
 // Options controls how workspace rules are executed.
 type Options struct {
-	Config      *schema.Config
-	WorkDir     string
-	MinSeverity schema.Severity
+	Config       *schema.Config
+	WorkDir      string
+	MinSeverity  schema.Severity
+	FailSeverity schema.Severity
 }
 
 // Report contains the outcomes of executing all configured rules.
 type Report struct {
-	Rules []RuleResult
+	Rules        []RuleResult
+	FailSeverity schema.Severity
 }
 
 // RuleResult captures stdout/stderr and exit status for a single rule execution.
@@ -51,10 +53,26 @@ func (r RuleResult) Name() string {
 	return r.Rule.Check
 }
 
+// Severity returns the normalized severity for the rule.
+func (r RuleResult) Severity() schema.Severity {
+	return normalizeRuleSeverity(r.Rule.Severity)
+}
+
+// ShouldFail reports whether the rule result should be treated as a failure for
+// the provided fail severity threshold.
+func (r RuleResult) ShouldFail(threshold schema.Severity) bool {
+	if r.Success() {
+		return false
+	}
+	normalized := normalizeFailSeverity(threshold)
+	return severityOrder[r.Severity()] >= severityOrder[normalized]
+}
+
 // HasFailures returns true when any rule exited unsuccessfully.
 func (r Report) HasFailures() bool {
+	failureThreshold := normalizeFailSeverity(r.FailSeverity)
 	for _, result := range r.Rules {
-		if !result.Success() {
+		if result.ShouldFail(failureThreshold) {
 			return true
 		}
 	}
@@ -64,9 +82,10 @@ func (r Report) HasFailures() bool {
 
 // Failures returns the subset of rule results that failed.
 func (r Report) Failures() []RuleResult {
+	failureThreshold := normalizeFailSeverity(r.FailSeverity)
 	var failed []RuleResult
 	for _, result := range r.Rules {
-		if !result.Success() {
+		if result.ShouldFail(failureThreshold) {
 			failed = append(failed, result)
 		}
 	}
@@ -90,7 +109,7 @@ func Diagnose(opts Options) (Report, error) {
 		results = append(results, RunRule(rule, workdir))
 	}
 
-	return Report{Rules: results}, nil
+	return Report{Rules: results, FailSeverity: opts.FailSeverity}, nil
 }
 
 // FilterRules returns the subset of rules that meet the provided minimum severity.
@@ -144,6 +163,9 @@ func ruleMeetsSeverity(rule schema.Rule, min schema.Severity) bool {
 }
 
 func normalizeRuleSeverity(value schema.Severity) schema.Severity {
+	if normalized, ok := schema.NormalizeSeverity(value); ok {
+		return normalized
+	}
 	if _, ok := severityOrder[value]; ok {
 		return value
 	}
@@ -154,8 +176,35 @@ func normalizeMinSeverity(value schema.Severity) schema.Severity {
 	if value == "" {
 		return schema.SeverityDebug
 	}
+	if normalized, ok := schema.NormalizeSeverity(value); ok {
+		return normalized
+	}
 	if _, ok := severityOrder[value]; ok {
 		return value
 	}
 	return schema.SeverityDebug
+}
+
+func normalizeFailSeverity(value schema.Severity) schema.Severity {
+	if value == "" {
+		return schema.SeverityError
+	}
+	if normalized, ok := schema.NormalizeSeverity(value); ok {
+		return normalized
+	}
+	if _, ok := severityOrder[value]; ok {
+		return value
+	}
+	return schema.SeverityError
+}
+
+// MinSeverity returns the less strict (numerically lower) of the provided
+// severities after normalization.
+func MinSeverity(a, b schema.Severity) schema.Severity {
+	a = normalizeMinSeverity(a)
+	b = normalizeMinSeverity(b)
+	if severityOrder[a] <= severityOrder[b] {
+		return a
+	}
+	return b
 }

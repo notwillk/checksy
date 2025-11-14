@@ -91,11 +91,15 @@ func (r *RootCommand) runDiagnose(args []string, globals globalFlags) int {
 
 	var localConfigPath string
 	var noFail bool
-	var severityFloor string
+	var checkSeverityFlag string
+	var failSeverityFlag string
 	var applyFixes bool
 	flags.StringVar(&localConfigPath, "config", "", configFlagDescription)
 	flags.BoolVar(&noFail, "no-fail", false, "always exit zero even when rules fail")
-	flags.StringVar(&severityFloor, "severity", "debug", "minimum rule severity to run (debug|info|warning|error)")
+	flags.StringVar(&checkSeverityFlag, "check-severity", "", "minimum rule severity to execute (debug|info|warn|error; warning is accepted for compatibility)")
+	flags.StringVar(&checkSeverityFlag, "cs", "", "shorthand for --check-severity")
+	flags.StringVar(&failSeverityFlag, "fail-severity", "", "severity threshold that causes diagnose to fail (debug|info|warn|error; warning is accepted for compatibility)")
+	flags.StringVar(&failSeverityFlag, "fs", "", "shorthand for --fail-severity")
 	flags.BoolVar(&applyFixes, "fix", false, "attempt to run fixes for failing rules when available")
 
 	if err := flags.Parse(args); err != nil {
@@ -132,16 +136,33 @@ func (r *RootCommand) runDiagnose(args []string, globals globalFlags) int {
 		return 2
 	}
 
-	minSeverity, err := parseSeverityFlag(severityFloor)
-	if err != nil {
-		fmt.Fprintf(r.stderr, "%v\n", err)
-		return 2
+	checkSeverity := schema.SeverityWarning
+	if checkSeverityFlag != "" {
+		var err error
+		checkSeverity, err = parseSeverityFlag(checkSeverityFlag)
+		if err != nil {
+			fmt.Fprintf(r.stderr, "%v\n", err)
+			return 2
+		}
 	}
 
+	failSeverity := schema.SeverityError
+	if failSeverityFlag != "" {
+		var err error
+		failSeverity, err = parseSeverityFlag(failSeverityFlag)
+		if err != nil {
+			fmt.Fprintf(r.stderr, "%v\n", err)
+			return 2
+		}
+	}
+
+	minSeverity := doctor.MinSeverity(checkSeverity, failSeverity)
+
 	opts := doctor.Options{
-		Config:      cfg,
-		WorkDir:     filepath.Dir(absConfigPath),
-		MinSeverity: minSeverity,
+		Config:       cfg,
+		WorkDir:      filepath.Dir(absConfigPath),
+		MinSeverity:  minSeverity,
+		FailSeverity: failSeverity,
 	}
 
 	var report doctor.Report
@@ -271,22 +292,22 @@ func parseSeverityFlag(value string) (schema.Severity, error) {
 		return schema.SeverityDebug, nil
 	case "info":
 		return schema.SeverityInfo, nil
-	case "warning":
+	case "warning", "warn":
 		return schema.SeverityWarning, nil
 	case "error":
 		return schema.SeverityError, nil
 	default:
-		return "", fmt.Errorf("invalid severity %q: must be one of debug, info, warning, error", value)
+		return "", fmt.Errorf("invalid severity %q: must be one of debug, info, warn, error", value)
 	}
 }
 
 func (r *RootCommand) printReportResults(report doctor.Report) {
+	failSeverity := report.FailSeverity
+	if failSeverity == "" {
+		failSeverity = schema.SeverityError
+	}
 	for _, result := range report.Rules {
-		if result.Success() {
-			r.printRuleSuccess(result)
-			continue
-		}
-		r.printRuleFailure(result)
+		r.printRuleOutcome(result, failSeverity)
 	}
 }
 
@@ -312,6 +333,22 @@ func (r *RootCommand) printRuleSuccess(result doctor.RuleResult) {
 
 func (r *RootCommand) printRuleFailure(result doctor.RuleResult) {
 	r.printRuleStatus(result, "❌", true)
+}
+
+func (r *RootCommand) printRuleWarning(result doctor.RuleResult) {
+	r.printRuleStatus(result, "⚠️", true)
+}
+
+func (r *RootCommand) printRuleOutcome(result doctor.RuleResult, failSeverity schema.Severity) {
+	if result.Success() {
+		r.printRuleSuccess(result)
+		return
+	}
+	if result.ShouldFail(failSeverity) {
+		r.printRuleFailure(result)
+		return
+	}
+	r.printRuleWarning(result)
 }
 
 func (r *RootCommand) summarizeReport(report doctor.Report, noFail bool) int {
@@ -355,7 +392,7 @@ func (r *RootCommand) diagnoseWithFixes(opts doctor.Options) (doctor.Report, err
 		}
 
 		if strings.TrimSpace(rule.Fix) == "" {
-			r.printRuleFailure(result)
+			r.printRuleOutcome(result, opts.FailSeverity)
 			results = append(results, result)
 			continue
 		}
@@ -369,7 +406,7 @@ func (r *RootCommand) diagnoseWithFixes(opts doctor.Options) (doctor.Report, err
 		fixResult := doctor.RunRule(fixRule, workdir)
 		if !fixResult.Success() {
 			r.printRuleFailure(fixResult)
-			r.printRuleFailure(result)
+			r.printRuleOutcome(result, opts.FailSeverity)
 			results = append(results, result)
 			continue
 		}
@@ -377,16 +414,12 @@ func (r *RootCommand) diagnoseWithFixes(opts doctor.Options) (doctor.Report, err
 		r.printRuleSuccess(fixResult)
 
 		result = doctor.RunRule(rule, workdir)
-		if result.Success() {
-			r.printRuleSuccess(result)
-		} else {
-			r.printRuleFailure(result)
-		}
+		r.printRuleOutcome(result, opts.FailSeverity)
 
 		results = append(results, result)
 	}
 
-	return doctor.Report{Rules: results}, nil
+	return doctor.Report{Rules: results, FailSeverity: opts.FailSeverity}, nil
 }
 
 func ruleDisplayName(rule schema.Rule) string {

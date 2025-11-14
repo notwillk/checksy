@@ -93,6 +93,9 @@ func applyRuleDefaults(cfg *schemadef.Config) {
 	}
 
 	for i := range cfg.Rules {
+		if normalized, ok := schemadef.NormalizeSeverity(cfg.Rules[i].Severity); ok {
+			cfg.Rules[i].Severity = normalized
+		}
 		if cfg.Rules[i].Severity == "" {
 			cfg.Rules[i].Severity = schemadef.SeverityError
 		}
