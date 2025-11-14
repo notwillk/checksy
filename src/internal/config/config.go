@@ -82,8 +82,21 @@ func Load(path string) (*schemadef.Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("decode config: %w", err)
 	}
+	applyRuleDefaults(&cfg)
 
 	return &cfg, nil
+}
+
+func applyRuleDefaults(cfg *schemadef.Config) {
+	if cfg == nil {
+		return
+	}
+
+	for i := range cfg.Rules {
+		if cfg.Rules[i].Severity == "" {
+			cfg.Rules[i].Severity = schemadef.SeverityError
+		}
+	}
 }
 
 func compiledJSONSchema() (*jschema.Schema, error) {

@@ -16,7 +16,7 @@ var severityOrder = map[schema.Severity]int{
 	schema.SeverityError:   3,
 }
 
-const defaultRuleSeverity = schema.SeverityInfo
+const defaultRuleSeverity = schema.SeverityError
 
 // Options controls how workspace rules are executed.
 type Options struct {

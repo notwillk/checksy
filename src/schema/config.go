@@ -1,5 +1,7 @@
 package schema
 
+import invjsonschema "github.com/invopop/jsonschema"
+
 type Severity string
 
 const (
@@ -8,6 +10,19 @@ const (
 	SeverityInfo    Severity = "info"
 	SeverityDebug   Severity = "debug"
 )
+
+func (Severity) JSONSchema() *invjsonschema.Schema {
+	return &invjsonschema.Schema{
+		Type: "string",
+		Enum: []any{
+			string(SeverityError),
+			string(SeverityWarning),
+			string(SeverityInfo),
+			string(SeverityDebug),
+		},
+		Default: string(SeverityError),
+	}
+}
 
 type Rule struct {
 	Name     string   `json:"name,omitempty" yaml:"name,omitempty"`

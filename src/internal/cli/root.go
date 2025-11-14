@@ -21,7 +21,7 @@ const (
 	defaultInitConfigTemplate = `# workspace-doctor configuration
 rules:
   - name: "Example rule"
-    severity: info
+    severity: error
     check: |
       echo "Replace this with a useful check"
 `
