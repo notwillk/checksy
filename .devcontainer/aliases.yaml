@@ -1,3 +1,4 @@
 build: just build
 dev: just dev
 release: just release
+setup: just setup
