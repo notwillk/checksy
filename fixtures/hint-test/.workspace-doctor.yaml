@@ -1,0 +1,31 @@
+rules:
+  - name: "Rule with hint that passes"
+    severity: error
+    check: exit 0
+    hint: "This hint should not appear for passing checks"
+  - name: "Rule with hint that fails"
+    severity: error
+    check: |
+      echo "Check failed" >&2
+      exit 1
+    hint: "Try running 'make install' to fix this issue"
+  - name: "Rule without hint that fails"
+    severity: error
+    check: exit 1
+  - name: "Rule with hint and fix that succeeds"
+    severity: info
+    check: test "$(cat /tmp/test-state.txt)" = "fixed"
+    fix: echo "fixed" > /tmp/test-state.txt
+    hint: "Run the fix command to resolve this"
+  - name: "Rule with hint and fix that fails"
+    severity: info
+    check: exit 1
+    fix: |
+      echo "Fix failed" >&2
+      exit 1
+    hint: "The automatic fix may not work in all cases"
+  - name: "Rule with hint where recheck fails"
+    severity: info
+    check: exit 1
+    fix: exit 0
+    hint: "Recheck failure hint should appear"
