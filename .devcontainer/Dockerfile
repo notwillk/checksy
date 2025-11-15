@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM mcr.microsoft.com/devcontainers/base:ubuntu
 
 ARG USERNAME=vscode
 ARG USER_UID=1001
@@ -22,16 +22,6 @@ RUN apt-get update \
     sudo \
     yq \
   && rm -rf /var/lib/apt/lists/*
-
-# Create a non-root user to use if preferred
-RUN groupadd --gid $USER_GID $USERNAME \
-  && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME --shell /bin/bash \
-  && usermod -aG sudo $USERNAME \
-  && install -d -m 0750 /etc/sudoers.d \
-  && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME \
-  && chmod 0440 /etc/sudoers.d/$USERNAME
-
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Copy configuration files
 COPY *.yaml /tmp
@@ -58,3 +48,6 @@ RUN set -eu \
   && ln -sf /usr/local/go/bin/go /usr/local/bin/go \
   && rm /tmp/go.tar.gz \
   && go version
+
+# Install goreleaser and put it on the global PATH for every user
+RUN GOBIN=/usr/local/bin go install github.com/goreleaser/goreleaser/v2@latest

@@ -50,6 +50,7 @@ type Rule struct {
 	Check    string   `json:"check" yaml:"check"`
 	Severity Severity `json:"severity,omitempty" yaml:"severity,omitempty"`
 	Fix      string   `json:"fix,omitempty" yaml:"fix,omitempty"`
+	Hint     string   `json:"hint,omitempty" yaml:"hint,omitempty"`
 }
 
 type Config struct {

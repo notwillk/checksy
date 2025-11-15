@@ -1,0 +1,7 @@
+rules:
+  - name: "Passes"
+    severity: error
+    check: ./passes.sh
+  - name: "Fails"
+    severity: error
+    check: ./fails.sh

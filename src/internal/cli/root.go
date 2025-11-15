@@ -325,6 +325,9 @@ func (r *RootCommand) printRuleStatus(result doctor.RuleResult, icon string, inc
 	if result.Stdout == "" && result.Stderr == "" && result.Err != nil {
 		fmt.Fprintf(r.stderr, "%s error: %v\n", result.Name(), result.Err)
 	}
+	if result.Rule.Hint != "" {
+		fmt.Fprintf(r.stderr, "%s hint: %s\n", result.Name(), result.Rule.Hint)
+	}
 }
 
 func (r *RootCommand) printRuleSuccess(result doctor.RuleResult) {
@@ -402,6 +405,7 @@ func (r *RootCommand) diagnoseWithFixes(opts doctor.Options) (doctor.Report, err
 		fixRule := schema.Rule{
 			Name:  fmt.Sprintf("%s fix", ruleDisplayName(rule)),
 			Check: rule.Fix,
+			Hint:  rule.Hint,
 		}
 		fixResult := doctor.RunRule(fixRule, workdir)
 		if !fixResult.Success() {
