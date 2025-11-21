@@ -9,16 +9,16 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/notwillk/workspace-doctor/internal/config"
-	"github.com/notwillk/workspace-doctor/internal/doctor"
-	"github.com/notwillk/workspace-doctor/internal/version"
-	"github.com/notwillk/workspace-doctor/schema"
+	"github.com/notwillk/checksy/internal/config"
+	"github.com/notwillk/checksy/internal/doctor"
+	"github.com/notwillk/checksy/internal/version"
+	"github.com/notwillk/checksy/schema"
 )
 
 const (
-	configFlagDescription     = "path to workspace config file (defaults to .workspace-doctor.yaml/.yml)"
-	defaultInitConfigFilename = ".workspace-doctor.config.yaml"
-	defaultInitConfigTemplate = `# workspace-doctor configuration
+	configFlagDescription     = "path to workspace config file (defaults to .checksy.yaml/.yml)"
+	defaultInitConfigFilename = ".checksy.config.yaml"
+	defaultInitConfigTemplate = `# checksy configuration
 rules:
   - name: "Example rule"
     severity: error
@@ -73,7 +73,7 @@ func (r *RootCommand) Run(args []string) int {
 	case "schema":
 		return r.runSchema(cmdArgs)
 	case "version", "--version":
-		fmt.Fprintf(r.stdout, "workspace-doctor %s\n", version.Version)
+		fmt.Fprintf(r.stdout, "checksy %s\n", version.Version)
 		return 0
 	case "help", "-h", "--help":
 		r.printUsage()
@@ -120,7 +120,7 @@ func (r *RootCommand) runDiagnose(args []string, globals globalFlags) int {
 		return 2
 	}
 	if resolvedConfigPath == "" {
-		fmt.Fprintln(r.stderr, "no configuration file found; specify --config or add .workspace-doctor.yaml/.yml to the workspace")
+		fmt.Fprintln(r.stderr, "no configuration file found; specify --config or add .checksy.yaml/.yml to the workspace")
 		return 2
 	}
 
@@ -242,10 +242,10 @@ func writeConfigTemplate(path string) error {
 }
 
 func (r *RootCommand) printUsage() {
-	fmt.Fprintln(r.stdout, "workspace-doctor - inspect and troubleshoot development environments")
+	fmt.Fprintln(r.stdout, "checksy - inspect and troubleshoot development environments")
 	fmt.Fprintln(r.stdout)
 	fmt.Fprintln(r.stdout, "Usage:")
-	fmt.Fprintln(r.stdout, "  workspace-doctor [global flags] <command> [command flags]")
+	fmt.Fprintln(r.stdout, "  checksy [global flags] <command> [command flags]")
 	fmt.Fprintln(r.stdout)
 	fmt.Fprintln(r.stdout, "Global Flags:")
 	fmt.Fprintf(r.stdout, "  --config string   %s\n", configFlagDescription)
@@ -339,7 +339,7 @@ func (r *RootCommand) printRuleFailure(result doctor.RuleResult) {
 }
 
 func (r *RootCommand) printRuleWarning(result doctor.RuleResult) {
-	r.printRuleStatus(result, "⚠️", true)
+	r.printRuleStatus(result, "⚠️ ", true)
 }
 
 func (r *RootCommand) printRuleOutcome(result doctor.RuleResult, failSeverity schema.Severity) {
@@ -356,12 +356,12 @@ func (r *RootCommand) printRuleOutcome(result doctor.RuleResult, failSeverity sc
 
 func (r *RootCommand) summarizeReport(report doctor.Report, noFail bool) int {
 	if !report.HasFailures() {
-		fmt.Fprintln(r.stdout, "All rules validated 😎")
+		fmt.Fprintln(r.stdout, "😎 All rules validated")
 		return 0
 	}
 
 	failures := report.Failures()
-	fmt.Fprintf(r.stdout, "%d rules failed validation 😭\n", len(failures))
+	fmt.Fprintf(r.stdout, "😭 %d rules failed validation\n", len(failures))
 	for _, failure := range failures {
 		fmt.Fprintf(r.stdout, "- %s\n", failure.Name())
 	}
@@ -400,7 +400,7 @@ func (r *RootCommand) diagnoseWithFixes(opts doctor.Options) (doctor.Report, err
 			continue
 		}
 
-		r.printRuleStatus(result, "⚠️", false)
+		r.printRuleStatus(result, "⚠️ ", false)
 
 		fixRule := schema.Rule{
 			Name:  fmt.Sprintf("%s fix", ruleDisplayName(rule)),

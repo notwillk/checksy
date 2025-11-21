@@ -4,7 +4,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/notwillk/workspace-doctor/internal/cli"
+	"github.com/notwillk/checksy/internal/cli"
 )
 
 func run(args []string, stdout, stderr io.Writer) int {

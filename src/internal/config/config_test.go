@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	schemadef "github.com/notwillk/workspace-doctor/schema"
+	schemadef "github.com/notwillk/checksy/schema"
 )
 
 func TestResolvePathExplicit(t *testing.T) {
@@ -37,7 +37,7 @@ func TestResolvePathAutoDetect(t *testing.T) {
 	}
 
 	content := []byte("rules:\n  - check: echo ok\n")
-	if err := os.WriteFile(filepath.Join(tmp, ".workspace-doctor.yaml"), content, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmp, ".checksy.yaml"), content, 0o644); err != nil {
 		t.Fatalf("write auto config: %v", err)
 	}
 
@@ -45,8 +45,8 @@ func TestResolvePathAutoDetect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolvePath error: %v", err)
 	}
-	if got != ".workspace-doctor.yaml" {
-		t.Fatalf("got %q, want .workspace-doctor.yaml", got)
+	if got != ".checksy.yaml" {
+		t.Fatalf("got %q, want .checksy.yaml", got)
 	}
 }
 

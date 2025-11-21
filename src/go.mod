@@ -1,4 +1,4 @@
-module github.com/notwillk/workspace-doctor
+module github.com/notwillk/checksy
 
 go 1.22
 

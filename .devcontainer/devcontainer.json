@@ -1,5 +1,5 @@
 {
-	"name": "workspace-doctor",
+	"name": "checksy",
 	"build": {
 		"dockerfile": "Dockerfile",
 		"context": "."

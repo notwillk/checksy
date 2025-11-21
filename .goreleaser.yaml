@@ -1,11 +1,11 @@
 version: 2
-project_name: workspace-doctor
+project_name: checksy
 
 builds:
   - id: static
     dir: ./src
-    main: ./cmd/workspace-doctor
-    binary: workspace-doctor
+    main: ./cmd/checksy
+    binary: checksy
     env:
       - CGO_ENABLED=0
     flags:

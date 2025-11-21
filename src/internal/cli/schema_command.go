@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	invjsonschema "github.com/invopop/jsonschema"
-	configschema "github.com/notwillk/workspace-doctor/schema"
+	configschema "github.com/notwillk/checksy/schema"
 )
 
 func (r *RootCommand) runSchema(args []string) int {

@@ -12,10 +12,10 @@ import (
 	jschema "github.com/santhosh-tekuri/jsonschema/v5"
 	"sigs.k8s.io/yaml"
 
-	schemadef "github.com/notwillk/workspace-doctor/schema"
+	schemadef "github.com/notwillk/checksy/schema"
 )
 
-const schemaResource = "https://workspace-doctor/schema/config.json"
+const schemaResource = "https://checksy/schema/config.json"
 
 var (
 	compiledSchema *jschema.Schema
@@ -25,7 +25,7 @@ var (
 
 // ResolvePath determines which config file should be used.
 // If an explicit path is provided it must exist. Otherwise the well-known
-// filenames `.workspace-doctor.yaml` and `.workspace-doctor.yml` are checked in
+// filenames `.checksy.yaml` and `.checksy.yml` are checked in
 // the current working directory.
 func ResolvePath(explicit string) (string, error) {
 	if explicit != "" {
@@ -35,7 +35,7 @@ func ResolvePath(explicit string) (string, error) {
 		return explicit, nil
 	}
 
-	candidates := []string{".workspace-doctor.yaml", ".workspace-doctor.yml"}
+	candidates := []string{".checksy.yaml", ".checksy.yml"}
 	for _, candidate := range candidates {
 		info, err := os.Stat(candidate)
 		if err == nil {

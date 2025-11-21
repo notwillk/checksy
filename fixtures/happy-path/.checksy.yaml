@@ -12,11 +12,11 @@ rules:
     severity: info
     check: ./fail.sh info
   - name: "Warning pass"
-    severity: warning
-    check: ./pass.sh warning
+    severity: warn
+    check: ./pass.sh warn
   - name: "Warning fail"
-    severity: warning
-    check: ./fail.sh warning
+    severity: warn
+    check: ./fail.sh warn
   - name: "Error pass"
     severity: error
     check: ./pass.sh error

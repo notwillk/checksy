@@ -1,17 +1,17 @@
-# workspace-doctor
+# checksy
 
-workspace-doctor is a Go-based command line utility intended to run lightweight health checks against a development workspace. The initial scaffolding provides a `diagnose` command that demonstrates how to add future checks and subcommands.
+checksy is a Go-based command line utility intended to run lightweight health checks against a development workspace. The initial scaffolding provides a `diagnose` command that demonstrates how to add future checks and subcommands.
 
 ## Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/notwillk/workspace-doctor/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/notwillk/checksy/main/scripts/install.sh | bash
 ```
 
 ## Uninstallation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/notwillk/workspace-doctor/main/scripts/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/notwillk/checksy/main/scripts/uninstall.sh | bash
 ```
 
 ## Project Layout
@@ -19,7 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/notwillk/workspace-doctor/main/scri
 ```
 src/
   go.mod               # Go module root for the CLI
-  cmd/workspace-doctor # CLI entry point (main package)
+  cmd/checksy # CLI entry point (main package)
   internal/cli         # Argument parsing and command wiring
   internal/doctor      # Diagnostic checks and reporting helpers
   internal/version     # Centralized version string
@@ -35,22 +35,22 @@ The resulting binary can be copied anywhere on your `PATH` if desired. Running `
 
 ```bash
 # Show help
-workspace-doctor help
+checksy help
 
 # Run the workspace validation rules
-workspace-doctor --config=path/to/.workspace-doctor.yaml diagnose
+checksy --config=path/to/.checksy.yaml diagnose
 
 # Attempt to auto-fix failures when fixes are defined
-workspace-doctor --config=path/to/.workspace-doctor.yaml diagnose --fix
+checksy --config=path/to/.checksy.yaml diagnose --fix
 
 # Emit the configuration JSON schema
-workspace-doctor schema > dist/config.schema.json
+checksy schema > dist/config.schema.json
 
 # Emit the configuration JSON schema (prettily)
-workspace-doctor schema --pretty > dist/config.schema.json
+checksy schema --pretty > dist/config.schema.json
 
 # Only execute warn+ rules but fail only on errors
-workspace-doctor diagnose --check-severity=warn --fail-severity=error
+checksy diagnose --check-severity=warn --fail-severity=error
 ```
 
 The `diagnose` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command reflects over the configuration struct in `schema/config.go` and outputs a machine-readable JSON Schema definition that downstream tooling can validate against.
@@ -60,4 +60,4 @@ Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs`
 
 ## Configuration
 
-`workspace-doctor --config=path/to/workspace.yaml diagnose` loads the provided YAML, validates it against the same JSON Schema emitted by the `schema` command, and aborts if validation fails. When the flag is omitted, the command automatically looks for `.workspace-doctor.yaml` or `.workspace-doctor.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable.
+`checksy --config=path/to/workspace.yaml diagnose` loads the provided YAML, validates it against the same JSON Schema emitted by the `schema` command, and aborts if validation fails. When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable.

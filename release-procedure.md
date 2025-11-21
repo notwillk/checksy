@@ -48,7 +48,7 @@ Once the tag is pushed:
    - Packages them as archives named:
 
      ```text
-     workspace-doctor_<version>_<os>_<arch>.tar.gz
+     checksy_<version>_<os>_<arch>.tar.gz
      ```
 
    - Generates a checksum file  
@@ -70,7 +70,7 @@ After the workflow finishes:
 1. Open:
 
    ```text
-   https://github.com/notwillk/workspace-doctor/releases
+   https://github.com/notwillk/checksy/releases
    ```
 
 2. Confirm the `vX.Y.Z` release has:
@@ -85,8 +85,8 @@ After the workflow finishes:
 If using a curl installer script:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/notwillk/workspace-doctor/main/scripts/install.sh | bash
-workspace-doctor --version
+curl -fsSL https://raw.githubusercontent.com/notwillk/checksy/main/scripts/install.sh | bash
+checksy --version
 ```
 
 Confirm the installed version matches the release.

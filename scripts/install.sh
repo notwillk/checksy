@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 set -e
 
-REPO="notwillk/workspace-doctor"
-BIN_NAME="workspace-doctor"
+REPO="notwillk/checksy"
+BIN_NAME="checksy"
 
 OS=$(uname | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)

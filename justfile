@@ -3,7 +3,7 @@ build:
 
 compile:
   @mkdir -p dist
-  @cd src && go build -o ../dist/workspace-doctor ./cmd/workspace-doctor
+  @cd src && go build -o ../dist/checksy ./cmd/checksy
 
 dev:
   @echo "Watching src for changes. Press Ctrl+C to stop."

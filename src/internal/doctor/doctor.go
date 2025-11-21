@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/notwillk/workspace-doctor/schema"
+	"github.com/notwillk/checksy/schema"
 )
 
 var severityOrder = map[schema.Severity]int{

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/notwillk/workspace-doctor/schema"
+	"github.com/notwillk/checksy/schema"
 )
 
 func TestFilterRulesBySeverity(t *testing.T) {

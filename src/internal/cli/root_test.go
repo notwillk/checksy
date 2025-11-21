@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/notwillk/workspace-doctor/internal/doctor"
-	"github.com/notwillk/workspace-doctor/schema"
+	"github.com/notwillk/checksy/internal/doctor"
+	"github.com/notwillk/checksy/schema"
 )
 
 func TestParseSeverityFlag(t *testing.T) {
@@ -56,10 +56,10 @@ func TestPrintRuleOutcomeUsesWarningIconBelowThreshold(t *testing.T) {
 
 func TestPrintRuleStatusOutputsHintOnFailure(t *testing.T) {
 	tests := []struct {
-		name         string
-		result       doctor.RuleResult
+		name          string
+		result        doctor.RuleResult
 		includeOutput bool
-		wantHint     bool
+		wantHint      bool
 	}{
 		{
 			name: "failing rule with hint",
