@@ -1,0 +1,7 @@
+{
+  "id": "entr",
+  "version": "1.0.0",
+  "name": "entr",
+  "description": "Installs entr (Event Notify Test Runner) from apt repositories.",
+  "documentationURL": "https://eradman.com/entrproject/"
+}

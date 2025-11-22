@@ -1,0 +1,9 @@
+{
+  "id": "goreleaser",
+  "version": "1.0.0",
+  "name": "goreleaser",
+  "description": "Installs goreleaser",
+  "installsAfter": [
+    "ghcr.io/notwillk/devcontainer-features/golang"
+  ]
+}

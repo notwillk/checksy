@@ -27,7 +27,7 @@ src/
 
 ## Building
 
-`build`
+`just build`
 
 The resulting binary can be copied anywhere on your `PATH` if desired. Running `go` commands from the `src/` directory keeps import paths consistent with the module definition.
 

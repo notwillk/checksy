@@ -1,0 +1,12 @@
+{
+  "id": "checksy",
+  "version": "1.0.0",
+  "name": "checksy",
+  "options": {
+    "version": {
+      "type": "string",
+      "default": "latest",
+      "description": "Version of checksy to install (CHECKSY_VERSION)"
+    }
+  }
+}

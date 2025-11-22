@@ -1,4 +1,0 @@
-build: just build
-dev: just dev
-release: "$REPO_PATH/release.sh"
-setup: just setup

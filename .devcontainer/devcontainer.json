@@ -1,11 +1,13 @@
 {
 	"name": "checksy",
-	"build": {
-		"dockerfile": "Dockerfile",
-		"context": "."
-	},
+	"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
 	"features": {
-		"ghcr.io/devcontainers/features/docker-in-docker:2": {}
+		"./features/entr": {},
+		"./features/goreleaser": {},
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
+		"ghcr.io/notwillk/devcontainer-features/devcontainer-cli": {},
+		"ghcr.io/notwillk/devcontainer-features/golang": { "version": "1.25.4" },
+		"ghcr.io/notwillk/devcontainer-features/just": {}
 	},
 	"containerEnv": {
 		"REPO_PATH": "${containerWorkspaceFolder}"

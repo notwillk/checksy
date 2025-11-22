@@ -23,7 +23,7 @@ Run tests locally if desired.
 Use the helper script to bump the version, commit, tag, and push everything in one go. The script enforces that `main` is clean and up to date with `origin/main` before proceeding.
 
 ```bash
-./release.sh patch   # or minor / major
+just release patch   # or minor / major
 ```
 
 The script:
