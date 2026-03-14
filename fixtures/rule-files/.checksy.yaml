@@ -1,0 +1,5 @@
+# patterns: glob patterns for scripts to run. Negated pattern excludes skip.sh.
+rules: []
+patterns:
+  - "*.sh"
+  - "!skip.sh"

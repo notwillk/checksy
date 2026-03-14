@@ -86,3 +86,24 @@ func TestLoadAppliesDefaults(t *testing.T) {
 		t.Fatalf("rule 1 severity = %q, want %q", got, schemadef.SeverityError)
 	}
 }
+
+func TestLoadPatterns(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	data := []byte("rules: []\npatterns:\n  - 'tests/*.sh'\n  - '!tests/skip.sh'\n")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if len(cfg.Patterns) != 2 {
+		t.Fatalf("Patterns length = %d, want 2", len(cfg.Patterns))
+	}
+	if cfg.Patterns[0] != "tests/*.sh" || cfg.Patterns[1] != "!tests/skip.sh" {
+		t.Fatalf("Patterns = %v", cfg.Patterns)
+	}
+}

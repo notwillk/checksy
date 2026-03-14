@@ -53,6 +53,13 @@ type Rule struct {
 	Hint     string   `json:"hint,omitempty" yaml:"hint,omitempty"`
 }
 
+// Config is the root configuration structure.
 type Config struct {
+	// Rules are inline check/fix rule definitions.
 	Rules []Rule `json:"rules" yaml:"rules"`
+	// Patterns is a list of glob patterns for script files to run as rules.
+	// Positive patterns include matching files; negated patterns (prefix "!") exclude matches.
+	// A file is included if it matches any positive pattern and no negative pattern.
+	// Matched files are executed in alphabetical order by path. No fix is available for file rules.
+	Patterns []string `json:"patterns,omitempty" yaml:"patterns,omitempty"`
 }
