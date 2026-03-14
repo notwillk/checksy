@@ -3,7 +3,10 @@ package doctor
 import (
 	"bytes"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/notwillk/checksy/schema"
@@ -92,7 +95,9 @@ func (r Report) Failures() []RuleResult {
 	return failed
 }
 
-// Diagnose executes each rule defined in the configuration.
+// Diagnose executes each rule defined in the configuration (inline rules first,
+// then patterns in alphabetical order). File-based rules have no fix
+// and are treated as error severity for failure reporting.
 func Diagnose(opts Options) (Report, error) {
 	if opts.Config == nil {
 		return Report{}, errors.New("no configuration supplied")
@@ -107,6 +112,14 @@ func Diagnose(opts Options) (Report, error) {
 	results := make([]RuleResult, 0, len(rules))
 	for _, rule := range rules {
 		results = append(results, RunRule(rule, workdir))
+	}
+
+	filePaths, err := ExpandRuleFiles(workdir, opts.Config.Patterns)
+	if err != nil {
+		return Report{}, err
+	}
+	for _, relPath := range filePaths {
+		results = append(results, RunRuleFile(workdir, relPath))
 	}
 
 	return Report{Rules: results, FailSeverity: opts.FailSeverity}, nil
@@ -142,6 +155,106 @@ func RunRule(rule schema.Rule, workdir string) RuleResult {
 	cmd := exec.Command("bash")
 	cmd.Dir = workdir
 	cmd.Stdin = strings.NewReader(script)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+
+	return RuleResult{
+		Rule:   rule,
+		Err:    err,
+		Stdout: stdout.String(),
+		Stderr: stderr.String(),
+	}
+}
+
+// ExpandRuleFiles resolves patterns (glob patterns) relative to workdir.
+// Positive patterns include matching files; negated patterns (prefix "!") exclude matches.
+// A file is included if it matches any positive pattern and no negative pattern.
+// Returns paths relative to workdir, sorted alphabetically. Only regular files are included.
+func ExpandRuleFiles(workdir string, patterns []string) ([]string, error) {
+	if len(patterns) == 0 {
+		return nil, nil
+	}
+
+	var positive, negative []string
+	for _, p := range patterns {
+		s := strings.TrimSpace(p)
+		if s == "" {
+			continue
+		}
+		if strings.HasPrefix(s, "!") {
+			negative = append(negative, strings.TrimPrefix(s, "!"))
+		} else {
+			positive = append(positive, s)
+		}
+	}
+
+	if len(positive) == 0 {
+		return nil, nil
+	}
+
+	included := make(map[string]struct{})
+	for _, pat := range positive {
+		globPath := filepath.Join(workdir, pat)
+		matches, err := filepath.Glob(globPath)
+		if err != nil {
+			return nil, err
+		}
+		for _, abs := range matches {
+			info, err := os.Stat(abs)
+			if err != nil || !info.Mode().IsRegular() {
+				continue
+			}
+			rel, err := filepath.Rel(workdir, abs)
+			if err != nil {
+				continue
+			}
+			rel = filepath.ToSlash(rel)
+			included[rel] = struct{}{}
+		}
+	}
+
+	for _, pat := range negative {
+		globPath := filepath.Join(workdir, strings.TrimSpace(pat))
+		matches, err := filepath.Glob(globPath)
+		if err != nil {
+			return nil, err
+		}
+		for _, abs := range matches {
+			rel, err := filepath.Rel(workdir, abs)
+			if err != nil {
+				continue
+			}
+			rel = filepath.ToSlash(rel)
+			delete(included, rel)
+		}
+	}
+
+	out := make([]string, 0, len(included))
+	for p := range included {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// RunRuleFile runs a single script file as a rule (bash ./path) and captures its output.
+// The rule is treated as error severity; no fix is available. Name is the relative path.
+func RunRuleFile(workdir, relPath string) RuleResult {
+	rule := schema.Rule{
+		Name:     relPath,
+		Check:    relPath,
+		Severity: schema.SeverityError,
+	}
+	scriptPath := relPath
+	if !strings.HasPrefix(scriptPath, "./") {
+		scriptPath = "./" + scriptPath
+	}
+	cmd := exec.Command("bash", scriptPath)
+	cmd.Dir = workdir
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

@@ -423,6 +423,17 @@ func (r *RootCommand) diagnoseWithFixes(opts doctor.Options) (doctor.Report, err
 		results = append(results, result)
 	}
 
+	// Run patterns (no fix available); order is deterministic (alphabetical by path).
+	filePaths, err := doctor.ExpandRuleFiles(workdir, opts.Config.Patterns)
+	if err != nil {
+		return doctor.Report{}, err
+	}
+	for _, relPath := range filePaths {
+		result := doctor.RunRuleFile(workdir, relPath)
+		r.printRuleOutcome(result, opts.FailSeverity)
+		results = append(results, result)
+	}
+
 	return doctor.Report{Rules: results, FailSeverity: opts.FailSeverity}, nil
 }
 
