@@ -59,6 +59,6 @@ jobs:
         with:
           publish-features: "true"
           base-path-to-features: "./devcontainer-feature/src"
-          features-namespace: "notwillk"
+          features-namespace: "notwillk/checksy"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
