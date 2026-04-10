@@ -6,59 +6,79 @@ on:
       - "v*.*.*"
 
 jobs:
-  goreleaser:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
       - name: Ensure tag matches version
         run: |
           TAG="${GITHUB_REF##*/}"
-          VERSION=$(grep -Eo 'Version = "[^"]+"' src/internal/version/version.go | sed -E 's/Version = "([^"]+)"/\1/')
+          VERSION=$(grep -Eo 'VERSION: &str = "[^"]+"' src/version.rs | sed -E 's/VERSION: &str = "([^"]+)"/\1/')
           if [ -z "$VERSION" ]; then
-            echo "Unable to determine version from version.go" >&2
+            echo "Unable to determine version from version.rs" >&2
             exit 1
           fi
           if [ "v$VERSION" != "$TAG" ]; then
-            echo "Tag $TAG does not match version.go v$VERSION" >&2
+            echo "Tag $TAG does not match version.rs v$VERSION" >&2
             exit 1
           fi
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: src/go.mod
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.94.1
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fetch dependencies
+        run: cd src && cargo fetch
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install zigbuild
+        run: cargo install cargo-zigbuild
 
-      - name: Publish Devcontainer Feature
-        uses: devcontainers/action@v1
+      - name: Build
+        run: cd src && cargo zigbuild --release --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          OS=$(echo ${{ matrix.target }} | cut -d'-' -f3)
+          ARCH=$(echo ${{ matrix.target }} | cut -d'-' -f1)
+          tar -czf checksy_${OS}_${ARCH}.tar.gz -C src/target/release checksy
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          publish-features: "true"
-          base-path-to-features: "./devcontainer-feature/src"
-          features-namespace: "notwillk/checksy"
+          name: checksy-${{ matrix.target }}
+          path: checksy_*.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create checksums
+        run: sha256sum checksy_*.tar.gz > checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            checksy_*.tar.gz
+            checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

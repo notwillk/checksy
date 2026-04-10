@@ -62,14 +62,18 @@ Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs`
 
 `checksy --config=path/to/workspace.yaml check` loads the provided YAML, validates it against the same JSON Schema emitted by the `schema` command, and aborts if validation fails. When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable.
 
-### Inline rules and patterns
+### Inline rules, preconditions, and patterns
 
+- **`preconditions`** — An array of rule objects that run **before** the main rules. They follow the same failure/fix behavior as regular rules. Useful for checks that must pass before proceeding (e.g., verifying dependencies).
 - **`rules`** — An array of rule objects, each with `name`, `check`, optional `severity`, `fix`, and `hint`. These run first in config order.
 - **`patterns`** — An array of glob-style patterns that select script files to run as rules (e.g. `tests/*.sh`). Success and failure are determined by the script's exit code, same as inline rules. There is no fix step for file-based rules; they run after inline rules in a deterministic order (alphabetically by file path). Patterns are resolved relative to the config file directory. You can use **positive** patterns (any match is included) and **negated** patterns (prefix with `!` to exclude). A file is included only if it matches at least one positive pattern and no negative pattern.
 
 Example:
 
 ```yaml
+preconditions:
+  - name: "Prerequisite check"
+    check: test -f required-file.txt
 rules:
   - name: "Example rule"
     check: echo "optional check"
