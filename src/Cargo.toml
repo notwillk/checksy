@@ -1,0 +1,30 @@
+[package]
+name = "checksy"
+version = "0.5.2"
+edition = "2021"
+description = "Inspect and troubleshoot development environments"
+repository = "https://github.com/notwillk/checksy"
+license = "MIT"
+
+[dependencies]
+serde = { version = "=1.0.152", features = ["derive"] }
+serde_json = "=1.0.91"
+serde_yaml = "=0.9.11"
+glob = "=0.3.0"
+
+[dev-dependencies]
+tempfile = "=3.5.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "z"
+
+[[bin]]
+name = "checksy"
+path = "main.rs"
+
+[lib]
+name = "checksy"
+path = "lib.rs"

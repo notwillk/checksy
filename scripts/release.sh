@@ -39,8 +39,8 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-version_file="src/internal/version/version.go"
-current_version=$(grep -Eo 'Version = "[^"]+"' "$version_file" | sed -E 's/Version = "([^"]+)"/\1/')
+version_file="src/version.rs"
+current_version=$(grep -Eo 'VERSION: &str = "[^"]+"' "$version_file" | sed -E 's/VERSION: &str = "([^"]+)"/\1/')
 if [ -z "$current_version" ]; then
   echo "Unable to read current version from $version_file" >&2
   exit 1
@@ -65,7 +65,7 @@ case "$bump" in
 new_version="$major.$minor.$patch"
 
 tmp_file=$(mktemp)
-sed -E "s/(Version = \").*?(\")/\1$new_version\2/" "$version_file" > "$tmp_file"
+sed -E "s/(VERSION: &str = \").*?(\")/\1$new_version\2/" "$version_file" > "$tmp_file"
 mv "$tmp_file" "$version_file"
 
 git add "$version_file"

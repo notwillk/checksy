@@ -1,0 +1,10 @@
+preconditions:
+  - name: "Precondition with fix"
+    severity: error
+    check: test -f created-by-fix.txt
+    fix: touch created-by-fix.txt
+
+rules:
+  - name: "Main rule"
+    severity: error
+    check: echo "main rule passed"

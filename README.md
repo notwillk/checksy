@@ -1,6 +1,6 @@
 # checksy
 
-checksy is a Go-based command line utility intended to run lightweight health checks against a development workspace. The initial scaffolding provides a `diagnose` command that demonstrates how to add future checks and subcommands.
+checksy is a Go-based command line utility intended to run lightweight health checks against a development workspace. The initial scaffolding provides a `check` command that demonstrates how to add future checks and subcommands.
 
 ## Installation
 
@@ -38,10 +38,10 @@ The resulting binary can be copied anywhere on your `PATH` if desired. Running `
 checksy help
 
 # Run the workspace validation rules
-checksy --config=path/to/.checksy.yaml diagnose
+checksy --config=path/to/.checksy.yaml check
 
 # Attempt to auto-fix failures when fixes are defined
-checksy --config=path/to/.checksy.yaml diagnose --fix
+checksy --config=path/to/.checksy.yaml check --fix
 
 # Emit the configuration JSON schema
 checksy schema > dist/config.schema.json
@@ -50,26 +50,30 @@ checksy schema > dist/config.schema.json
 checksy schema --pretty > dist/config.schema.json
 
 # Only execute warn+ rules but fail only on errors
-checksy diagnose --check-severity=warn --fail-severity=error
+checksy check --check-severity=warn --fail-severity=error
 ```
 
-The `diagnose` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command reflects over the configuration struct in `schema/config.go` and outputs a machine-readable JSON Schema definition that downstream tooling can validate against.
+The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command reflects over the configuration struct in `schema/config.go` and outputs a machine-readable JSON Schema definition that downstream tooling can validate against.
 
 Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. When omitted, checks default to running for warn+ rules and the command only fails for error-level rules. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but no longer abort the run.
 
 
 ## Configuration
 
-`checksy --config=path/to/workspace.yaml diagnose` loads the provided YAML, validates it against the same JSON Schema emitted by the `schema` command, and aborts if validation fails. When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable.
+`checksy --config=path/to/workspace.yaml check` loads the provided YAML, validates it against the same JSON Schema emitted by the `schema` command, and aborts if validation fails. When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable.
 
-### Inline rules and patterns
+### Inline rules, preconditions, and patterns
 
+- **`preconditions`** — An array of rule objects that run **before** the main rules. They follow the same failure/fix behavior as regular rules. Useful for checks that must pass before proceeding (e.g., verifying dependencies).
 - **`rules`** — An array of rule objects, each with `name`, `check`, optional `severity`, `fix`, and `hint`. These run first in config order.
 - **`patterns`** — An array of glob-style patterns that select script files to run as rules (e.g. `tests/*.sh`). Success and failure are determined by the script's exit code, same as inline rules. There is no fix step for file-based rules; they run after inline rules in a deterministic order (alphabetically by file path). Patterns are resolved relative to the config file directory. You can use **positive** patterns (any match is included) and **negated** patterns (prefix with `!` to exclude). A file is included only if it matches at least one positive pattern and no negative pattern.
 
 Example:
 
 ```yaml
+preconditions:
+  - name: "Prerequisite check"
+    check: test -f required-file.txt
 rules:
   - name: "Example rule"
     check: echo "optional check"
