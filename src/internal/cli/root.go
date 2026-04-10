@@ -66,8 +66,8 @@ func (r *RootCommand) Run(args []string) int {
 	cmdArgs := remaining[1:]
 
 	switch cmd {
-	case "diagnose":
-		return r.runDiagnose(cmdArgs, globals)
+	case "check":
+		return r.runCheck(cmdArgs, globals)
 	case "init":
 		return r.runInit(cmdArgs, globals)
 	case "schema":
@@ -85,8 +85,8 @@ func (r *RootCommand) Run(args []string) int {
 	}
 }
 
-func (r *RootCommand) runDiagnose(args []string, globals globalFlags) int {
-	flags := flag.NewFlagSet("diagnose", flag.ContinueOnError)
+func (r *RootCommand) runCheck(args []string, globals globalFlags) int {
+	flags := flag.NewFlagSet("check", flag.ContinueOnError)
 	flags.SetOutput(r.stderr)
 
 	var localConfigPath string
@@ -98,7 +98,7 @@ func (r *RootCommand) runDiagnose(args []string, globals globalFlags) int {
 	flags.BoolVar(&noFail, "no-fail", false, "always exit zero even when rules fail")
 	flags.StringVar(&checkSeverityFlag, "check-severity", "", "minimum rule severity to execute (debug|info|warn|error; warning is accepted for compatibility)")
 	flags.StringVar(&checkSeverityFlag, "cs", "", "shorthand for --check-severity")
-	flags.StringVar(&failSeverityFlag, "fail-severity", "", "severity threshold that causes diagnose to fail (debug|info|warn|error; warning is accepted for compatibility)")
+	flags.StringVar(&failSeverityFlag, "fail-severity", "", "severity threshold that causes check to fail (debug|info|warn|error; warning is accepted for compatibility)")
 	flags.StringVar(&failSeverityFlag, "fs", "", "shorthand for --fail-severity")
 	flags.BoolVar(&applyFixes, "fix", false, "attempt to run fixes for failing rules when available")
 
@@ -167,12 +167,12 @@ func (r *RootCommand) runDiagnose(args []string, globals globalFlags) int {
 
 	var report doctor.Report
 	if applyFixes {
-		report, err = r.diagnoseWithFixes(opts)
+		report, err = r.checkWithFixes(opts)
 	} else {
 		report, err = doctor.Diagnose(opts)
 	}
 	if err != nil {
-		fmt.Fprintf(r.stderr, "diagnose failed: %v\n", err)
+		fmt.Fprintf(r.stderr, "check failed: %v\n", err)
 		return 2
 	}
 
@@ -251,7 +251,7 @@ func (r *RootCommand) printUsage() {
 	fmt.Fprintf(r.stdout, "  --config string   %s\n", configFlagDescription)
 	fmt.Fprintln(r.stdout)
 	fmt.Fprintln(r.stdout, "Available Commands:")
-	fmt.Fprintln(r.stdout, "  diagnose   Run checks for config-defined rules")
+	fmt.Fprintln(r.stdout, "  check      Run checks for config-defined rules")
 	fmt.Fprintln(r.stdout, "  schema     Print the JSON schema for configuration file")
 	fmt.Fprintln(r.stdout, "  version    Print the current build version")
 	fmt.Fprintln(r.stdout, "  help       Show this message")
@@ -373,7 +373,7 @@ func (r *RootCommand) summarizeReport(report doctor.Report, noFail bool) int {
 	return 3
 }
 
-func (r *RootCommand) diagnoseWithFixes(opts doctor.Options) (doctor.Report, error) {
+func (r *RootCommand) checkWithFixes(opts doctor.Options) (doctor.Report, error) {
 	if opts.Config == nil {
 		return doctor.Report{}, errors.New("no configuration supplied")
 	}
