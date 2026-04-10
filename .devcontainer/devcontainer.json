@@ -7,9 +7,13 @@
 		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
 		"ghcr.io/notwillk/devcontainer-features/devcontainer-cli": {},
 		"ghcr.io/notwillk/devcontainer-features/golang": { "version": "1.25.4" },
-		"ghcr.io/notwillk/devcontainer-features/just": {}
+		"ghcr.io/notwillk/devcontainer-features/just": {},
+    "ghcr.io/notwillk/devcontainer-features/opencode": {}
 	},
 	"containerEnv": {
+    "DEVCONTAINER": "true",
+    "FIREWORKS_API_KEY": "${localEnv:FIREWORKS_API_KEY}",
+    "OPENCODE_CONFIG": "${containerWorkspaceFolder}/.opencode/config.json",
 		"REPO_PATH": "${containerWorkspaceFolder}"
 	},
 	"customizations": {
@@ -17,7 +21,8 @@
 			"extensions": [
 				"github.vscode-github-actions",
 				"golang.go",
-				"skellock.just"
+				"skellock.just",
+				"sst-dev.opencode"
 			]
 		}
 	},
