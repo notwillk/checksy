@@ -65,13 +65,15 @@ jobs:
           merge-multiple: true
 
       - name: Create checksums
-        run: sha256sum checksy_*.tar.gz > checksums.txt
+        run: |
+          cd artifacts
+          sha256sum checksy_*.tar.gz > checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            checksy_*.tar.gz
-            checksums.txt
+            artifacts/checksy_*.tar.gz
+            artifacts/checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
