@@ -38,6 +38,7 @@ pub fn run(args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write) ->
 
     match cmd.as_str() {
         "check" => run_check(cmd_args.to_vec(), globals, stdout, stderr),
+        "diagnose" => run_diagnose(cmd_args.to_vec(), globals, stdout, stderr),
         "init" => run_init(cmd_args.to_vec(), globals, stdout, stderr),
         "schema" => run_schema(cmd_args.to_vec(), stdout, stderr),
         "version" | "--version" => {
@@ -92,7 +93,25 @@ fn parse_global_flags(args: &[String]) -> Result<(GlobalFlags, Vec<String>), Str
     Ok((globals, remaining))
 }
 
-fn run_check(args: Vec<String>, globals: GlobalFlags, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+fn run_diagnose(
+    args: Vec<String>,
+    globals: GlobalFlags,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> i32 {
+    let _ = writeln!(
+        stderr,
+        "⚠️  \"checksy diagnose\" is deprecated, please use \"checksy check\" instead"
+    );
+    run_check(args, globals, stdout, stderr)
+}
+
+fn run_check(
+    args: Vec<String>,
+    globals: GlobalFlags,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> i32 {
     let mut config_path = None;
     let mut no_fail = false;
     let mut check_severity = None;
@@ -194,7 +213,8 @@ fn run_check(args: Vec<String>, globals: GlobalFlags, stdout: &mut dyn Write, st
 
     let min_severity = doctor::min_severity(check_severity, fail_severity);
 
-    let workdir = Path::new(&abs_config_path).parent()
+    let workdir = Path::new(&abs_config_path)
+        .parent()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| ".".to_string());
 
@@ -230,9 +250,19 @@ fn run_check(args: Vec<String>, globals: GlobalFlags, stdout: &mut dyn Write, st
     summarize_report(&report, no_fail, stdout)
 }
 
-fn run_init(args: Vec<String>, _globals: GlobalFlags, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+fn run_init(
+    args: Vec<String>,
+    _globals: GlobalFlags,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> i32 {
     if !args.is_empty() {
-        writeln!(stderr, "init does not accept positional arguments: {:?}", args).ok();
+        writeln!(
+            stderr,
+            "init does not accept positional arguments: {:?}",
+            args
+        )
+        .ok();
         return 2;
     }
 
@@ -248,7 +278,11 @@ fn run_init(args: Vec<String>, _globals: GlobalFlags, stdout: &mut dyn Write, st
 }
 
 fn write_config_template(path: &str) -> Result<(), String> {
-    let path = if path.is_empty() { DEFAULT_INIT_CONFIG_FILENAME } else { path };
+    let path = if path.is_empty() {
+        DEFAULT_INIT_CONFIG_FILENAME
+    } else {
+        path
+    };
 
     let p = Path::new(path);
     if p.exists() {
@@ -260,7 +294,8 @@ fn write_config_template(path: &str) -> Result<(), String> {
 
     if let Some(parent) = p.parent() {
         if !parent.as_os_str().is_empty() && parent.as_os_str() != std::path::Path::new(".") {
-            std::fs::create_dir_all(parent).map_err(|e| format!("create config directory: {}", e))?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("create config directory: {}", e))?;
         }
     }
 
@@ -320,17 +355,30 @@ fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Writ
 }
 
 fn print_usage(stdout: &mut dyn Write) {
-    let _ = writeln!(stdout, "checksy - inspect and troubleshoot development environments");
+    let _ = writeln!(
+        stdout,
+        "checksy - inspect and troubleshoot development environments"
+    );
     let _ = writeln!(stdout);
     let _ = writeln!(stdout, "Usage:");
     let _ = writeln!(stdout, "  checksy [global flags] <command> [command flags]");
     let _ = writeln!(stdout);
     let _ = writeln!(stdout, "Global Flags:");
-    let _ = writeln!(stdout, "  --config string   path to config file (defaults to .checksy.yaml)");
+    let _ = writeln!(
+        stdout,
+        "  --config string   path to config file (defaults to .checksy.yaml)"
+    );
     let _ = writeln!(stdout);
     let _ = writeln!(stdout, "Available Commands:");
     let _ = writeln!(stdout, "  check      Run checks for config-defined rules");
-    let _ = writeln!(stdout, "  schema     Print the JSON schema for configuration file");
+    let _ = writeln!(
+        stdout,
+        "  diagnose   Run checks (deprecated, use 'check' instead)"
+    );
+    let _ = writeln!(
+        stdout,
+        "  schema     Print the JSON schema for configuration file"
+    );
     let _ = writeln!(stdout, "  version    Print the current build version");
     let _ = writeln!(stdout, "  help       Show this message");
 }
@@ -341,23 +389,33 @@ fn parse_severity(value: &str) -> Result<Severity, String> {
         "info" => Ok(Severity::Info),
         "warning" | "warn" => Ok(Severity::Warning),
         "error" => Ok(Severity::Error),
-        _ => Err(format!("invalid severity '{}': must be one of debug, info, warn, error", value)),
+        _ => Err(format!(
+            "invalid severity '{}': must be one of debug, info, warn, error",
+            value
+        )),
     }
 }
 
 fn print_report_results(report: &Report, stdout: &mut dyn Write, stderr: &mut dyn Write) {
-    let fail_severity = if report.fail_severity == Severity::Debug || report.fail_severity == Severity::Info {
-        Severity::Warning
-    } else {
-        report.fail_severity
-    };
+    let fail_severity =
+        if report.fail_severity == Severity::Debug || report.fail_severity == Severity::Info {
+            Severity::Warning
+        } else {
+            report.fail_severity
+        };
 
     for result in &report.rules {
         print_rule_outcome(result, fail_severity, stdout, stderr);
     }
 }
 
-fn print_rule_status(result: &RuleResult, icon: &str, include_output: bool, stdout: &mut dyn Write, stderr: &mut dyn Write) {
+fn print_rule_status(
+    result: &RuleResult,
+    icon: &str,
+    include_output: bool,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) {
     let _ = writeln!(stdout, "{} {}", icon, result.name());
     if !include_output || result.success() {
         return;
@@ -390,7 +448,12 @@ fn print_rule_warning(result: &RuleResult, stdout: &mut dyn Write, stderr: &mut 
     print_rule_status(result, "⚠️ ", true, stdout, stderr);
 }
 
-fn print_rule_outcome(result: &RuleResult, fail_severity: Severity, stdout: &mut dyn Write, stderr: &mut dyn Write) {
+fn print_rule_outcome(
+    result: &RuleResult,
+    fail_severity: Severity,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) {
     if result.success() {
         print_rule_success(result, stdout, stderr);
         return;
@@ -421,12 +484,23 @@ fn summarize_report(report: &Report, no_fail: bool, stdout: &mut dyn Write) -> i
     3
 }
 
-fn check_with_fixes(opts: Options, stdout: &mut dyn Write, stderr: &mut dyn Write) -> Result<Report, String> {
+fn check_with_fixes(
+    opts: Options,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<Report, String> {
     if opts.config.rules.is_empty() && opts.config.preconditions.is_empty() {
-        return Ok(Report { rules: vec![], fail_severity: opts.fail_severity });
+        return Ok(Report {
+            rules: vec![],
+            fail_severity: opts.fail_severity,
+        });
     }
 
-    let workdir = if opts.workdir.is_empty() { "." } else { &opts.workdir };
+    let workdir = if opts.workdir.is_empty() {
+        "."
+    } else {
+        &opts.workdir
+    };
     let mut results = vec![];
 
     let preconditions = doctor::filter_preconditions(&opts.config, opts.min_severity);
@@ -514,13 +588,16 @@ fn check_with_fixes(opts: Options, stdout: &mut dyn Write, stderr: &mut dyn Writ
         results.push(result);
     }
 
-    Ok(Report { rules: results, fail_severity: opts.fail_severity })
+    Ok(Report {
+        rules: results,
+        fail_severity: opts.fail_severity,
+    })
 }
 
 fn rule_display_name(rule: &Rule) -> String {
-    rule.name.clone().unwrap_or_else(|| {
-        rule.check.trim().to_string()
-    })
+    rule.name
+        .clone()
+        .unwrap_or_else(|| rule.check.trim().to_string())
 }
 
 #[cfg(test)]
@@ -540,10 +617,22 @@ mod tests {
 
     #[test]
     fn test_rule_display_name() {
-        let rule = Rule { name: None, check: "echo hi".to_string(), severity: None, fix: None, hint: None };
+        let rule = Rule {
+            name: None,
+            check: "echo hi".to_string(),
+            severity: None,
+            fix: None,
+            hint: None,
+        };
         assert!(rule_display_name(&rule).contains("echo hi"));
 
-        let rule = Rule { name: Some("custom".to_string()), check: "echo hi".to_string(), severity: None, fix: None, hint: None };
+        let rule = Rule {
+            name: Some("custom".to_string()),
+            check: "echo hi".to_string(),
+            severity: None,
+            fix: None,
+            hint: None,
+        };
         assert_eq!(rule_display_name(&rule), "custom");
     }
 }
