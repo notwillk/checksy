@@ -43,7 +43,7 @@ jobs:
           runCmd: |
             OS=$(echo ${{ matrix.target }} | cut -d'-' -f3)
             ARCH=$(echo ${{ matrix.target }} | cut -d'-' -f1)
-            tar -czf checksy_${OS}_${ARCH}.tar.gz -C src/target/release checksy
+            tar -czf checksy_${OS}_${ARCH}.tar.gz -C dist checksy_${OS}_${ARCH}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
