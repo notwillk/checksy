@@ -31,6 +31,12 @@ src/
 
 The resulting binary can be copied anywhere on your `PATH` if desired. Running `go` commands from the `src/` directory keeps import paths consistent with the module definition.
 
+### Cross-compiling
+
+`just cross-compile <target>`
+
+Cross-compile for a different architecture/target (e.g., `aarch64-unknown-linux-gnu`). The binary is output to `dist/checksy_<OS>_<ARCH>`.
+
 ## Running
 
 ```bash
