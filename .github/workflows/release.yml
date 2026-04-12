@@ -105,6 +105,8 @@ jobs:
           imageName: ghcr.io/${{ github.repository }}/release_container
           cacheFrom: ghcr.io/${{ github.repository }}/release_container
           runCmd: just sign artifacts/checksums.txt
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
