@@ -42,16 +42,20 @@ jobs:
 
     permissions:
       contents: read
-      packages: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate build environment
-        run: just can-build
+      - name: Validate build environment in devcontainer
+        uses: devcontainers/ci@v0.3
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        with:
+          imageName: ghcr.io/${{ github.repository }}/release_container
+          runCmd: just can-build
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -59,6 +63,7 @@ jobs:
 
       - name: Build in devcontainer
         uses: devcontainers/ci@v0.3
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         with:
           imageName: ghcr.io/${{ github.repository }}/release_container
           runCmd: just cross-compile ${{ matrix.target }}
@@ -76,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -90,8 +95,19 @@ jobs:
       - name: Merge checksums
         run: cat artifacts/*-checksum.txt > artifacts/checksums.txt
 
-      - name: Sign checksums
-        run: just sign artifacts/checksums.txt
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sign checksums in devcontainer
+        uses: devcontainers/ci@v0.3
+        with:
+          imageName: ghcr.io/${{ github.repository }}/release_container
+          runCmd: just sign artifacts/checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

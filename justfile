@@ -49,7 +49,7 @@ release version:
 can-build:
     #!/usr/bin/env bash
     set -euo pipefail
-    cmds=(cargo cat gpg just rustup sha256sum)
+    cmds=(cargo gpg just rustup sha256sum)
     missing=()
     for cmd in "${cmds[@]}"; do
       if ! which "$cmd" >/dev/null 2>&1; then
