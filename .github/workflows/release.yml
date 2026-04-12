@@ -9,7 +9,22 @@ permissions:
   contents: write
 
 jobs:
+  pre-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure tag matches version
+        uses: devcontainers/ci@v0.3
+        with:
+          runCmd: |
+            if [ "v$(just get-version)" != "${GITHUB_REF##*/}" ]; then
+              echo "Tag does not match version.rs" >&2
+              exit 1
+            fi
+
   build:
+    needs: pre-build
     strategy:
       matrix:
         include:
@@ -22,37 +37,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Ensure tag matches version
-        run: |
-          TAG="${GITHUB_REF##*/}"
-          VERSION=$(grep -Eo 'VERSION: &str = "[^"]+"' src/version.rs | sed -E 's/VERSION: &str = "([^"]+)"/\1/')
-          if [ -z "$VERSION" ]; then
-            echo "Unable to determine version from version.rs" >&2
-            exit 1
-          fi
-          if [ "v$VERSION" != "$TAG" ]; then
-            echo "Tag $TAG does not match version.rs v$VERSION" >&2
-            exit 1
-          fi
+      - name: Validate build environment
+        run: just can-build
 
       - name: Build in devcontainer
         uses: devcontainers/ci@v0.3
         with:
           runCmd: just cross-compile ${{ matrix.target }}
 
-      - name: Package in devcontainer
-        uses: devcontainers/ci@v0.3
-        with:
-          runCmd: |
-            OS=$(echo ${{ matrix.target }} | cut -d'-' -f3)
-            ARCH=$(echo ${{ matrix.target }} | cut -d'-' -f1)
-            tar -czf checksy_${OS}_${ARCH}.tar.gz -C dist checksy_${OS}_${ARCH}
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: checksy-${{ matrix.target }}
-          path: checksy_*.tar.gz
+          name: checksy-${{ matrix.target }}-artifact
+          path: |
+            dist/*.tar.gz
+            dist/checksums.txt
 
   release:
     needs: build
@@ -67,16 +66,18 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Create checksums
-        run: |
-          cd artifacts
-          sha256sum checksy_*.tar.gz > checksums.txt
+      - name: Merge checksums
+        run: cat artifacts/*-checksum.txt > artifacts/checksums.txt
+
+      - name: Sign checksums
+        run: just sign artifacts/checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/checksy_*.tar.gz
+            artifacts/*.tar.gz
             artifacts/checksums.txt
+            artifacts/checksums.txt.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
