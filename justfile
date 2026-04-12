@@ -31,16 +31,9 @@ cross-compile target:
     (cd dist && sha256sum checksy_${os}_${arch}.tar.gz) > dist/checksy_${os}_${arch}-checksum.txt
     echo "Done"
 
-sign file:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [[ -z "${GPG_PRIVATE_KEY:-}" ]]; then
-        echo "GPG_PRIVATE_KEY required for signature generation"
-        exit 1
-    fi
-    echo "$GPG_PRIVATE_KEY" | gpg --batch --import >/dev/null
-    gpg --batch --list-secret-keys --keyid-format=long
-    gpg --batch --yes --detach-sign "{{file}}"
+sign file key:
+    gpg --batch --import "{{key}}"
+    gpg --batch --yes --output "{{file}}.sig" --detach-sign "{{file}}"
     echo "Created {{file}}.sig"
 
 release version:
