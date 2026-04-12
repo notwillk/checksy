@@ -108,7 +108,7 @@ jobs:
               mkdir -p /tmp/gpg
               printf "%s" "${{ secrets.GPG_PRIVATE_KEY }}" > /tmp/gpg/release.key
               just sign artifacts/checksums.txt /tmp/gpg/release.key
-              rmdir -rf /tmp/gpg
+              rm -rf /tmp/gpg
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
