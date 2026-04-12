@@ -17,16 +17,60 @@ cross-compile target:
     target="{{target}}"
     os=$(echo "$target" | cut -d'-' -f3)
     arch=$(echo "$target" | cut -d'-' -f1)
-    echo "Cross-compiling for $arch $os ($target)"
+    echo "Target: $target"
+    echo "Architecture: $arch"
+    echo "OS: $os"
     cargo install cross --git https://github.com/cross-rs/cross
     mkdir -p dist
     cd src && cross build --release --target "$target"
-    echo "Cross-compiled for $target. Copying binary to dist/checksy_${os}_${arch}"
+    echo "Cross-compiling: checksy_${os}_${arch}"
     cp target/"$target"/release/checksy ../dist/checksy_${os}_${arch}
-    echo "Built $target"
+    echo "Packaging: checksy_${os}_${arch}.tar.gz"
+    cd .. && tar -czf dist/checksy_${os}_${arch}.tar.gz -C dist checksy_${os}_${arch}
+    echo "Calculating checksum: checksy_${os}_${arch}-checksum.txt"
+    sha256sum dist/checksy_${os}_${arch}.tar.gz > dist/checksy_${os}_${arch}-checksum.txt
+    echo "Done"
+
+sign file:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -z "${GPG_PRIVATE_KEY:-}" ]]; then
+        echo "GPG_PRIVATE_KEY required for signature generation"
+        exit 1
+    fi
+    echo "$GPG_PRIVATE_KEY" | gpg --batch --import >/dev/null
+    gpg --batch --list-secret-keys --keyid-format=long
+    gpg --batch --yes --detach-sign "{{file}}"
+    echo "Created {{file}}.sig"
 
 release version:
     ./scripts/release.sh {{version}}
 
+can-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cmds=(cargo cat gpg just rustup sha256sum)
+    missing=()
+    for cmd in "${cmds[@]}"; do
+      if ! which "$cmd" >/dev/null 2>&1; then
+        missing+=("$cmd")
+      fi
+    done
+    if [ ${#missing[@]} -eq 0 ]; then
+      echo "All required commands available"
+    else
+      echo "Missing required commands: ${missing[*]}"
+      exit 1
+    fi
+
 test:
     cd src && cargo test
+
+get-version:
+    #!/bin/bash
+    VERSION="$(grep -Eo 'VERSION: &str = "[^"]+"' src/version.rs | sed -E 's/VERSION: &str = "([^"]+)"/\1/')"
+    if [ -z "$VERSION" ]; then
+        echo "Unable to determine version from version.rs" >&2
+        exit 1
+    fi
+    echo "$VERSION"
