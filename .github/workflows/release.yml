@@ -27,6 +27,8 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           imageName: ghcr.io/${{ github.repository }}/release_container
+          cacheFrom: ghcr.io/${{ github.repository }}/release_container
+          push: true
           runCmd: just ensure-tag-matches-version ${{ github.ref_name }}
 
   build:
@@ -51,6 +53,8 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' }}
         with:
           imageName: ghcr.io/${{ github.repository }}/release_container
+          cacheFrom: ghcr.io/${{ github.repository }}/release_container
+          push: false
           runCmd: just can-build
 
       - name: Log in to GHCR
@@ -66,6 +70,8 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' }}
         with:
           imageName: ghcr.io/${{ github.repository }}/release_container
+          cacheFrom: ghcr.io/${{ github.repository }}/release_container
+          push: false
           runCmd: just cross-compile ${{ matrix.target }}
 
       - name: Upload artifact
@@ -107,6 +113,8 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           imageName: ghcr.io/${{ github.repository }}/release_container
+          cacheFrom: ghcr.io/${{ github.repository }}/release_container
+          push: false
           runCmd: just sign artifacts/checksums.txt
 
       - name: Create Release
