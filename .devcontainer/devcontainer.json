@@ -3,10 +3,8 @@
 	"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
 	"features": {
 		"./features/entr": {},
-		"./features/goreleaser": {},
 		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
 		"ghcr.io/notwillk/devcontainer-features/devcontainer-cli": {},
-		"ghcr.io/notwillk/devcontainer-features/golang": { "version": "1.25.4" },
 		"ghcr.io/notwillk/devcontainer-features/rustup": {},
 		"ghcr.io/notwillk/devcontainer-features/just": {},
     "ghcr.io/notwillk/devcontainer-features/opencode": {}
