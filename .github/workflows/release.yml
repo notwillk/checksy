@@ -70,7 +70,7 @@ jobs:
           name: checksy-${{ matrix.target }}-artifact
           path: |
             dist/*.tar.gz
-            dist/checksums.txt
+            dist/*-checksum.txt
 
   release:
     needs: build
@@ -89,7 +89,7 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Merge checksums
+      - name: Prepare checksums
         run: cat artifacts/*-checksum.txt > artifacts/checksums.txt
 
       - name: Log in to GHCR

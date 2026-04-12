@@ -28,7 +28,7 @@ cross-compile target:
     echo "Packaging: checksy_${os}_${arch}.tar.gz"
     cd .. && tar -czf dist/checksy_${os}_${arch}.tar.gz -C dist checksy_${os}_${arch}
     echo "Calculating checksum: checksy_${os}_${arch}-checksum.txt"
-    sha256sum dist/checksy_${os}_${arch}.tar.gz > dist/checksy_${os}_${arch}-checksum.txt
+    (cd dist && sha256sum checksy_${os}_${arch}.tar.gz) > dist/checksy_${os}_${arch}-checksum.txt
     echo "Done"
 
 sign file:
