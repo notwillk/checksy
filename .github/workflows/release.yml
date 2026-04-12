@@ -18,9 +18,7 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           imageName: ghcr.io/${{ github.repository }}/devcontainer
-          runCmd: |
-            TAG="${GITHUB_REF##*/}"
-            just ensure-tag-matches-version "$TAG"
+          runCmd: just ensure-tag-matches-version {{ github.ref_name }}
 
   build:
     needs: pre-build
