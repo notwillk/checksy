@@ -28,7 +28,6 @@ jobs:
         with:
           imageName: ghcr.io/${{ github.repository }}/release_container
           cacheFrom: ghcr.io/${{ github.repository }}/release_container
-          push: true
           runCmd: just ensure-tag-matches-version ${{ github.ref_name }}
 
   build:
