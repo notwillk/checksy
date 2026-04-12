@@ -18,7 +18,7 @@ jobs:
       - name: Ensure tag matches version
         uses: devcontainers/ci@v0.3
         with:
-          imageName: ghcr.io/${{ github.repository }}/devcontainer
+          imageName: ghcr.io/${{ github.repository }}/release_container
           runCmd: just ensure-tag-matches-version ${{ github.ref_name }}
 
   build:
@@ -45,7 +45,7 @@ jobs:
       - name: Build in devcontainer
         uses: devcontainers/ci@v0.3
         with:
-          imageName: ghcr.io/${{ github.repository }}/devcontainer
+          imageName: ghcr.io/${{ github.repository }}/release_container
           runCmd: just cross-compile ${{ matrix.target }}
 
       - name: Upload artifact
