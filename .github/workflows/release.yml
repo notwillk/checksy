@@ -17,11 +17,7 @@ jobs:
       - name: Ensure tag matches version
         uses: devcontainers/ci@v0.3
         with:
-          runCmd: |
-            if [ "v$(just get-version)" != "${GITHUB_REF##*/}" ]; then
-              echo "Tag does not match version.rs" >&2
-              exit 1
-            fi
+          runCmd: just ensure-tag-matches-version ${GITHUB_REF##*/}
 
   build:
     needs: pre-build
