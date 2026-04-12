@@ -15,6 +15,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Ensure tag matches version
         uses: devcontainers/ci@v0.3
         with:
@@ -41,6 +49,13 @@ jobs:
 
       - name: Validate build environment
         run: just can-build
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build in devcontainer
         uses: devcontainers/ci@v0.3
