@@ -17,7 +17,10 @@ jobs:
       - name: Ensure tag matches version
         uses: devcontainers/ci@v0.3
         with:
-          runCmd: just ensure-tag-matches-version ${GITHUB_REF##*/}
+          imageName: ghcr.io/${{ github.repository }}/devcontainer
+          runCmd: |
+            TAG="${GITHUB_REF##*/}"
+            just ensure-tag-matches-version "$TAG"
 
   build:
     needs: pre-build
@@ -39,6 +42,7 @@ jobs:
       - name: Build in devcontainer
         uses: devcontainers/ci@v0.3
         with:
+          imageName: ghcr.io/${{ github.repository }}/devcontainer
           runCmd: just cross-compile ${{ matrix.target }}
 
       - name: Upload artifact

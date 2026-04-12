@@ -79,7 +79,8 @@ ensure-tag-matches-version tag:
     #!/usr/bin/env bash
     set -euo pipefail
     VERSION="v$(just get-version)"
-    if [ "{{tag}}" != "$VERSION" ]; then
-        echo "Tag '{{tag}}' does not match version '$VERSION'" >&2
+    TAG="{{tag}}"
+    if [ "$TAG" != "$VERSION" ]; then
+        echo "Tag '$TAG' does not match version '$VERSION'" >&2
         exit 1
     fi
