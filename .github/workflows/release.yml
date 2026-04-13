@@ -71,7 +71,6 @@ jobs:
       - name: Install build tools (macos)
         if: ${{ matrix.os == 'macos-latest' }}
         run: brew install just
-          # gpg just rustup sha256sum
 
       - name: Validate build environment (macos)
         if: ${{ matrix.os == 'macos-latest' }}
