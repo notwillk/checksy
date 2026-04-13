@@ -53,7 +53,10 @@ impl RuleResult {
     }
 
     pub fn name(&self) -> String {
-        self.rule.name.clone().unwrap_or_else(|| self.rule.check.clone())
+        self.rule
+            .name
+            .clone()
+            .unwrap_or_else(|| self.rule.check.clone())
     }
 
     pub fn severity(&self) -> Severity {
@@ -77,7 +80,8 @@ impl Report {
 
     pub fn failures(&self) -> Vec<RuleResult> {
         let threshold = normalize_fail_severity(self.fail_severity);
-        self.rules.iter()
+        self.rules
+            .iter()
             .filter(|r| r.should_fail(threshold))
             .map(|r| (*r).clone())
             .collect()
@@ -86,10 +90,17 @@ impl Report {
 
 pub fn diagnose(opts: Options) -> Result<Report, String> {
     if opts.config.rules.is_empty() && opts.config.preconditions.is_empty() {
-        return Ok(Report { rules: vec![], fail_severity: opts.fail_severity });
+        return Ok(Report {
+            rules: vec![],
+            fail_severity: opts.fail_severity,
+        });
     }
 
-    let workdir = if opts.workdir.is_empty() { "." } else { &opts.workdir };
+    let workdir = if opts.workdir.is_empty() {
+        "."
+    } else {
+        &opts.workdir
+    };
 
     let mut results = run_preconditions(&opts, workdir);
 
@@ -103,19 +114,24 @@ pub fn diagnose(opts: Options) -> Result<Report, String> {
         results.push(run_rule_file(workdir, &rel_path));
     }
 
-    Ok(Report { rules: results, fail_severity: opts.fail_severity })
+    Ok(Report {
+        rules: results,
+        fail_severity: opts.fail_severity,
+    })
 }
 
 fn run_preconditions(opts: &Options, workdir: &str) -> Vec<RuleResult> {
     let preconditions = filter_preconditions(&opts.config, opts.min_severity);
-    preconditions.into_iter()
+    preconditions
+        .into_iter()
         .map(|r| run_rule(r, workdir))
         .collect()
 }
 
 pub fn filter_rules(cfg: &Config, min: Severity) -> Vec<Rule> {
     let min_severity = normalize_min_severity(min);
-    cfg.rules.iter()
+    cfg.rules
+        .iter()
         .filter(|r| rule_meets_severity(r, min_severity))
         .cloned()
         .collect()
@@ -123,15 +139,24 @@ pub fn filter_rules(cfg: &Config, min: Severity) -> Vec<Rule> {
 
 pub fn filter_preconditions(cfg: &Config, min: Severity) -> Vec<Rule> {
     let min_severity = normalize_min_severity(min);
-    cfg.preconditions.iter()
+    cfg.preconditions
+        .iter()
         .filter(|r| rule_meets_severity(r, min_severity))
         .cloned()
         .collect()
 }
 
 pub fn run_rule(rule: Rule, workdir: &str) -> RuleResult {
-    let script = if rule.check.is_empty() { "true".to_string() } else { rule.check.clone() };
-    let script = if script.ends_with('\n') { script } else { format!("{}\n", script) };
+    let script = if rule.check.is_empty() {
+        "true".to_string()
+    } else {
+        rule.check.clone()
+    };
+    let script = if script.ends_with('\n') {
+        script
+    } else {
+        format!("{}\n", script)
+    };
 
     let output = Command::new("bash")
         .current_dir(workdir)
@@ -158,14 +183,12 @@ pub fn run_rule(rule: Rule, workdir: &str) -> RuleResult {
                 stderr: String::from_utf8_lossy(&out.stderr).to_string(),
             }
         }
-        Err(e) => {
-            RuleResult {
-                rule,
-                err: Some(Box::new(e) as Box<dyn std::error::Error>),
-                stdout: String::new(),
-                stderr: String::new(),
-            }
-        }
+        Err(e) => RuleResult {
+            rule,
+            err: Some(Box::new(e) as Box<dyn std::error::Error>),
+            stdout: String::new(),
+            stderr: String::new(),
+        },
     }
 }
 
@@ -263,14 +286,12 @@ pub fn run_rule_file(workdir: &str, rel_path: &str) -> RuleResult {
                 stderr: String::from_utf8_lossy(&out.stderr).to_string(),
             }
         }
-        Err(e) => {
-            RuleResult {
-                rule,
-                err: Some(Box::new(e) as Box<dyn std::error::Error>),
-                stdout: String::new(),
-                stderr: String::new(),
-            }
-        }
+        Err(e) => RuleResult {
+            rule,
+            err: Some(Box::new(e) as Box<dyn std::error::Error>),
+            stdout: String::new(),
+            stderr: String::new(),
+        },
     }
 }
 
@@ -285,7 +306,11 @@ fn normalize_rule_severity(value: Severity) -> Severity {
 }
 
 fn normalize_min_severity(value: Severity) -> Severity {
-    if value == Severity::Debug { Severity::Debug } else { value }
+    if value == Severity::Debug {
+        Severity::Debug
+    } else {
+        value
+    }
 }
 
 fn normalize_fail_severity(value: Severity) -> Severity {
@@ -299,7 +324,11 @@ fn normalize_fail_severity(value: Severity) -> Severity {
 pub fn min_severity(a: Severity, b: Severity) -> Severity {
     let a = normalize_min_severity(a);
     let b = normalize_min_severity(b);
-    if severity_order(a) <= severity_order(b) { a } else { b }
+    if severity_order(a) <= severity_order(b) {
+        a
+    } else {
+        b
+    }
 }
 
 #[cfg(test)]
@@ -309,11 +338,31 @@ mod tests {
     #[test]
     fn test_filter_rules_by_severity() {
         let cfg = Config {
+            check_severity: None,
+            fail_severity: None,
             preconditions: vec![],
             rules: vec![
-                Rule { name: Some("debug".to_string()), check: "true".to_string(), severity: Some(Severity::Debug), fix: None, hint: None },
-                Rule { name: Some("info".to_string()), check: "true".to_string(), severity: Some(Severity::Info), fix: None, hint: None },
-                Rule { name: Some("warn".to_string()), check: "true".to_string(), severity: Some(Severity::Warning), fix: None, hint: None },
+                Rule {
+                    name: Some("debug".to_string()),
+                    check: "true".to_string(),
+                    severity: Some(Severity::Debug),
+                    fix: None,
+                    hint: None,
+                },
+                Rule {
+                    name: Some("info".to_string()),
+                    check: "true".to_string(),
+                    severity: Some(Severity::Info),
+                    fix: None,
+                    hint: None,
+                },
+                Rule {
+                    name: Some("warn".to_string()),
+                    check: "true".to_string(),
+                    severity: Some(Severity::Warning),
+                    fix: None,
+                    hint: None,
+                },
             ],
             patterns: vec![],
         };
@@ -326,8 +375,17 @@ mod tests {
     #[test]
     fn test_rule_result_should_fail() {
         let result = RuleResult {
-            rule: Rule { name: None, check: "".to_string(), severity: Some(Severity::Warning), fix: None, hint: None },
-            err: Some(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "boom"))),
+            rule: Rule {
+                name: None,
+                check: "".to_string(),
+                severity: Some(Severity::Warning),
+                fix: None,
+                hint: None,
+            },
+            err: Some(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "boom",
+            ))),
             stdout: "".to_string(),
             stderr: "".to_string(),
         };
@@ -339,19 +397,40 @@ mod tests {
     fn test_report_aggregates_failures() {
         let results = vec![
             RuleResult {
-                rule: Rule { name: Some("warn".to_string()), check: "".to_string(), severity: Some(Severity::Warning), fix: None, hint: None },
-                err: Some(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "boom"))),
+                rule: Rule {
+                    name: Some("warn".to_string()),
+                    check: "".to_string(),
+                    severity: Some(Severity::Warning),
+                    fix: None,
+                    hint: None,
+                },
+                err: Some(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "boom",
+                ))),
                 stdout: "".to_string(),
                 stderr: "".to_string(),
             },
             RuleResult {
-                rule: Rule { name: Some("error".to_string()), check: "".to_string(), severity: Some(Severity::Error), fix: None, hint: None },
-                err: Some(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "boom"))),
+                rule: Rule {
+                    name: Some("error".to_string()),
+                    check: "".to_string(),
+                    severity: Some(Severity::Error),
+                    fix: None,
+                    hint: None,
+                },
+                err: Some(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "boom",
+                ))),
                 stdout: "".to_string(),
                 stderr: "".to_string(),
             },
         ];
-        let report = Report { rules: results, fail_severity: Severity::Error };
+        let report = Report {
+            rules: results,
+            fail_severity: Severity::Error,
+        };
         assert!(report.has_failures());
         let failures = report.failures();
         assert_eq!(failures.len(), 1);
@@ -359,7 +438,13 @@ mod tests {
 
     #[test]
     fn test_min_severity() {
-        assert_eq!(min_severity(Severity::Debug, Severity::Warning), Severity::Debug);
-        assert_eq!(min_severity(Severity::Error, Severity::Warning), Severity::Warning);
+        assert_eq!(
+            min_severity(Severity::Debug, Severity::Warning),
+            Severity::Debug
+        );
+        assert_eq!(
+            min_severity(Severity::Error, Severity::Warning),
+            Severity::Warning
+        );
     }
 }

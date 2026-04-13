@@ -33,10 +33,11 @@ pub fn load(path: &str) -> Result<Config, String> {
     let json_data = serde_yaml::from_str::<serde_yaml::Value>(&data)
         .map_err(|e| format!("decode config YAML: {}", e))?;
 
-    let _json_str = serde_json::to_string(&json_data)
-        .map_err(|e| format!("convert config to JSON: {}", e))?;
+    let _json_str =
+        serde_json::to_string(&json_data).map_err(|e| format!("convert config to JSON: {}", e))?;
 
-    let mut cfg: Config = serde_yaml::from_str(&data).map_err(|e| format!("decode config: {}", e))?;
+    let mut cfg: Config =
+        serde_yaml::from_str(&data).map_err(|e| format!("decode config: {}", e))?;
 
     apply_rule_defaults(&mut cfg);
 
@@ -80,7 +81,11 @@ mod tests {
         let old_cwd = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
 
-        fs::write(dir.path().join(".checksy.yaml"), "rules:\n  - check: echo ok\n").unwrap();
+        fs::write(
+            dir.path().join(".checksy.yaml"),
+            "rules:\n  - check: echo ok\n",
+        )
+        .unwrap();
 
         let got = resolve_path("");
         std::env::set_current_dir(old_cwd).unwrap();
@@ -92,10 +97,24 @@ mod tests {
     #[test]
     fn test_apply_rule_defaults() {
         let mut cfg = Config {
+            check_severity: None,
+            fail_severity: None,
             preconditions: vec![],
             rules: vec![
-                Rule { name: None, check: "echo hi".to_string(), severity: None, fix: None, hint: None },
-                Rule { name: None, check: "echo warn".to_string(), severity: Some(Severity::Warning), fix: None, hint: None },
+                Rule {
+                    name: None,
+                    check: "echo hi".to_string(),
+                    severity: None,
+                    fix: None,
+                    hint: None,
+                },
+                Rule {
+                    name: None,
+                    check: "echo warn".to_string(),
+                    severity: Some(Severity::Warning),
+                    fix: None,
+                    hint: None,
+                },
             ],
             patterns: vec![],
         };
@@ -127,7 +146,11 @@ mod tests {
     fn test_load_patterns() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("config.yaml");
-        fs::write(&path, "rules: []\npatterns:\n  - 'tests/*.sh'\n  - '!tests/skip.sh'\n").unwrap();
+        fs::write(
+            &path,
+            "rules: []\npatterns:\n  - 'tests/*.sh'\n  - '!tests/skip.sh'\n",
+        )
+        .unwrap();
 
         let cfg = load(path.to_str().unwrap());
         assert!(cfg.is_ok());
