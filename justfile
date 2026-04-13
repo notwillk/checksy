@@ -25,7 +25,7 @@ cross-compile target:
     if [ "$os" = "darwin" ]; then
         echo "Building for macOS natively..."
         rustup target add "$target"
-        cargo -C src build --release --target "$target"
+        cargo build --manifest-path src/Cargo.toml --release --target "$target"
         mv "src/target/$target/release/checksy" "dist/checksy_${os}_${arch}"
     else
         echo "Cross-compiling via cross..."
