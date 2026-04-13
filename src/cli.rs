@@ -56,6 +56,7 @@ pub fn run(args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write) ->
 #[derive(Debug, Default)]
 struct GlobalFlags {
     config_path: Option<String>,
+    stdin_config: bool,
 }
 
 fn parse_global_flags(args: &[String]) -> Result<(GlobalFlags, Vec<String>), String> {
@@ -72,6 +73,11 @@ fn parse_global_flags(args: &[String]) -> Result<(GlobalFlags, Vec<String>), Str
                 }
                 globals.config_path = Some(args[i + 1].clone());
                 i += 2;
+                continue;
+            }
+            "--stdin-config" => {
+                globals.stdin_config = true;
+                i += 1;
                 continue;
             }
             _ if arg.starts_with("--config=") => {
@@ -160,7 +166,13 @@ fn run_check(
         }
     }
 
-    let config_path = config_path.or(globals.config_path).unwrap_or_default();
+    let config_path = config_path.or(globals.config_path).unwrap_or_else(|| {
+        if globals.stdin_config {
+            "-".to_string()
+        } else {
+            String::new()
+        }
+    });
     let resolved = match resolve_path(&config_path) {
         Ok(Some(p)) => p,
         Ok(None) => {
@@ -173,11 +185,15 @@ fn run_check(
         }
     };
 
-    let abs_config_path = match std::fs::canonicalize(&resolved) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(e) => {
-            writeln!(stderr, "unable to resolve config path: {}", e).ok();
-            return 2;
+    let abs_config_path = if resolved == "-" {
+        "-".to_string()
+    } else {
+        match std::fs::canonicalize(&resolved) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(e) => {
+                writeln!(stderr, "unable to resolve config path: {}", e).ok();
+                return 2;
+            }
         }
     };
 
@@ -382,6 +398,7 @@ fn print_usage(stdout: &mut dyn Write) {
         stdout,
         "  --config string   path to config file (defaults to .checksy.yaml)"
     );
+    let _ = writeln!(stdout, "  --stdin-config    read config from stdin");
     let _ = writeln!(stdout);
     let _ = writeln!(stdout, "Available Commands:");
     let _ = writeln!(stdout, "  check      Run checks for config-defined rules");

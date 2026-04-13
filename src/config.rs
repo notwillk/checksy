@@ -1,8 +1,13 @@
 use crate::schema::{Config, Severity};
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 
 pub fn resolve_path(explicit: &str) -> Result<Option<String>, String> {
+    if explicit == "-" {
+        return Ok(Some("-".to_string()));
+    }
+
     if !explicit.is_empty() {
         let path = Path::new(explicit);
         if !path.exists() {
@@ -28,7 +33,16 @@ pub fn resolve_path(explicit: &str) -> Result<Option<String>, String> {
 }
 
 pub fn load(path: &str) -> Result<Config, String> {
-    let data = fs::read_to_string(path).map_err(|e| format!("read config: {}", e))?;
+    let data = if path == "-" {
+        let mut stdin = std::io::stdin();
+        let mut buffer = String::new();
+        stdin
+            .read_to_string(&mut buffer)
+            .map_err(|e| format!("read stdin: {}", e))?;
+        buffer
+    } else {
+        fs::read_to_string(path).map_err(|e| format!("read config: {}", e))?
+    };
 
     let json_data = serde_yaml::from_str::<serde_yaml::Value>(&data)
         .map_err(|e| format!("decode config YAML: {}", e))?;
