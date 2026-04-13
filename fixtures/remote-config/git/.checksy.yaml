@@ -1,0 +1,10 @@
+# Git-based Remote Config Test
+# References the checksy repo itself via git SSH URL
+# Uses the happy-path fixture from the checksy repository
+
+cachePath: ".git-cache"
+rules:
+  - remote: git+git@github.com:notwillk/checksy.git#main:fixtures/happy-path/.checksy.yaml
+  - name: Local verification
+    check: echo "Git remote test completed"
+    severity: info
