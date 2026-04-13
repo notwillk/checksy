@@ -47,7 +47,8 @@ else
 fi
 
 echo "Packaging: checksy_${os}_${arch}.tar.gz"
-cd .. && tar -czf dist/checksy_${os}_${arch}.tar.gz --transform="s|^checksy_${os}_${arch}$|checksy|" -C dist checksy_${os}_${arch}
+cp target/"$target"/release/checksy ../dist/checksy
+cd .. && tar -czf dist/checksy -C dist checksy_${os}_${arch}
 echo "Calculating checksum: checksy_${os}_${arch}-checksum.txt"
 (cd dist && sha256sum checksy_${os}_${arch}.tar.gz) > dist/checksy_${os}_${arch}-checksum.txt
 echo "Done"
