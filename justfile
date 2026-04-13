@@ -16,30 +16,8 @@ cross-compile target:
     set -e
     ./scripts/cross-compile.sh "{{target}}"
 
-sign file key:
-    gpg --batch --import "{{key}}"
-    gpg --batch --yes --output "{{file}}.sig" --detach-sign "{{file}}"
-    echo "Created {{file}}.sig"
-
 release version:
     ./scripts/release.sh {{version}}
-
-can-build:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cmds=(cargo gpg just rustup sha256sum)
-    missing=()
-    for cmd in "${cmds[@]}"; do
-      if ! which "$cmd" >/dev/null 2>&1; then
-        missing+=("$cmd")
-      fi
-    done
-    if [ ${#missing[@]} -eq 0 ]; then
-      echo "All required commands available"
-    else
-      echo "Missing required commands: ${missing[*]}"
-      exit 1
-    fi
 
 test:
     cd src && cargo test

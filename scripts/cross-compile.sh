@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+cmds=(cargo gpg sha256sum)
+missing=()
+for cmd in "${cmds[@]}"; do
+  if ! which "$cmd" >/dev/null 2>&1; then
+    missing+=("$cmd")
+  fi
+done
+if [ ${#missing[@]} -eq 0 ]; then
+  echo "All required commands available"
+else
+  echo "Missing required commands: ${missing[*]}" >&2
+  exit 1
+fi
+
 if [ $# -ne 1 ]; then
   echo "Usage: $0 <target>" >&2
   exit 1

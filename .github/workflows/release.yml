@@ -6,32 +6,7 @@ on:
       - "v*.*.*"
 
 jobs:
-  pre-build:
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Ensure tag matches version
-        uses: devcontainers/ci@v0.3
-        with:
-          imageName: ghcr.io/${{ github.repository }}/release_container
-          cacheFrom: ghcr.io/${{ github.repository }}/release_container
-          runCmd: just ensure-tag-matches-version ${{ github.ref_name }}
-
   build:
-    needs: pre-build
     strategy:
       matrix:
         include:
@@ -52,30 +27,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Validate build environment then build in devcontainer (linux)
-        uses: devcontainers/ci@v0.3
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        with:
-          imageName: ghcr.io/${{ github.repository }}/release_container
-          cacheFrom: ghcr.io/${{ github.repository }}/release_container
-          runCmd: just can-build && just cross-compile ${{ matrix.target }}
-
-      - name: Install then validate build environment (macos)
-        if: ${{ matrix.os == 'macos-latest' }}
+      - name: Install just
         run: |
-          brew install just
-          just can-build
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            brew install just
+          else
+            cargo install just --locked
+          fi
 
-      - name: Build (macos)
-        if: ${{ matrix.os == 'macos-latest' }}
+      - name: Ensure tag matches version
+        run: just ensure-tag-matches-version ${{ github.ref_name }}
+
+      - name: Build and package
         run: just cross-compile ${{ matrix.target }}
 
       - name: Upload artifact
@@ -106,23 +69,14 @@ jobs:
       - name: Prepare checksums
         run: cat artifacts/*-checksum.txt > artifacts/checksums.txt
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Sign checksums in devcontainer
-        uses: devcontainers/ci@v0.3
-        with:
-          imageName: ghcr.io/${{ github.repository }}/release_container
-          cacheFrom: ghcr.io/${{ github.repository }}/release_container
-          runCmd: |
-              mkdir -p /tmp/gpg
-              printf "%s" "${{ secrets.GPG_PRIVATE_KEY }}" > /tmp/gpg/release.key
-              just sign artifacts/checksums.txt /tmp/gpg/release.key
-              rm -rf /tmp/gpg
+      - name: Sign checksums
+        run: |
+          mkdir -p /tmp/gpg
+          printf "%s" "${{ secrets.GPG_PRIVATE_KEY }}" > /tmp/gpg/release.key
+          gpg --batch --import "/tmp/gpg/release.key"
+          gpg --batch --yes --output "artifacts/checksums.txt.sig" --detach-sign "artifacts/checksums.txt"
+          echo "Created checksums.txt.sig
+          rm -rf /tmp/gpg
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -133,6 +87,13 @@ jobs:
             artifacts/checksums.txt.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Devcontainer Feature
         uses: devcontainers/action@v1.4.3
