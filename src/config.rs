@@ -1,3 +1,4 @@
+use crate::cache::{CacheManager, GitRemote};
 use crate::schema::{Config, Severity};
 use std::collections::HashSet;
 use std::fs;
@@ -51,6 +52,7 @@ fn load_with_context(
                 // Already visited this config (circular reference)
                 // Return empty config with inherited defaults
                 return Ok(Config {
+                    cache_path: None,
                     check_severity: parent_defaults.and_then(|(s, _)| s),
                     fail_severity: parent_defaults.and_then(|(_, s)| s),
                     preconditions: vec![],
@@ -130,7 +132,7 @@ fn expand_remotes(
             }
 
             let remote_path = rule.remote.as_ref().unwrap();
-            let resolved = resolve_remote_path(config_dir, remote_path)?;
+            let resolved = resolve_remote_path(config_dir, cfg.cache_path.as_deref(), remote_path)?;
 
             // Load and expand the remote config
             // (load_with_context will handle circular reference detection)
@@ -163,7 +165,7 @@ fn expand_remotes(
             }
 
             let remote_path = rule.remote.as_ref().unwrap();
-            let resolved = resolve_remote_path(config_dir, remote_path)?;
+            let resolved = resolve_remote_path(config_dir, cfg.cache_path.as_deref(), remote_path)?;
 
             // Load and expand the remote config
             // (load_with_context will handle circular reference detection)
@@ -186,7 +188,87 @@ fn expand_remotes(
     Ok(())
 }
 
-fn resolve_remote_path(config_dir: &Path, remote_path: &str) -> Result<PathBuf, String> {
+/// Parse a remote string to detect git-based resource locators
+/// Format: git+<repo>#<ref>:<path>
+///   - ref defaults to "main"
+///   - path defaults to ".checksy.yaml"
+/// Returns None for regular file paths
+/// Returns Some(GitRemote) for git-based locators
+pub fn parse_git_remote(remote_str: &str) -> Option<GitRemote> {
+    if !remote_str.starts_with("git+") {
+        return None;
+    }
+
+    // Remove the "git+" prefix
+    let rest = &remote_str[4..];
+
+    // First, check for # to split repo from ref+path
+    let (repo_part, after_repo) = if let Some(hash_pos) = rest.find('#') {
+        (&rest[..hash_pos], &rest[hash_pos + 1..])
+    } else {
+        // No # found, entire string is repo, use defaults for ref and path
+        return Some(GitRemote {
+            repo: rest.to_string(),
+            ref_: "main".to_string(),
+            path: ".checksy.yaml".to_string(),
+        });
+    };
+
+    // Now parse ref:path from after_repo
+    let (ref_part, path_part) = if let Some(colon_pos) = after_repo.find(':') {
+        (&after_repo[..colon_pos], &after_repo[colon_pos + 1..])
+    } else {
+        // No : found, after_repo is just the ref, use default path
+        (after_repo, ".checksy.yaml")
+    };
+
+    let repo = repo_part.to_string();
+    let ref_ = if ref_part.is_empty() {
+        "main".to_string()
+    } else {
+        ref_part.to_string()
+    };
+    let path = if path_part.is_empty() {
+        ".checksy.yaml".to_string()
+    } else {
+        path_part.to_string()
+    };
+
+    Some(GitRemote { repo, ref_, path })
+}
+
+/// Resolves a remote config path
+/// For git remotes, checks if the remote is cached and returns the cached path
+pub fn resolve_remote_path(
+    config_dir: &Path,
+    cache_path: Option<&str>,
+    remote_path: &str,
+) -> Result<PathBuf, String> {
+    // Check for git-based resource locator
+    if let Some(git_remote) = parse_git_remote(remote_path) {
+        // Check if this git remote is cached
+        let cache_mgr = CacheManager::new(config_dir, cache_path);
+
+        if !cache_mgr.is_cached(&git_remote.repo, &git_remote.ref_) {
+            return Err(format!(
+                "git remote not cached: {}. Run 'checksy install' first",
+                remote_path
+            ));
+        }
+
+        let config_path = cache_mgr.get_config_path(&git_remote);
+
+        if !config_path.exists() {
+            return Err(format!(
+                "cached config not found: {} (expected at: {})",
+                git_remote.path,
+                config_path.display()
+            ));
+        }
+
+        return Ok(config_path);
+    }
+
     let path = config_dir.join(remote_path);
 
     if !path.exists() {
@@ -264,6 +346,7 @@ mod tests {
     #[test]
     fn test_apply_rule_defaults() {
         let mut cfg = Config {
+            cache_path: None,
             check_severity: None,
             fail_severity: None,
             preconditions: vec![],
@@ -427,5 +510,66 @@ mod tests {
 
         let cfg = result.unwrap();
         assert_eq!(cfg.rules[0].severity, Some(Severity::Warning));
+    }
+
+    #[test]
+    fn test_parse_git_remote_basic() {
+        let result = parse_git_remote("git+https://github.com/user/repo.git");
+        assert!(result.is_some());
+        let git = result.unwrap();
+        assert_eq!(git.repo, "https://github.com/user/repo.git");
+        assert_eq!(git.ref_, "main");
+        assert_eq!(git.path, ".checksy.yaml");
+    }
+
+    #[test]
+    fn test_parse_git_remote_with_ref_and_path() {
+        let result =
+            parse_git_remote("git+https://github.com/user/repo.git#v1.0.0:configs/dev.yaml");
+        assert!(result.is_some());
+        let git = result.unwrap();
+        assert_eq!(git.repo, "https://github.com/user/repo.git");
+        assert_eq!(git.ref_, "v1.0.0");
+        assert_eq!(git.path, "configs/dev.yaml");
+    }
+
+    #[test]
+    fn test_parse_git_remote_with_path_only() {
+        // Without #ref, the entire string is the repo URL (including colons if present)
+        // The :path separator only works after #ref
+        let result = parse_git_remote("git+https://github.com/user/repo.git:other.yaml");
+        assert!(result.is_some());
+        let git = result.unwrap();
+        // No # found, so everything after git+ is the repo
+        assert_eq!(git.repo, "https://github.com/user/repo.git:other.yaml");
+        assert_eq!(git.ref_, "main"); // default
+        assert_eq!(git.path, ".checksy.yaml"); // default
+    }
+
+    #[test]
+    fn test_parse_git_remote_not_matching() {
+        // Regular file paths should return None
+        assert!(parse_git_remote("shared.yaml").is_none());
+        assert!(parse_git_remote("./config.yaml").is_none());
+        assert!(parse_git_remote("/absolute/path.yaml").is_none());
+        assert!(parse_git_remote("https://example.com/config.yaml").is_none());
+    }
+
+    #[test]
+    fn test_git_remote_not_implemented_error() {
+        let dir = TempDir::new().unwrap();
+
+        let main_path = dir.path().join("main.yaml");
+        fs::write(
+            &main_path,
+            "rules:\n  - remote: git+https://github.com/user/repo.git\n",
+        )
+        .unwrap();
+
+        let result = load(main_path.to_str().unwrap());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("git remote not cached"));
+        assert!(err.contains("Run 'checksy install' first"));
     }
 }

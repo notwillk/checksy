@@ -335,6 +335,7 @@ mod tests {
     #[test]
     fn test_filter_rules_by_severity() {
         let cfg = Config {
+            cache_path: None,
             check_severity: None,
             fail_severity: None,
             preconditions: vec![],

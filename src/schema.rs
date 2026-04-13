@@ -133,6 +133,8 @@ pub mod schema {
     #[serde(rename_all = "camelCase")]
     pub struct Config {
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub cache_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         pub check_severity: Option<Severity>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub fail_severity: Option<Severity>,
