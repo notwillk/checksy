@@ -75,7 +75,7 @@ jobs:
           printf "%s" "${{ secrets.GPG_PRIVATE_KEY }}" > /tmp/gpg/release.key
           gpg --batch --import "/tmp/gpg/release.key"
           gpg --batch --yes --output "artifacts/checksums.txt.sig" --detach-sign "artifacts/checksums.txt"
-          echo "Created checksums.txt.sig
+          echo "Created checksums.txt.sig"
           rm -rf /tmp/gpg
 
       - name: Create Release
