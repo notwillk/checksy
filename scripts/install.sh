@@ -39,8 +39,7 @@ CHECKSUM_SIGNATURE_FILENAME="checksums.txt.sig"
 TARBALL_URL="$BASE_URL/$TARBALL_FILENAME"
 CHECKSUM_URL="$BASE_URL/$CHECKSUM_FILENAME"
 CHECKSUM_SIGNATURE_URL="$BASE_URL/$CHECKSUM_SIGNATURE_FILENAME"
-
-URL="$BASE_URL/$TARBALL_FILENAME"
+PUBLIC_KEY_URL="https://raw.githubusercontent.com/$REPO/main/keys/signing-key.asc"
 
 echo "Installing $BIN_NAME $TAG for $OS/$ARCH..."
 
@@ -57,8 +56,9 @@ echo "Downloading: $CHECKSUM_SIGNATURE_URL"
 curl -fsSL "$CHECKSUM_SIGNATURE_URL" -o "$TMPDIR/$CHECKSUM_SIGNATURE_FILENAME"
 
 if [ -f "$TMPDIR/checksums.txt.sig" ]; then
+  echo "Downloading: $PUBLIC_KEY_URL"
+  curl -fsSL "$PUBLIC_KEY_URL" -o "$TMPDIR/signing-key.asc"
   echo "Verifying binary signature..."
-  curl -fsSL "https://raw.githubusercontent.com/$REPO/main/keys/signing-key.asc" -o "$TMPDIR/signing-key.asc"
   import_result=$(gpg --batch --import "$TMPDIR/signing-key.asc" 2>&1 || true)
   if echo "$import_result" | grep -q "imported" || echo "$import_result" | grep -q "unchanged"; then
     if gpg --batch --verify "$TMPDIR/checksums.txt.sig" "$TMPDIR/checksums.txt" 2>/dev/null; then
@@ -81,6 +81,8 @@ if [ -n "$CHECKSUM_EXPECTED" ]; then
   fi
   echo "Checksum verified"
 fi
+
+tar -C "$TMPDIR" -xzf "$TMPDIR/$TARBALL_FILENAME"
 
 chmod +x "$TMPDIR/$BIN_NAME"
 sudo mv "$TMPDIR/$BIN_NAME" "${DEST:-/usr/local/bin}/$BIN_NAME"
