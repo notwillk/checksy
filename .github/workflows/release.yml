@@ -72,6 +72,11 @@ jobs:
         if: ${{ matrix.os == 'macos-latest' }}
         run: just can-build
 
+      - name: Install build tools (macos)
+        if: ${{ matrix.os == 'macos-latest' }}
+        run: brew install just
+          # gpg just rustup sha256sum
+
       - name: Build (macos)
         if: ${{ matrix.os == 'macos-latest' }}
         run: just cross-compile ${{ matrix.target }}
