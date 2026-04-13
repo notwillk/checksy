@@ -1,0 +1,7 @@
+# Config C - closes the circle by referencing A
+# This should be detected and skipped to prevent infinite loop
+
+rules:
+  - name: Rule from C
+    check: echo "C passes"
+  - remote: a.yaml

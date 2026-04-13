@@ -1,0 +1,11 @@
+# Shared config referenced by the main config
+# Tests that remote rules are expanded inline
+
+rules:
+  - name: Shared rule
+    check: echo "Shared check passes"
+    severity: warn
+  - name: Shared failing rule  
+    check: /bin/false
+    severity: warn
+    hint: This is expected to fail for testing

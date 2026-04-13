@@ -1,0 +1,7 @@
+# Config A - starts circular reference chain
+# References B, which references C, which references A
+
+rules:
+  - name: Rule from A
+    check: echo "A passes"
+  - remote: b.yaml

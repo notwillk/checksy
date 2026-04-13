@@ -75,16 +75,62 @@ pub mod schema {
     pub struct Rule {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub name: Option<String>,
-        pub check: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub check: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub severity: Option<Severity>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub fix: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub hint: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub remote: Option<String>,
+    }
+
+    impl Rule {
+        /// Returns true if this is a remote rule (has remote property set)
+        pub fn is_remote(&self) -> bool {
+            self.remote.is_some()
+        }
+
+        /// Validates that a remote rule only has the remote property set
+        /// Returns None if valid, Some(error_message) if invalid
+        pub fn validate_remote_only(&self) -> Option<String> {
+            if !self.is_remote() {
+                return None;
+            }
+
+            let mut invalid_props = Vec::new();
+
+            if self.name.is_some() {
+                invalid_props.push("name");
+            }
+            if self.check.is_some() {
+                invalid_props.push("check");
+            }
+            if self.severity.is_some() {
+                invalid_props.push("severity");
+            }
+            if self.fix.is_some() {
+                invalid_props.push("fix");
+            }
+            if self.hint.is_some() {
+                invalid_props.push("hint");
+            }
+
+            if !invalid_props.is_empty() {
+                Some(format!(
+                    "remote rule cannot have properties: {}",
+                    invalid_props.join(", ")
+                ))
+            } else {
+                None
+            }
+        }
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+    #[serde(rename_all = "camelCase")]
     pub struct Config {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub check_severity: Option<Severity>,

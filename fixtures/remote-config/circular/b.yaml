@@ -1,0 +1,6 @@
+# Config B - middle of circular chain
+
+rules:
+  - name: Rule from B
+    check: echo "B passes"
+  - remote: c.yaml

@@ -1,0 +1,4 @@
+# Invalid: Remote file doesn't exist
+
+rules:
+  - remote: nonexistent-file.yaml

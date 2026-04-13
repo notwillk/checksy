@@ -1,0 +1,5 @@
+# Bottom config - end of chain
+
+rules:
+  - name: Bottom rule
+    check: echo "Bottom passes"

@@ -1,0 +1,10 @@
+# Basic Remote Config Test
+# Main config that references a shared config file
+
+rules:
+  - name: Local rule
+    check: echo "Local check passes"
+  - remote: shared.yaml
+  - name: Another local rule
+    check: echo "Another local passes"
+    severity: info

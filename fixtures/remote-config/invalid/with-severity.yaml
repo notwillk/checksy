@@ -1,0 +1,5 @@
+# Invalid: Remote rule with severity
+
+rules:
+  - remote: some.yaml
+    severity: error

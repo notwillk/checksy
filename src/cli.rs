@@ -348,28 +348,56 @@ fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Writ
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["check"],
-        "properties": {
-          "name": { "type": "string" },
-          "check": { "type": "string" },
-          "severity": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "error" },
-          "fix": { "type": "string" },
-          "hint": { "type": "string" }
-        }
+        "oneOf": [
+          {
+            "description": "Remote rule - only 'remote' property allowed",
+            "required": ["remote"],
+            "properties": {
+              "remote": { "type": "string", "description": "Relative path to another config file" }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Inline rule - requires 'check' property",
+            "required": ["check"],
+            "properties": {
+              "name": { "type": "string" },
+              "check": { "type": "string" },
+              "severity": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "error" },
+              "fix": { "type": "string" },
+              "hint": { "type": "string" },
+              "remote": { "type": "string" }
+            }
+          }
+        ]
       }
     },
     "rules": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["check"],
-        "properties": {
-          "name": { "type": "string" },
-          "check": { "type": "string" },
-          "severity": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "error" },
-          "fix": { "type": "string" },
-          "hint": { "type": "string" }
-        }
+        "oneOf": [
+          {
+            "description": "Remote rule - only 'remote' property allowed",
+            "required": ["remote"],
+            "properties": {
+              "remote": { "type": "string", "description": "Relative path to another config file" }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Inline rule - requires 'check' property",
+            "required": ["check"],
+            "properties": {
+              "name": { "type": "string" },
+              "check": { "type": "string" },
+              "severity": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "error" },
+              "fix": { "type": "string" },
+              "hint": { "type": "string" },
+              "remote": { "type": "string" }
+            }
+          }
+        ]
       }
     },
     "patterns": {
@@ -553,10 +581,11 @@ fn check_with_fixes(
 
         let fix_rule = Rule {
             name: Some(format!("{} fix", rule_display_name(&rule))),
-            check: rule.fix.clone().unwrap_or_default(),
+            check: Some(rule.fix.clone().unwrap_or_default()),
             severity: rule.severity.clone(),
             fix: None,
             hint: rule.hint.clone(),
+            remote: None,
         };
         let fix_result = doctor::run_rule(fix_rule, workdir);
         if !fix_result.success() {
@@ -592,10 +621,11 @@ fn check_with_fixes(
 
         let fix_rule = Rule {
             name: Some(format!("{} fix", rule_display_name(&rule))),
-            check: rule.fix.clone().unwrap_or_default(),
+            check: Some(rule.fix.clone().unwrap_or_default()),
             severity: rule.severity.clone(),
             fix: None,
             hint: rule.hint.clone(),
+            remote: None,
         };
         let fix_result = doctor::run_rule(fix_rule, workdir);
         if !fix_result.success() {
@@ -626,9 +656,12 @@ fn check_with_fixes(
 }
 
 fn rule_display_name(rule: &Rule) -> String {
-    rule.name
-        .clone()
-        .unwrap_or_else(|| rule.check.trim().to_string())
+    rule.name.clone().unwrap_or_else(|| {
+        rule.check
+            .as_ref()
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default()
+    })
 }
 
 #[cfg(test)]
@@ -650,19 +683,21 @@ mod tests {
     fn test_rule_display_name() {
         let rule = Rule {
             name: None,
-            check: "echo hi".to_string(),
+            check: Some("echo hi".to_string()),
             severity: None,
             fix: None,
             hint: None,
+            remote: None,
         };
         assert!(rule_display_name(&rule).contains("echo hi"));
 
         let rule = Rule {
             name: Some("custom".to_string()),
-            check: "echo hi".to_string(),
+            check: Some("echo hi".to_string()),
             severity: None,
             fix: None,
             hint: None,
+            remote: None,
         };
         assert_eq!(rule_display_name(&rule), "custom");
     }

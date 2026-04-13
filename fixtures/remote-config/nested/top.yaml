@@ -1,0 +1,7 @@
+# Nested Remote Config Test
+# A includes B, B includes C (linear chain, not circular)
+
+rules:
+  - name: Top level rule
+    check: echo "Top level passes"
+  - remote: middle.yaml
