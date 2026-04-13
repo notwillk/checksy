@@ -1,0 +1,9 @@
+# Tests defaults inheritance from parent
+# The parent has checkSeverity: warn, so rules without severity should use warn
+
+checkSeverity: warn
+rules:
+  - remote: no-severity.yaml
+  - name: Explicit local
+    check: echo "explicit"
+    severity: error

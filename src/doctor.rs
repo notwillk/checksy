@@ -56,7 +56,7 @@ impl RuleResult {
         self.rule
             .name
             .clone()
-            .unwrap_or_else(|| self.rule.check.clone())
+            .unwrap_or_else(|| self.rule.check.clone().unwrap_or_default())
     }
 
     pub fn severity(&self) -> Severity {
@@ -147,11 +147,7 @@ pub fn filter_preconditions(cfg: &Config, min: Severity) -> Vec<Rule> {
 }
 
 pub fn run_rule(rule: Rule, workdir: &str) -> RuleResult {
-    let script = if rule.check.is_empty() {
-        "true".to_string()
-    } else {
-        rule.check.clone()
-    };
+    let script = rule.check.clone().unwrap_or_else(|| "true".to_string());
     let script = if script.ends_with('\n') {
         script
     } else {
@@ -252,10 +248,11 @@ pub fn expand_rule_files(workdir: &str, patterns: &[String]) -> Result<Vec<Strin
 pub fn run_rule_file(workdir: &str, rel_path: &str) -> RuleResult {
     let rule = Rule {
         name: Some(rel_path.to_string()),
-        check: rel_path.to_string(),
+        check: Some(rel_path.to_string()),
         severity: Some(Severity::Error),
         fix: None,
         hint: None,
+        remote: None,
     };
 
     let script_path = if rel_path.starts_with("./") {
@@ -344,24 +341,27 @@ mod tests {
             rules: vec![
                 Rule {
                     name: Some("debug".to_string()),
-                    check: "true".to_string(),
+                    check: Some("true".to_string()),
                     severity: Some(Severity::Debug),
                     fix: None,
                     hint: None,
+                    remote: None,
                 },
                 Rule {
                     name: Some("info".to_string()),
-                    check: "true".to_string(),
+                    check: Some("true".to_string()),
                     severity: Some(Severity::Info),
                     fix: None,
                     hint: None,
+                    remote: None,
                 },
                 Rule {
                     name: Some("warn".to_string()),
-                    check: "true".to_string(),
+                    check: Some("true".to_string()),
                     severity: Some(Severity::Warning),
                     fix: None,
                     hint: None,
+                    remote: None,
                 },
             ],
             patterns: vec![],
@@ -377,10 +377,11 @@ mod tests {
         let result = RuleResult {
             rule: Rule {
                 name: None,
-                check: "".to_string(),
+                check: Some("".to_string()),
                 severity: Some(Severity::Warning),
                 fix: None,
                 hint: None,
+                remote: None,
             },
             err: Some(Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
@@ -399,10 +400,11 @@ mod tests {
             RuleResult {
                 rule: Rule {
                     name: Some("warn".to_string()),
-                    check: "".to_string(),
+                    check: Some("".to_string()),
                     severity: Some(Severity::Warning),
                     fix: None,
                     hint: None,
+                    remote: None,
                 },
                 err: Some(Box::new(std::io::Error::new(
                     std::io::ErrorKind::Other,
@@ -414,10 +416,11 @@ mod tests {
             RuleResult {
                 rule: Rule {
                     name: Some("error".to_string()),
-                    check: "".to_string(),
+                    check: Some("".to_string()),
                     severity: Some(Severity::Error),
                     fix: None,
                     hint: None,
+                    remote: None,
                 },
                 err: Some(Box::new(std::io::Error::new(
                     std::io::ErrorKind::Other,

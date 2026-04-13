@@ -1,0 +1,6 @@
+# Middle config - referenced by top, references bottom
+
+rules:
+  - name: Middle rule
+    check: echo "Middle passes"
+  - remote: bottom.yaml

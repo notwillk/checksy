@@ -1,0 +1,7 @@
+# Invalid: Remote rule with other properties
+# This should fail validation - remote rules cannot have check, name, etc.
+
+rules:
+  - remote: some.yaml
+    check: echo "this is invalid"
+    name: Invalid rule

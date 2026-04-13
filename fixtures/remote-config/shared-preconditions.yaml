@@ -1,0 +1,6 @@
+# Shared preconditions
+
+rules:
+  - name: Shared precondition
+    check: echo "Precondition passes"
+    severity: debug

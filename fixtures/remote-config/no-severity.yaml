@@ -1,0 +1,6 @@
+# Remote config without explicit severity
+# Should inherit checkSeverity from parent (warn)
+
+rules:
+  - name: Should inherit warn severity
+    check: echo "inherited severity"

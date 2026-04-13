@@ -1,0 +1,9 @@
+# Test remote in preconditions
+# Preconditions run before main rules and can also use remote
+
+preconditions:
+  - remote: shared-preconditions.yaml
+
+rules:
+  - name: Main rule
+    check: echo "Main passes"
