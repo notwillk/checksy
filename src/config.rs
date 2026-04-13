@@ -186,7 +186,72 @@ fn expand_remotes(
     Ok(())
 }
 
+/// Parsed Git-based resource locator
+#[derive(Debug, Clone, PartialEq)]
+pub struct GitRemote {
+    pub repo: String,
+    pub ref_: String,
+    pub path: String,
+}
+
+/// Parse a remote string to detect git-based resource locators
+/// Format: git+<repo>#<ref>:<path>
+///   - ref defaults to "main"
+///   - path defaults to ".checksy.yaml"
+/// Returns None for regular file paths
+/// Returns Some(GitRemote) for git-based locators
+pub fn parse_git_remote(remote_str: &str) -> Option<GitRemote> {
+    if !remote_str.starts_with("git+") {
+        return None;
+    }
+
+    // Remove the "git+" prefix
+    let rest = &remote_str[4..];
+
+    // First, check for # to split repo from ref+path
+    let (repo_part, after_repo) = if let Some(hash_pos) = rest.find('#') {
+        (&rest[..hash_pos], &rest[hash_pos + 1..])
+    } else {
+        // No # found, entire string is repo, use defaults for ref and path
+        return Some(GitRemote {
+            repo: rest.to_string(),
+            ref_: "main".to_string(),
+            path: ".checksy.yaml".to_string(),
+        });
+    };
+
+    // Now parse ref:path from after_repo
+    let (ref_part, path_part) = if let Some(colon_pos) = after_repo.find(':') {
+        (&after_repo[..colon_pos], &after_repo[colon_pos + 1..])
+    } else {
+        // No : found, after_repo is just the ref, use default path
+        (after_repo, ".checksy.yaml")
+    };
+
+    let repo = repo_part.to_string();
+    let ref_ = if ref_part.is_empty() {
+        "main".to_string()
+    } else {
+        ref_part.to_string()
+    };
+    let path = if path_part.is_empty() {
+        ".checksy.yaml".to_string()
+    } else {
+        path_part.to_string()
+    };
+
+    Some(GitRemote { repo, ref_, path })
+}
+
 fn resolve_remote_path(config_dir: &Path, remote_path: &str) -> Result<PathBuf, String> {
+    // Check for git-based resource locator
+    if let Some(git_remote) = parse_git_remote(remote_path) {
+        return Err(format!(
+            "git-based remote not implemented: {} (repo: {}, ref: {}, path: {})",
+            remote_path, git_remote.repo, git_remote.ref_, git_remote.path
+        ));
+    }
+
     let path = config_dir.join(remote_path);
 
     if !path.exists() {
@@ -427,5 +492,66 @@ mod tests {
 
         let cfg = result.unwrap();
         assert_eq!(cfg.rules[0].severity, Some(Severity::Warning));
+    }
+
+    #[test]
+    fn test_parse_git_remote_basic() {
+        let result = parse_git_remote("git+https://github.com/user/repo.git");
+        assert!(result.is_some());
+        let git = result.unwrap();
+        assert_eq!(git.repo, "https://github.com/user/repo.git");
+        assert_eq!(git.ref_, "main");
+        assert_eq!(git.path, ".checksy.yaml");
+    }
+
+    #[test]
+    fn test_parse_git_remote_with_ref_and_path() {
+        let result =
+            parse_git_remote("git+https://github.com/user/repo.git#v1.0.0:configs/dev.yaml");
+        assert!(result.is_some());
+        let git = result.unwrap();
+        assert_eq!(git.repo, "https://github.com/user/repo.git");
+        assert_eq!(git.ref_, "v1.0.0");
+        assert_eq!(git.path, "configs/dev.yaml");
+    }
+
+    #[test]
+    fn test_parse_git_remote_with_path_only() {
+        // Without #ref, the entire string is the repo URL (including colons if present)
+        // The :path separator only works after #ref
+        let result = parse_git_remote("git+https://github.com/user/repo.git:other.yaml");
+        assert!(result.is_some());
+        let git = result.unwrap();
+        // No # found, so everything after git+ is the repo
+        assert_eq!(git.repo, "https://github.com/user/repo.git:other.yaml");
+        assert_eq!(git.ref_, "main"); // default
+        assert_eq!(git.path, ".checksy.yaml"); // default
+    }
+
+    #[test]
+    fn test_parse_git_remote_not_matching() {
+        // Regular file paths should return None
+        assert!(parse_git_remote("shared.yaml").is_none());
+        assert!(parse_git_remote("./config.yaml").is_none());
+        assert!(parse_git_remote("/absolute/path.yaml").is_none());
+        assert!(parse_git_remote("https://example.com/config.yaml").is_none());
+    }
+
+    #[test]
+    fn test_git_remote_not_implemented_error() {
+        let dir = TempDir::new().unwrap();
+
+        let main_path = dir.path().join("main.yaml");
+        fs::write(
+            &main_path,
+            "rules:\n  - remote: git+https://github.com/user/repo.git\n",
+        )
+        .unwrap();
+
+        let result = load(main_path.to_str().unwrap());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("git-based remote not implemented"));
+        assert!(err.contains("github.com/user/repo.git"));
     }
 }
