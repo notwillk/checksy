@@ -56,6 +56,7 @@ pub fn run(args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write) ->
 #[derive(Debug, Default)]
 struct GlobalFlags {
     config_path: Option<String>,
+    stdin_config: bool,
 }
 
 fn parse_global_flags(args: &[String]) -> Result<(GlobalFlags, Vec<String>), String> {
@@ -72,6 +73,11 @@ fn parse_global_flags(args: &[String]) -> Result<(GlobalFlags, Vec<String>), Str
                 }
                 globals.config_path = Some(args[i + 1].clone());
                 i += 2;
+                continue;
+            }
+            "--stdin-config" => {
+                globals.stdin_config = true;
+                i += 1;
                 continue;
             }
             _ if arg.starts_with("--config=") => {
@@ -160,7 +166,13 @@ fn run_check(
         }
     }
 
-    let config_path = config_path.or(globals.config_path).unwrap_or_default();
+    let config_path = config_path.or(globals.config_path).unwrap_or_else(|| {
+        if globals.stdin_config {
+            "-".to_string()
+        } else {
+            String::new()
+        }
+    });
     let resolved = match resolve_path(&config_path) {
         Ok(Some(p)) => p,
         Ok(None) => {
@@ -173,11 +185,15 @@ fn run_check(
         }
     };
 
-    let abs_config_path = match std::fs::canonicalize(&resolved) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(e) => {
-            writeln!(stderr, "unable to resolve config path: {}", e).ok();
-            return 2;
+    let abs_config_path = if resolved == "-" {
+        "-".to_string()
+    } else {
+        match std::fs::canonicalize(&resolved) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(e) => {
+                writeln!(stderr, "unable to resolve config path: {}", e).ok();
+                return 2;
+            }
         }
     };
 
@@ -189,26 +205,32 @@ fn run_check(
         }
     };
 
-    let check_severity = match check_severity {
-        Some(ref s) => match parse_severity(s) {
+    let check_severity = if let Some(ref s) = check_severity {
+        match parse_severity(s) {
             Ok(sev) => sev,
             Err(e) => {
                 writeln!(stderr, "{}", e).ok();
                 return 2;
             }
-        },
-        None => Severity::Debug,
+        }
+    } else if let Some(s) = cfg.check_severity {
+        s
+    } else {
+        Severity::Debug
     };
 
-    let fail_severity = match fail_severity {
-        Some(ref s) => match parse_severity(s) {
+    let fail_severity = if let Some(ref s) = fail_severity {
+        match parse_severity(s) {
             Ok(sev) => sev,
             Err(e) => {
                 writeln!(stderr, "{}", e).ok();
                 return 2;
             }
-        },
-        None => Severity::Error,
+        }
+    } else if let Some(s) = cfg.fail_severity {
+        s
+    } else {
+        Severity::Error
     };
 
     let min_severity = doctor::min_severity(check_severity, fail_severity);
@@ -314,6 +336,14 @@ fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Writ
   "title": "checksy configuration",
   "type": "object",
   "properties": {
+    "checkSeverity": {
+      "type": "string",
+      "enum": ["debug", "info", "warn", "error"]
+    },
+    "failSeverity": {
+      "type": "string",
+      "enum": ["debug", "info", "warn", "error"]
+    },
     "preconditions": {
       "type": "array",
       "items": {
@@ -368,6 +398,7 @@ fn print_usage(stdout: &mut dyn Write) {
         stdout,
         "  --config string   path to config file (defaults to .checksy.yaml)"
     );
+    let _ = writeln!(stdout, "  --stdin-config    read config from stdin");
     let _ = writeln!(stdout);
     let _ = writeln!(stdout, "Available Commands:");
     let _ = writeln!(stdout, "  check      Run checks for config-defined rules");

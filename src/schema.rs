@@ -36,7 +36,10 @@ pub mod schema {
                 "warn" | "warning" => Ok(Severity::Warning),
                 "info" => Ok(Severity::Info),
                 "debug" => Ok(Severity::Debug),
-                _ => Err(serde::de::Error::custom(format!("unknown variant `{}`, expected one of `error`, `warning`, `info`, `debug`", s))),
+                _ => Err(serde::de::Error::custom(format!(
+                    "unknown variant `{}`, expected one of `error`, `warning`, `info`, `debug`",
+                    s
+                ))),
             }
         }
     }
@@ -83,6 +86,10 @@ pub mod schema {
 
     #[derive(Debug, Clone, Serialize, Deserialize, Default)]
     pub struct Config {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub check_severity: Option<Severity>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub fail_severity: Option<Severity>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub preconditions: Vec<Rule>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]

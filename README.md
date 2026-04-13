@@ -1,6 +1,6 @@
 # checksy
 
-checksy is a Go-based command line utility intended to run lightweight health checks against a development workspace. The initial scaffolding provides a `check` command that demonstrates how to add future checks and subcommands.
+checksy is a Rust-based command line utility intended to run lightweight health checks against a development workspace.
 
 ## Installation
 
@@ -18,11 +18,13 @@ curl -fsSL https://raw.githubusercontent.com/notwillk/checksy/main/scripts/unins
 
 ```
 src/
-  go.mod               # Go module root for the CLI
-  cmd/checksy # CLI entry point (main package)
-  internal/cli         # Argument parsing and command wiring
-  internal/doctor      # Diagnostic checks and reporting helpers
-  internal/version     # Centralized version string
+  Cargo.toml           # Rust package definition
+  main.rs              # CLI entry point
+  cli.rs               # Argument parsing and command wiring
+  doctor.rs            # Diagnostic checks and reporting helpers
+  config.rs            # Configuration loading
+  schema.rs            # Configuration schema definitions
+  version.rs           # Centralized version string
 ```
 
 ## Building
@@ -46,22 +48,32 @@ checksy help
 # Run the workspace validation rules
 checksy --config=path/to/.checksy.yaml check
 
+# Run with config from stdin
+cat path/to/.checksy.yaml | checksy --stdin-config check
+
 # Attempt to auto-fix failures when fixes are defined
 checksy --config=path/to/.checksy.yaml check --fix
 
 # Emit the configuration JSON schema
 checksy schema > dist/config.schema.json
 
-# Emit the configuration JSON schema (prettily)
-checksy schema --pretty > dist/config.schema.json
-
 # Only execute warn+ rules but fail only on errors
 checksy check --check-severity=warn --fail-severity=error
 ```
 
-The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command reflects over the configuration struct in `schema/config.go` and outputs a machine-readable JSON Schema definition that downstream tooling can validate against.
+The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command reflects over the configuration struct and outputs a machine-readable JSON Schema definition that downstream tooling can validate against.
 
 Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. When omitted, checks default to running for warn+ rules and the command only fails for error-level rules. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but no longer abort the run.
+
+These severity options can also be set in the config file at the top level:
+
+```yaml
+checkSeverity: warn
+failSeverity: warn
+rules:
+  - name: "Example"
+    check: echo "hello"
+```
 
 
 ## Configuration

@@ -1,0 +1,27 @@
+checkSeverity: warn
+failSeverity: warn
+rules:
+  - name: "Debug pass"
+    severity: debug
+    check: echo "debug pass"
+  - name: "Debug fail"
+    severity: debug
+    check: exit 1
+  - name: "Info pass"
+    severity: info
+    check: echo "info pass"
+  - name: "Info fail"
+    severity: info
+    check: exit 1
+  - name: "Warning pass"
+    severity: warn
+    check: echo "warn pass"
+  - name: "Warning fail"
+    severity: warn
+    check: exit 1
+  - name: "Error pass"
+    severity: error
+    check: echo "error pass"
+  - name: "Error fail"
+    severity: error
+    check: exit 1
