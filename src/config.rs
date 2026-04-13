@@ -1,3 +1,4 @@
+use crate::cache::{CacheManager, GitRemote};
 use crate::schema::{Config, Severity};
 use std::collections::HashSet;
 use std::fs;
@@ -51,6 +52,7 @@ fn load_with_context(
                 // Already visited this config (circular reference)
                 // Return empty config with inherited defaults
                 return Ok(Config {
+                    cache_path: None,
                     check_severity: parent_defaults.and_then(|(s, _)| s),
                     fail_severity: parent_defaults.and_then(|(_, s)| s),
                     preconditions: vec![],
@@ -130,7 +132,7 @@ fn expand_remotes(
             }
 
             let remote_path = rule.remote.as_ref().unwrap();
-            let resolved = resolve_remote_path(config_dir, remote_path)?;
+            let resolved = resolve_remote_path(config_dir, cfg.cache_path.as_deref(), remote_path)?;
 
             // Load and expand the remote config
             // (load_with_context will handle circular reference detection)
@@ -163,7 +165,7 @@ fn expand_remotes(
             }
 
             let remote_path = rule.remote.as_ref().unwrap();
-            let resolved = resolve_remote_path(config_dir, remote_path)?;
+            let resolved = resolve_remote_path(config_dir, cfg.cache_path.as_deref(), remote_path)?;
 
             // Load and expand the remote config
             // (load_with_context will handle circular reference detection)
@@ -184,14 +186,6 @@ fn expand_remotes(
     cfg.rules = expanded_rules;
 
     Ok(())
-}
-
-/// Parsed Git-based resource locator
-#[derive(Debug, Clone, PartialEq)]
-pub struct GitRemote {
-    pub repo: String,
-    pub ref_: String,
-    pub path: String,
 }
 
 /// Parse a remote string to detect git-based resource locators
@@ -243,13 +237,36 @@ pub fn parse_git_remote(remote_str: &str) -> Option<GitRemote> {
     Some(GitRemote { repo, ref_, path })
 }
 
-fn resolve_remote_path(config_dir: &Path, remote_path: &str) -> Result<PathBuf, String> {
+/// Resolves a remote config path
+/// For git remotes, checks if the remote is cached and returns the cached path
+pub fn resolve_remote_path(
+    config_dir: &Path,
+    cache_path: Option<&str>,
+    remote_path: &str,
+) -> Result<PathBuf, String> {
     // Check for git-based resource locator
     if let Some(git_remote) = parse_git_remote(remote_path) {
-        return Err(format!(
-            "git-based remote not implemented: {} (repo: {}, ref: {}, path: {})",
-            remote_path, git_remote.repo, git_remote.ref_, git_remote.path
-        ));
+        // Check if this git remote is cached
+        let cache_mgr = CacheManager::new(config_dir, cache_path);
+
+        if !cache_mgr.is_cached(&git_remote.repo, &git_remote.ref_) {
+            return Err(format!(
+                "git remote not cached: {}. Run 'checksy install' first",
+                remote_path
+            ));
+        }
+
+        let config_path = cache_mgr.get_config_path(&git_remote);
+
+        if !config_path.exists() {
+            return Err(format!(
+                "cached config not found: {} (expected at: {})",
+                git_remote.path,
+                config_path.display()
+            ));
+        }
+
+        return Ok(config_path);
     }
 
     let path = config_dir.join(remote_path);
@@ -329,6 +346,7 @@ mod tests {
     #[test]
     fn test_apply_rule_defaults() {
         let mut cfg = Config {
+            cache_path: None,
             check_severity: None,
             fail_severity: None,
             preconditions: vec![],
@@ -551,7 +569,7 @@ mod tests {
         let result = load(main_path.to_str().unwrap());
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("git-based remote not implemented"));
-        assert!(err.contains("github.com/user/repo.git"));
+        assert!(err.contains("git remote not cached"));
+        assert!(err.contains("Run 'checksy install' first"));
     }
 }

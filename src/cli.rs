@@ -1,7 +1,11 @@
-use crate::config::{load, resolve_path};
+use crate::cache::{CacheManager, GitRemote};
+use crate::config::{load, parse_git_remote, resolve_path};
 use crate::doctor::{self, Options, Report, RuleResult};
-use crate::schema::{Rule, Severity};
+use crate::git::GitCache;
+use crate::schema::{Config, Rule, Severity};
 use crate::version::VERSION;
+use std::collections::HashSet;
+use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 
@@ -40,6 +44,7 @@ pub fn run(args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         "check" => run_check(cmd_args.to_vec(), globals, stdout, stderr),
         "diagnose" => run_diagnose(cmd_args.to_vec(), globals, stdout, stderr),
         "init" => run_init(cmd_args.to_vec(), globals, stdout, stderr),
+        "install" => run_install(cmd_args.to_vec(), globals, stdout, stderr),
         "schema" => run_schema(cmd_args.to_vec(), stdout, stderr),
         "version" | "--version" => {
             writeln!(stdout, "checksy {}", VERSION).ok();
@@ -330,12 +335,243 @@ fn write_config_template(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn run_install(
+    args: Vec<String>,
+    globals: GlobalFlags,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> i32 {
+    // Parse flags
+    let mut prune = false;
+    for arg in &args {
+        match arg.as_str() {
+            "--prune" => prune = true,
+            _ => {
+                writeln!(stderr, "Unknown install flag: {}", arg).ok();
+                return 2;
+            }
+        }
+    }
+
+    // Resolve config path
+    let config_path = globals.config_path.unwrap_or_else(|| {
+        if globals.stdin_config {
+            "-".to_string()
+        } else {
+            String::new()
+        }
+    });
+
+    let resolved = match resolve_path(&config_path) {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            writeln!(stderr, "no configuration file found; specify --config or add .checksy.yaml to the workspace").ok();
+            return 2;
+        }
+        Err(e) => {
+            writeln!(stderr, "{}", e).ok();
+            return 2;
+        }
+    };
+
+    let abs_config_path = if resolved == "-" {
+        writeln!(stderr, "install cannot be used with stdin config").ok();
+        return 2;
+    } else {
+        match std::fs::canonicalize(&resolved) {
+            Ok(p) => p,
+            Err(e) => {
+                writeln!(stderr, "unable to resolve config path: {}", e).ok();
+                return 2;
+            }
+        }
+    };
+
+    let config_dir = abs_config_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    // Load config (without expanding remotes - we just need to find git remotes)
+    let cfg = match load_without_remote_expansion(&abs_config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            writeln!(
+                stderr,
+                "failed to load config '{}': {}",
+                abs_config_path.display(),
+                e
+            )
+            .ok();
+            return 2;
+        }
+    };
+
+    // Collect all git remotes recursively
+    let git_remotes = match collect_git_remotes_recursive(&cfg, &config_dir, &cfg.cache_path) {
+        Ok(remotes) => remotes,
+        Err(e) => {
+            writeln!(stderr, "failed to collect git remotes: {}", e).ok();
+            return 2;
+        }
+    };
+
+    if git_remotes.is_empty() {
+        writeln!(stdout, "No git remotes to cache").ok();
+        return 0;
+    }
+
+    // Show spinner
+    let _ = writeln!(stdout, "📦 Caching {} git remote(s)...", git_remotes.len());
+
+    // Cache each remote
+    let cache_mgr = CacheManager::new(&config_dir, cfg.cache_path.as_deref());
+
+    for (i, (repo, ref_)) in git_remotes.iter().enumerate() {
+        let _ = write!(
+            stdout,
+            "  [{}/{}] {}#{} ",
+            i + 1,
+            git_remotes.len(),
+            repo,
+            ref_
+        );
+
+        if cache_mgr.is_cached(repo, ref_) {
+            let _ = writeln!(stdout, "✓ (already cached)");
+            continue;
+        }
+
+        let dest = cache_mgr.ref_cache_path(repo, ref_);
+        match GitCache::shallow_clone(repo, ref_, &dest) {
+            Ok(_) => {
+                let _ = writeln!(stdout, "✓");
+            }
+            Err(e) => {
+                let _ = writeln!(stdout, "✗");
+                let _ = writeln!(stderr, "Failed to cache {}#{}: {}", repo, ref_, e);
+                return 2;
+            }
+        }
+    }
+
+    let _ = writeln!(stdout, "✅ All remotes cached");
+
+    // Prune if requested
+    if prune {
+        let used_set: HashSet<(String, String)> = git_remotes
+            .into_iter()
+            .map(|(repo, ref_)| (CacheManager::encode_repo_name(&repo), ref_))
+            .collect();
+
+        match cache_mgr.prune(&used_set) {
+            Ok(_) => {
+                let _ = writeln!(stdout, "✅ Pruned unused cache entries");
+            }
+            Err(e) => {
+                let _ = writeln!(stderr, "Prune failed: {}", e);
+                return 2;
+            }
+        }
+    }
+
+    0
+}
+
+/// Load config without expanding remote references
+fn load_without_remote_expansion(path: &std::path::Path) -> Result<Config, String> {
+    use std::io::Read;
+
+    let data = std::fs::read_to_string(path).map_err(|e| format!("read config: {}", e))?;
+
+    let cfg: Config = serde_yaml::from_str(&data).map_err(|e| format!("decode config: {}", e))?;
+
+    Ok(cfg)
+}
+
+/// Collect all git remotes recursively from a config
+fn collect_git_remotes_recursive(
+    cfg: &Config,
+    config_dir: &std::path::Path,
+    cache_path: &Option<String>,
+) -> Result<Vec<(String, String)>, String> {
+    let mut remotes: Vec<(String, String)> = Vec::new();
+    let mut visited: HashSet<std::path::PathBuf> = HashSet::new();
+
+    collect_from_config(cfg, config_dir, cache_path, &mut remotes, &mut visited)?;
+
+    // Remove duplicates while preserving order
+    let mut seen = HashSet::new();
+    let unique_remotes: Vec<(String, String)> = remotes
+        .into_iter()
+        .filter(|(repo, ref_)| seen.insert((repo.clone(), ref_.clone())))
+        .collect();
+
+    Ok(unique_remotes)
+}
+
+fn collect_from_config(
+    cfg: &Config,
+    config_dir: &std::path::Path,
+    cache_path: &Option<String>,
+    remotes: &mut Vec<(String, String)>,
+    visited: &mut HashSet<std::path::PathBuf>,
+) -> Result<(), String> {
+    // Scan preconditions and rules for git remotes
+    let all_rules = cfg.preconditions.iter().chain(cfg.rules.iter());
+
+    for rule in all_rules {
+        if let Some(remote_path) = &rule.remote {
+            if let Some(git_remote) = parse_git_remote(remote_path) {
+                remotes.push((git_remote.repo.clone(), git_remote.ref_.clone()));
+            } else {
+                // Regular file remote - check if it points to another config that might have git remotes
+                let resolved = config_dir.join(remote_path);
+                if resolved.exists() && resolved.is_file() {
+                    let canonical = resolved.canonicalize().ok();
+                    if let Some(path) = canonical {
+                        if !visited.contains(&path) {
+                            visited.insert(path.clone());
+                            // Load this remote config and recurse
+                            match load_without_remote_expansion(&path) {
+                                Ok(remote_cfg) => {
+                                    let remote_dir = path
+                                        .parent()
+                                        .map(|p| p.to_path_buf())
+                                        .unwrap_or_else(|| config_dir.to_path_buf());
+                                    collect_from_config(
+                                        &remote_cfg,
+                                        &remote_dir,
+                                        cache_path,
+                                        remotes,
+                                        visited,
+                                    )?;
+                                }
+                                Err(_) => {
+                                    // Ignore configs we can't parse
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Write) -> i32 {
     let schema_json = r#"{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "checksy configuration",
   "type": "object",
   "properties": {
+    "cachePath": {
+      "type": "string",
+      "description": "Path to cache directory for git-based remotes (defaults to .checksy-cache)",
+      "default": ".checksy-cache"
+    },
     "checkSeverity": {
       "type": "string",
       "enum": ["debug", "info", "warn", "error"]
@@ -350,10 +586,13 @@ fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Writ
         "type": "object",
         "oneOf": [
           {
-            "description": "Remote rule - only 'remote' property allowed",
+            "description": "Remote rule - only 'remote' property allowed. Supports file paths or git+https:// URLs (requires 'checksy install' first)",
             "required": ["remote"],
             "properties": {
-              "remote": { "type": "string", "description": "Relative path to another config file" }
+              "remote": { 
+                "type": "string", 
+                "description": "Relative path to another config file, or git+URL#ref:path for git-based remotes (e.g., git+https://github.com/org/repo.git#main:.checksy.yaml)"
+              }
             },
             "additionalProperties": false
           },
@@ -378,10 +617,13 @@ fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Writ
         "type": "object",
         "oneOf": [
           {
-            "description": "Remote rule - only 'remote' property allowed",
+            "description": "Remote rule - only 'remote' property allowed. Supports file paths or git+https:// URLs (requires 'checksy install' first)",
             "required": ["remote"],
             "properties": {
-              "remote": { "type": "string", "description": "Relative path to another config file" }
+              "remote": { 
+                "type": "string", 
+                "description": "Relative path to another config file, or git+URL#ref:path for git-based remotes (e.g., git+https://github.com/org/repo.git#main:.checksy.yaml)"
+              }
             },
             "additionalProperties": false
           },
@@ -434,6 +676,7 @@ fn print_usage(stdout: &mut dyn Write) {
         stdout,
         "  diagnose   Run checks (deprecated, use 'check' instead)"
     );
+    let _ = writeln!(stdout, "  install    Cache git-based remote configs");
     let _ = writeln!(
         stdout,
         "  schema     Print the JSON schema for configuration file"
