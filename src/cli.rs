@@ -1,6 +1,6 @@
 use crate::cache::{CacheManager, GitRemote};
+use crate::check::{self, Options, Report, RuleResult};
 use crate::config::{load, parse_git_remote, resolve_path};
-use crate::doctor::{self, Options, Report, RuleResult};
 use crate::git::GitCache;
 use crate::schema::{Config, Rule, Severity};
 use crate::version::VERSION;
@@ -238,7 +238,7 @@ fn run_check(
         Severity::Error
     };
 
-    let min_severity = doctor::min_severity(check_severity, fail_severity);
+    let min_severity = check::min_severity(check_severity, fail_severity);
 
     let workdir = Path::new(&abs_config_path)
         .parent()
@@ -261,7 +261,7 @@ fn run_check(
             }
         }
     } else {
-        match doctor::diagnose(opts) {
+        match check::diagnose(opts) {
             Ok(r) => r,
             Err(e) => {
                 writeln!(stderr, "check failed: {}", e).ok();
@@ -805,9 +805,9 @@ fn check_with_fixes(
     };
     let mut results = vec![];
 
-    let preconditions = doctor::filter_preconditions(&opts.config, opts.min_severity);
+    let preconditions = check::filter_preconditions(&opts.config, opts.min_severity);
     for rule in preconditions {
-        let result = doctor::run_rule(rule.clone(), workdir);
+        let result = check::run_rule(rule.clone(), workdir);
         if result.success() {
             print_rule_success(&result, stdout, stderr);
             results.push(result);
@@ -830,7 +830,7 @@ fn check_with_fixes(
             hint: rule.hint.clone(),
             remote: None,
         };
-        let fix_result = doctor::run_rule(fix_rule, workdir);
+        let fix_result = check::run_rule(fix_rule, workdir);
         if !fix_result.success() {
             print_rule_failure(&fix_result, stdout, stderr);
             print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
@@ -840,14 +840,14 @@ fn check_with_fixes(
 
         print_rule_success(&fix_result, stdout, stderr);
 
-        let result = doctor::run_rule(rule, workdir);
+        let result = check::run_rule(rule, workdir);
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }
 
-    let rules = doctor::filter_rules(&opts.config, opts.min_severity);
+    let rules = check::filter_rules(&opts.config, opts.min_severity);
     for rule in rules {
-        let result = doctor::run_rule(rule.clone(), workdir);
+        let result = check::run_rule(rule.clone(), workdir);
         if result.success() {
             print_rule_success(&result, stdout, stderr);
             results.push(result);
@@ -870,7 +870,7 @@ fn check_with_fixes(
             hint: rule.hint.clone(),
             remote: None,
         };
-        let fix_result = doctor::run_rule(fix_rule, workdir);
+        let fix_result = check::run_rule(fix_rule, workdir);
         if !fix_result.success() {
             print_rule_failure(&fix_result, stdout, stderr);
             print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
@@ -880,14 +880,14 @@ fn check_with_fixes(
 
         print_rule_success(&fix_result, stdout, stderr);
 
-        let result = doctor::run_rule(rule, workdir);
+        let result = check::run_rule(rule, workdir);
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }
 
-    let file_paths = doctor::expand_rule_files(workdir, &opts.config.patterns)?;
+    let file_paths = check::expand_rule_files(workdir, &opts.config.patterns)?;
     for rel_path in file_paths {
-        let result = doctor::run_rule_file(workdir, &rel_path);
+        let result = check::run_rule_file(workdir, &rel_path);
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }

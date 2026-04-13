@@ -23,7 +23,7 @@ src/
   cache.rs             # Git remote cache management
   cli.rs               # Argument parsing and command wiring
   config.rs            # Configuration loading
-  doctor.rs            # Diagnostic checks and reporting helpers
+  check.rs             # Check execution and reporting helpers
   git.rs               # Git operations for caching remotes
   schema.rs            # Configuration schema definitions
   version.rs           # Centralized version string
