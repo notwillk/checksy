@@ -26,6 +26,7 @@ cross-compile target:
         echo "Building for macOS natively..."
         rustup target add "$target"
         cd src && cargo build --release --target "$target"
+        mv "src/target/$target/release/checksy" "dist/checksy_${os}_${arch}"
     else
         echo "Cross-compiling via Docker..."
         cargo install cross --git https://github.com/cross-rs/cross
