@@ -14,36 +14,7 @@ dev:
 cross-compile target:
     #!/bin/bash
     set -e
-    target="{{target}}"
-    os=$(echo "$target" | cut -d'-' -f3)
-    arch=$(echo "$target" | cut -d'-' -f1)
-    echo "Target: $target"
-    echo "Architecture: $arch"
-    echo "OS: $os"
-    mkdir -p dist
-
-    if [ "$os" = "darwin" ]; then
-        echo "Building for macOS natively..."
-        rustup target add "$target"
-        cargo build --manifest-path src/Cargo.toml --release --target "$target"
-        mv "src/target/$target/release/checksy" "dist/checksy_${os}_${arch}"
-    else
-        echo "Cross-compiling via cross..."
-        cargo install cross --git https://github.com/cross-rs/cross
-        cross build --manifest-path src/Cargo.toml --release --target "$target"
-        mv "src/target/$target/release/checksy" "dist/checksy_${os}_${arch}"
-    fi
-
-    echo "Packaging: checksy_${os}_${arch}.tar.gz"
-    mkdir -p dist/tmp
-    cp "dist/checksy_${os}_${arch}" "dist/tmp/checksy"
-    tar -czf "dist/checksy_${os}_${arch}.tar.gz" -C dist/tmp checksy
-    rm -rf dist/tmp
-
-    echo "Calculating checksum: checksy_${os}_${arch}-checksum.txt"
-    (cd dist && sha256sum checksy_${os}_${arch}.tar.gz) > "dist/checksy_${os}_${arch}-checksum.txt"
-
-    echo "Done"
+    ./scripts/cross-compile.sh "{{target}}"
 
 sign file key:
     gpg --batch --import "{{key}}"
