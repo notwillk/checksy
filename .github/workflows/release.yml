@@ -68,13 +68,12 @@ jobs:
           cacheFrom: ghcr.io/${{ github.repository }}/release_container
           runCmd: just can-build && just cross-compile ${{ matrix.target }}
 
-      - name: Install build tools (macos)
+      - name: Install then validate build environment (macos)
         if: ${{ matrix.os == 'macos-latest' }}
-        run: brew install just
-
-      - name: Validate build environment (macos)
-        if: ${{ matrix.os == 'macos-latest' }}
-        run: just can-build
+        run: |
+          brew install just
+          just can-build
+          rustup target add ${{ matrix.target }}
 
       - name: Build (macos)
         if: ${{ matrix.os == 'macos-latest' }}

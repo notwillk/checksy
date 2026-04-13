@@ -20,11 +20,21 @@ cross-compile target:
     echo "Target: $target"
     echo "Architecture: $arch"
     echo "OS: $os"
-    cargo install cross --git https://github.com/cross-rs/cross
     mkdir -p dist
-    cd src && cross build --release --target "$target"
+
+    if [ "$os" = "darwin" ]; then
+        echo "Building for macOS natively..."
+        rustup target add "$target"
+        cd src && cargo build --release --target "$target"
+    else
+        echo "Cross-compiling via Docker..."
+        cargo install cross --git https://github.com/cross-rs/cross
+        cd src && cross build --release --target "$target"
+    fi
+
     echo "Cross-compiling: checksy_${os}_${arch}"
     cp target/"$target"/release/checksy ../dist/checksy_${os}_${arch}
+
     echo "Packaging: checksy_${os}_${arch}.tar.gz"
     cd .. && tar -czf dist/checksy_${os}_${arch}.tar.gz --transform="s|^checksy_${os}_${arch}$|checksy|" -C dist checksy_${os}_${arch}
     echo "Calculating checksum: checksy_${os}_${arch}-checksum.txt"
