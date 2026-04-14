@@ -1,11 +1,10 @@
-use crate::cache::{CacheManager, GitRemote};
+use crate::cache::CacheManager;
 use crate::check::{self, Options, Report, RuleResult};
 use crate::config::{load, parse_git_remote, resolve_path};
 use crate::git::GitCache;
 use crate::schema::{Config, Rule, Severity};
 use crate::version::VERSION;
 use std::collections::HashSet;
-use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 
@@ -202,7 +201,7 @@ fn run_check(
         }
     };
 
-    let cfg = match load(&abs_config_path) {
+    let cfg = match load_with_fix(&abs_config_path, apply_fixes, stdout, stderr) {
         Ok(c) => c,
         Err(e) => {
             writeln!(stderr, "failed to load config '{}': {}", abs_config_path, e).ok();
@@ -275,6 +274,91 @@ fn run_check(
     }
 
     summarize_report(&report, no_fail, stdout)
+}
+
+/// Load config, optionally fixing missing git remotes
+fn load_with_fix(
+    abs_config_path: &str,
+    apply_fixes: bool,
+    stdout: &mut dyn Write,
+    _stderr: &mut dyn Write,
+) -> Result<Config, String> {
+    match load(abs_config_path) {
+        Ok(c) => Ok(c),
+        Err(e) => {
+            // Check if this is a "not cached" error and --fix is enabled
+            if !apply_fixes || !e.contains("git remote not cached") {
+                return Err(e);
+            }
+
+            // Need to cache git remotes
+            writeln!(stdout, "🔧 Caching missing git remotes...").ok();
+
+            let config_dir = if abs_config_path == "-" {
+                std::path::PathBuf::from(".")
+            } else {
+                std::path::Path::new(abs_config_path)
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+            };
+
+            // Load config without expanding to collect git remotes
+            let cfg = match load_without_remote_expansion(std::path::Path::new(abs_config_path)) {
+                Ok(c) => c,
+                Err(e2) => {
+                    return Err(format!("{} (and failed to parse for fix: {})", e, e2));
+                }
+            };
+
+            // Collect all git remotes
+            let git_remotes =
+                match collect_git_remotes_recursive(&cfg, &config_dir, &cfg.cache_path) {
+                    Ok(remotes) => remotes,
+                    Err(e2) => {
+                        return Err(format!("{} (and failed to collect remotes: {})", e, e2));
+                    }
+                };
+
+            if git_remotes.is_empty() {
+                return Err(e); // No git remotes to fix, return original error
+            }
+
+            // Cache each remote
+            let cache_mgr = CacheManager::new(&config_dir, cfg.cache_path.as_deref());
+
+            for (i, (repo, ref_)) in git_remotes.iter().enumerate() {
+                if cache_mgr.is_cached(repo, ref_) {
+                    continue;
+                }
+
+                let _ = write!(
+                    stdout,
+                    "  [{}/{}] {}#{} ",
+                    i + 1,
+                    git_remotes.len(),
+                    repo,
+                    ref_
+                );
+
+                let dest = cache_mgr.ref_cache_path(repo, ref_);
+                match GitCache::shallow_clone(repo, ref_, &dest) {
+                    Ok(_) => {
+                        let _ = writeln!(stdout, "✓");
+                    }
+                    Err(e2) => {
+                        let _ = writeln!(stdout, "✗");
+                        return Err(format!("failed to cache {}#{}: {}", repo, ref_, e2));
+                    }
+                }
+            }
+
+            writeln!(stdout, "✅ Git remotes cached, retrying...").ok();
+
+            // Retry loading the config
+            load(abs_config_path)
+        }
+    }
 }
 
 fn run_init(
@@ -480,8 +564,6 @@ fn run_install(
 
 /// Load config without expanding remote references
 fn load_without_remote_expansion(path: &std::path::Path) -> Result<Config, String> {
-    use std::io::Read;
-
     let data = std::fs::read_to_string(path).map_err(|e| format!("read config: {}", e))?;
 
     let cfg: Config = serde_yaml::from_str(&data).map_err(|e| format!("decode config: {}", e))?;
