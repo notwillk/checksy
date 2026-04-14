@@ -606,7 +606,8 @@ fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Writ
               "fix": { "type": "string" },
               "hint": { "type": "string" },
               "remote": { "type": "string" }
-            }
+            },
+            "additionalProperties": false
           }
         ]
       }
@@ -637,7 +638,8 @@ fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Writ
               "fix": { "type": "string" },
               "hint": { "type": "string" },
               "remote": { "type": "string" }
-            }
+            },
+            "additionalProperties": false
           }
         ]
       }
@@ -647,7 +649,8 @@ fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Writ
       "items": { "type": "string" }
     }
   },
-  "required": ["rules"]
+  "required": ["rules"],
+  "additionalProperties": false
 }"#;
 
     writeln!(stdout, "{}", schema_json).ok();
