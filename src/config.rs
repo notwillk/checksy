@@ -547,6 +547,30 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_git_remote_empty_ref_with_path() {
+        // Format: git+<repo>#:<path> (empty ref should default to "main")
+        let result =
+            parse_git_remote("git+git@github.com:notwillk/checks.git#:github.checksy.yaml");
+        assert!(result.is_some());
+        let git = result.unwrap();
+        assert_eq!(git.repo, "git@github.com:notwillk/checks.git");
+        assert_eq!(git.ref_, "main"); // empty ref defaults to main
+        assert_eq!(git.path, "github.checksy.yaml");
+    }
+
+    #[test]
+    fn test_parse_git_remote_empty_ref_with_path_https() {
+        // Format: git+<repo>#:<path> with HTTPS URL
+        let result =
+            parse_git_remote("git+https://github.com/notwillk/checksy.git#:configs/dev.yaml");
+        assert!(result.is_some());
+        let git = result.unwrap();
+        assert_eq!(git.repo, "https://github.com/notwillk/checksy.git");
+        assert_eq!(git.ref_, "main"); // empty ref defaults to main
+        assert_eq!(git.path, "configs/dev.yaml");
+    }
+
+    #[test]
     fn test_parse_git_remote_not_matching() {
         // Regular file paths should return None
         assert!(parse_git_remote("shared.yaml").is_none());

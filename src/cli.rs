@@ -522,8 +522,57 @@ fn run_install(
         );
 
         if cache_mgr.is_cached(repo, ref_) {
-            let _ = writeln!(stdout, "✓ (already cached)");
-            continue;
+            let cache_path = cache_mgr.ref_cache_path(repo, ref_);
+
+            // Check local SHA
+            let local_sha = match GitCache::get_local_sha(&cache_path) {
+                Ok(sha) => sha,
+                Err(e) => {
+                    let _ = writeln!(stdout, "✗");
+                    let _ = writeln!(
+                        stderr,
+                        "Failed to read local cache for {}#{}: {}",
+                        repo, ref_, e
+                    );
+                    return 2;
+                }
+            };
+
+            // Get remote SHA
+            let remote_sha = match GitCache::get_remote_sha(repo, ref_) {
+                Ok(sha) => sha,
+                Err(e) => {
+                    let _ = writeln!(stdout, "✗");
+                    let _ = writeln!(
+                        stderr,
+                        "Failed to check remote for {}#{}: {}",
+                        repo, ref_, e
+                    );
+                    return 2;
+                }
+            };
+
+            // Compare SHAs
+            if local_sha == remote_sha {
+                let _ = writeln!(stdout, "✓ (already cached)");
+                continue;
+            }
+
+            // SHAs differ - need to update
+            let _ = writeln!(stdout, "↑ updating...");
+
+            // Remove old cache before re-cloning
+            if let Err(e) = std::fs::remove_dir_all(&cache_path) {
+                let _ = writeln!(stdout, "✗");
+                let _ = writeln!(
+                    stderr,
+                    "Failed to remove old cache for {}#{}: {}",
+                    repo, ref_, e
+                );
+                return 2;
+            }
+
+            // Fall through to re-clone
         }
 
         let dest = cache_mgr.ref_cache_path(repo, ref_);

@@ -79,6 +79,68 @@ impl GitCache {
         // Perform shallow clone
         Self::shallow_clone(repo_url, ref_, &dest)
     }
+
+    /// Get the current SHA of the cached repository
+    /// Runs `git rev-parse HEAD` in the cache directory
+    ///
+    /// # Arguments
+    /// * `cache_path` - Path to the cached repository
+    ///
+    /// # Returns
+    /// * `Ok(String)` with the SHA if successful
+    /// * `Err(String)` with error message if command fails
+    pub fn get_local_sha(cache_path: &Path) -> Result<String, String> {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(cache_path)
+            .arg("rev-parse")
+            .arg("HEAD")
+            .output()
+            .map_err(|e| format!("failed to execute git rev-parse: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("git rev-parse failed: {}", stderr));
+        }
+
+        let sha = String::from_utf8_lossy(&output.stdout);
+        Ok(sha.trim().to_string())
+    }
+
+    /// Get the remote SHA for a specific ref
+    /// Runs `git ls-remote <repo_url> <ref_>`
+    ///
+    /// # Arguments
+    /// * `repo_url` - The git repository URL
+    /// * `ref_` - The branch/tag/ref
+    ///
+    /// # Returns
+    /// * `Ok(String)` with the SHA if successful
+    /// * `Err(String)` with error message if command fails (network, auth, etc.)
+    pub fn get_remote_sha(repo_url: &str, ref_: &str) -> Result<String, String> {
+        let output = Command::new("git")
+            .arg("ls-remote")
+            .arg(repo_url)
+            .arg(ref_)
+            .output()
+            .map_err(|e| format!("failed to execute git ls-remote: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("git ls-remote failed: {}", stderr));
+        }
+
+        // Parse output: first column is SHA, second is ref name
+        // Example: "abc123\trefs/heads/main\n"
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let line = stdout.lines().next().ok_or("empty ls-remote output")?;
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.is_empty() {
+            return Err("invalid ls-remote output format".to_string());
+        }
+
+        Ok(parts[0].trim().to_string())
+    }
 }
 
 #[cfg(test)]
@@ -119,5 +181,70 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("failed"));
+    }
+
+    #[test]
+    #[ignore = "requires network access and git installed"]
+    fn test_get_remote_sha_public_repo() {
+        // Test against a well-known public repo (checksy itself)
+        let result = GitCache::get_remote_sha("https://github.com/notwillk/checksy.git", "main");
+
+        assert!(
+            result.is_ok(),
+            "Failed to get remote SHA: {:?}",
+            result.err()
+        );
+        let sha = result.unwrap();
+        // SHA should be 40 hex characters
+        assert_eq!(sha.len(), 40, "SHA should be 40 characters");
+        assert!(
+            sha.chars().all(|c| c.is_ascii_hexdigit()),
+            "SHA should be hex digits"
+        );
+    }
+
+    #[test]
+    fn test_get_remote_sha_invalid_repo() {
+        // Test against non-existent repo
+        let result = GitCache::get_remote_sha(
+            "https://github.com/nonexistent-user-12345/fake-repo.git",
+            "main",
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_local_sha_not_git_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        let not_a_repo = temp_dir.path().join("not-a-repo");
+        std::fs::create_dir(&not_a_repo).unwrap();
+
+        // Should fail when not a git repository
+        let result = GitCache::get_local_sha(&not_a_repo);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[ignore = "requires network access and git installed"]
+    fn test_get_local_sha_after_clone() {
+        let temp_dir = TempDir::new().unwrap();
+        let dest = temp_dir.path().join("clone");
+
+        // Clone a repo
+        GitCache::shallow_clone("https://github.com/notwillk/checksy.git", "main", &dest)
+            .expect("Clone should succeed");
+
+        // Get local SHA
+        let local_sha = GitCache::get_local_sha(&dest).expect("Should get local SHA");
+        assert_eq!(local_sha.len(), 40, "SHA should be 40 characters");
+
+        // Get remote SHA for same ref
+        let remote_sha =
+            GitCache::get_remote_sha("https://github.com/notwillk/checksy.git", "main")
+                .expect("Should get remote SHA");
+
+        // They should match (since we just cloned)
+        assert_eq!(local_sha, remote_sha, "SHAs should match after fresh clone");
     }
 }
