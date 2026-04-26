@@ -1,0 +1,20 @@
+# INVALID: This config has intentional errors for testing
+# Error 1: Remote rule with extra properties (remote rules can ONLY have remote)
+# Error 2: Unknown severity value (should be 'warn' not 'warning')
+
+rules:
+  # ERROR: Remote rule cannot have name or check
+  - remote: shared.yaml
+    name: This is wrong
+    check: echo "This shouldn't be here"
+    severity: error
+
+  # ERROR: Unknown severity
+  - name: Test check
+    severity: warning  # Wrong! Should be 'warn'
+    check: echo "test"
+
+  # This one is valid
+  - name: Valid check
+    severity: warn
+    check: echo "this is fine"

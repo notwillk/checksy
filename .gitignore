@@ -38,3 +38,5 @@ artifacts
 .tmp
 
 fixtures/remote-config/git/.git-cache/
+
+checksy-workspace-eval
