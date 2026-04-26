@@ -1,0 +1,211 @@
+---
+title: SKILL.md Template
+---
+
+# Complete SKILL.md Template
+
+This is a comprehensive template showing all available frontmatter options and recommended body sections.
+
+## Full Example
+
+```markdown
+---
+name: comprehensive-example
+description: >
+  A comprehensive example skill showing all frontmatter options and 
+  recommended body structure. Use as a starting point for complex skills.
+license: MIT
+compatibility: Requires Python 3.8+ and access to the internet
+metadata:
+  author: your-name
+  version: "1.0.0"
+  category: example
+  tags: [template, reference]
+allowed-tools: Bash Read Edit
+---
+
+# Comprehensive Example Skill
+
+Brief one-paragraph overview of what this skill does and when to use it.
+
+## Overview
+
+### What This Skill Does
+
+- Capability 1: Brief description
+- Capability 2: Brief description
+- Capability 3: Brief description
+
+### When to Use
+
+Use this skill when:
+- The user asks for X
+- The user mentions Y
+- The user needs help with Z
+
+Do NOT use this skill when:
+- The task requires A (use skill-name-a instead)
+- The task involves B (use skill-name-b instead)
+
+## Quick Start
+
+For simple tasks, follow this minimal workflow:
+
+1. Step one
+2. Step two
+3. Step three
+
+## Detailed Workflows
+
+### Workflow A: Common Task
+
+For tasks of type A, follow this process:
+
+1. **Preparation**
+   - Check prerequisite: `command to check`
+   - Verify condition: what to look for
+
+2. **Execution**
+   ```bash
+   command --flag value input.txt
+   ```
+
+3. **Validation**
+   - Check output for X
+   - Verify Y is present
+   - Ensure Z format is correct
+
+### Workflow B: Complex Task
+
+For more complex scenarios:
+
+1. Run analysis: `python scripts/analyze.py input/`
+2. Review generated `analysis.json`
+3. Create processing plan based on analysis results
+4. Execute plan: `python scripts/process.py analysis.json`
+5. Validate output: `python scripts/validate.py output/`
+
+## Gotchas
+
+- **Common mistake 1**: Explanation and correction
+- **Common mistake 2**: Explanation and correction  
+- **Environment quirk**: Explanation of unusual behavior
+- **Naming inconsistency**: Field X is called Y in API but Z in database
+
+## Available Scripts
+
+- **`scripts/analyze.py`** — Analyzes input and generates metadata
+  - Usage: `python scripts/analyze.py <input_file>`
+  - Output: `analysis.json` with structure { ... }
+
+- **`scripts/process.py`** — Processes data based on analysis
+  - Usage: `python scripts/process.py <analysis_json>`
+  - Options: `--format json|csv|table`, `--output path`
+
+- **`scripts/validate.py`** — Validates output structure
+  - Usage: `python scripts/validate.py <output_directory>`
+  - Returns: Exit code 0 if valid, 1 with error details if invalid
+
+## Templates
+
+### Output Format A
+
+Use this template for standard outputs:
+
+```markdown
+# [Title]
+
+## Summary
+[One-paragraph overview]
+
+## Details
+[Detailed content]
+
+## Next Steps
+- [ ] Action item 1
+- [ ] Action item 2
+```
+
+### Output Format B
+
+For structured data outputs:
+
+```json
+{
+  "field1": "value",
+  "field2": 123,
+  "items": [
+    {"name": "...", "value": "..."}
+  ]
+}
+```
+
+## Error Handling
+
+When errors occur:
+
+1. Read error message carefully
+2. Check `references/ERROR_CODES.md` for specific guidance
+3. Apply the appropriate fix
+4. Retry the operation
+5. If still failing, escalate to user with:
+   - Full error message
+   - Steps already attempted
+   - Suggested next actions
+
+## Additional Resources
+
+- [API Reference](references/API.md) — Detailed API documentation
+- [Error Codes](references/ERROR_CODES.md) — Common errors and solutions
+- [Configuration](references/CONFIG.md) — Configuration options
+
+## Version History
+
+- 1.0.0 — Initial release
+  - Added core functionality
+  - Basic validation support
+```
+
+## Minimal Example
+
+For simple skills, you only need the required fields:
+
+```markdown
+---
+name: minimal-example
+description: A minimal skill showing only required fields.
+---
+
+Instructions go here. Be clear and concise.
+```
+
+## Medium Example
+
+A practical skill with common options:
+
+```markdown
+---
+name: medium-example
+description: >
+  Process JSON files to extract specific fields, transform data,
+  and output formatted results. Use when working with JSON data
+  that needs filtering, transformation, or restructuring.
+license: MIT
+metadata:
+  version: "1.0.0"
+  author: example-org
+---
+
+## Workflow
+
+1. Validate input JSON: `python3 -m json.tool input.json > /dev/null`
+2. Extract fields: `jq '.field1, .field2' input.json`
+3. Transform as needed using jq or Python
+4. Output formatted result
+
+## Gotchas
+
+- jq returns null for missing fields (not an error)
+- Large JSON files may need streaming with `--stream` flag
+- Always validate output is valid JSON before saving
+```
