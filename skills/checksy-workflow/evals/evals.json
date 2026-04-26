@@ -1,0 +1,91 @@
+{
+  "skill_name": "checksy-workflow",
+  "evals": [
+    {
+      "id": 1,
+      "name": "basic-config-setup",
+      "prompt": "I need to set up checksy for my Node.js project. What should my .checksy.yaml look like?",
+      "expected_output": "A valid .checksy.yaml with preconditions for node_modules and rules for tests, linting, and type checking",
+      "files": [],
+      "assertions": [
+        "Output contains valid YAML with 'rules' array",
+        "Includes at least one precondition for dependencies",
+        "Includes severity configuration",
+        "Examples are relevant to Node.js projects"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "git-cache-error-fix",
+      "prompt": "My checksy check is failing with 'git remote not cached' error. How do I fix this?",
+      "expected_output": "Clear instructions to run 'checksy install' or use --fix flag",
+      "files": [],
+      "assertions": [
+        "Mentions 'checksy install' command",
+        "Mentions --fix flag as alternative",
+        "Explains why the error occurs"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "github-actions-integration",
+      "prompt": "How do I integrate checksy into my GitHub Actions workflow?",
+      "expected_output": "Complete GitHub Actions YAML with checksy installation and execution",
+      "files": [],
+      "assertions": [
+        "Provides valid GitHub Actions workflow syntax",
+        "Includes checksy installation step",
+        "Includes 'checksy install' for remotes",
+        "Includes 'checksy check' execution"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "fix-mode-usage",
+      "prompt": "I have a failing check that says 'npm test' failed. Can I make it auto-fix?",
+      "expected_output": "Instructions on adding 'fix' property with appropriate npm command",
+      "files": [],
+      "assertions": [
+        "Explains the 'fix' property",
+        "Shows example fix command for npm",
+        "Mentions that fix runs before re-checking"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "remote-config-setup",
+      "prompt": "I want to share checksy configs across my team's repos. What's the best approach?",
+      "expected_output": "Explanation of git-based remote configs with proper URL format",
+      "files": [],
+      "assertions": [
+        "Mentions 'remote:' property in rules",
+        "Shows git+URL format",
+        "Mentions 'checksy install' requirement"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "severity-filtering",
+      "prompt": "How do I run only warning and error checks but make the command fail only on errors?",
+      "expected_output": "Explanation of --check-severity and --fail-severity flags",
+      "files": [],
+      "assertions": [
+        "Mentions --check-severity or --cs flag",
+        "Mentions --fail-severity or --fs flag",
+        "Shows example command with both flags"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "implicit-trigger-health-checks",
+      "prompt": "I need to set up health checks for my development workspace. What tool should I use?",
+      "expected_output": "Recommendation to use checksy with explanation of how it works",
+      "files": [],
+      "assertions": [
+        "Mentions checksy as a solution",
+        "Explains what checksy does",
+        "Provides basic getting-started guidance"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "skill_name": "checksy-workflow",
+  "description_version": "1.2.0",
+  "queries": [
+    {
+      "query": "help me set up checksy for my project",
+      "should_trigger": true,
+      "note": "Direct request"
+    },
+    {
+      "query": "my .checksy.yaml isn't working",
+      "should_trigger": true,
+      "note": "Config troubleshooting"
+    },
+    {
+      "query": "workspace health check tool recommendations",
+      "should_trigger": true,
+      "note": "Implicit trigger"
+    },
+    {
+      "query": "how to validate my development environment",
+      "should_trigger": true,
+      "note": "Implicit trigger"
+    },
+    {
+      "query": "git remote not cached error checksy",
+      "should_trigger": true,
+      "note": "Error troubleshooting"
+    },
+    {
+      "query": "checksy check --fix how does it work",
+      "should_trigger": true,
+      "note": "Feature question"
+    },
+    {
+      "query": "sharing checksy configs across repos",
+      "should_trigger": true,
+      "note": "Advanced feature"
+    },
+    {
+      "query": "severity filtering in checksy yaml",
+      "should_trigger": true,
+      "note": "Specific feature"
+    },
+    {
+      "query": "hey can u help with checksy config",
+      "should_trigger": true,
+      "note": "Casual phrasing"
+    },
+    {
+      "query": "cheksy isntalling problme",
+      "should_trigger": true,
+      "note": "Typos"
+    },
+    {
+      "query": "help me write a python script",
+      "should_trigger": false,
+      "note": "Unrelated task"
+    },
+    {
+      "query": "set up docker compose for my app",
+      "should_trigger": false,
+      "note": "Different tool"
+    },
+    {
+      "query": "configure eslint for javascript",
+      "should_trigger": false,
+      "note": "Different tool"
+    },
+    {
+      "query": "how to write yaml files",
+      "should_trigger": false,
+      "note": "General YAML, not checksy"
+    },
+    {
+      "query": "what is rust programming language",
+      "should_trigger": false,
+      "note": "Unrelated topic"
+    },
+    {
+      "query": "Kubernetes health checks configuration",
+      "should_trigger": false,
+      "note": "Infrastructure health checks"
+    },
+    {
+      "query": "Docker container health check setup",
+      "should_trigger": false,
+      "note": "Docker HEALTHCHECK"
+    },
+    {
+      "query": "application monitoring with Prometheus",
+      "should_trigger": false,
+      "note": "Monitoring, not checksy"
+    },
+    {
+      "query": "database health check queries",
+      "should_trigger": false,
+      "note": "Operational health checks"
+    },
+    {
+      "query": "CI/CD pipeline validation",
+      "should_trigger": false,
+      "note": "General CI/CD, not checksy-specific"
+    }
+  ]
+}

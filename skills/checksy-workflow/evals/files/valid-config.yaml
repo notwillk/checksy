@@ -1,0 +1,43 @@
+# Valid checksy configuration for testing
+# This represents typical production usage
+checkSeverity: warn
+failSeverity: error
+
+preconditions:
+  - name: Dependencies installed
+    severity: error
+    check: test -d node_modules
+    fix: npm ci
+
+  - name: Environment configured
+    severity: error
+    check: test -f .env
+    fix: cp .env.template .env
+
+rules:
+  - name: Tests pass
+    severity: error
+    check: npm test
+
+  - name: Linting passes
+    severity: warn
+    check: npm run lint
+    fix: npm run lint:fix
+
+  - name: TypeScript compiles
+    severity: error
+    check: npx tsc --noEmit
+
+  - name: Security audit
+    severity: error
+    check: npm audit --audit-level=moderate
+    hint: Run 'npm audit fix' to auto-fix
+
+  # Remote config reference
+  - remote: ./shared/team-checks.yaml
+
+# Pattern-based rules
+patterns:
+  - "scripts/check-*.sh"
+  - "scripts/validate-*.py"
+  - "!scripts/check-skip.sh"

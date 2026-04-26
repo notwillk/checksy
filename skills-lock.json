@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": {
+    "create-agent-skill": {
+      "source": "notwillk/skills",
+      "sourceType": "github",
+      "computedHash": "cdc25429ef85ed0a8e3b18af18b78ca6df7ef298e002e73e35d500fba6c379c2"
+    },
+    "evaluate-skill-quality": {
+      "source": "notwillk/skills",
+      "sourceType": "github",
+      "computedHash": "e854926f54fbca6c606302abc92d1107521477de6bc7c9b8cfaa3ea9ee09533d"
+    },
+    "optimize-skill-description": {
+      "source": "notwillk/skills",
+      "sourceType": "github",
+      "computedHash": "b86732b69b7781acac453f17d47dfa33e6cdf8f79acdc9f83522ce32dad01246"
+    }
+  }
+}
