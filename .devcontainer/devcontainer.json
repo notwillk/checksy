@@ -3,18 +3,16 @@
 	"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
 	"features": {
 		"./features/entr": {},
-		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {
+			"moby": false
+		},
 		"ghcr.io/notwillk/devcontainer-features/devcontainer-cli": {},
 		"ghcr.io/notwillk/devcontainer-features/rustup": {},
 		"ghcr.io/notwillk/devcontainer-features/just": {},
-    "ghcr.io/notwillk/devcontainer-features/opencode": {},
-    "ghcr.io/notwillk/devcontainer-features/skills": {}
+		"ghcr.io/notwillk/devcontainer-features/skills": {}
 	},
 	"containerEnv": {
-    "DEVCONTAINER": "true",
-    "FIREWORKS_API_KEY": "${localEnv:FIREWORKS_API_KEY}",
-    "OPENCODE_CONFIG": "${containerWorkspaceFolder}/.opencode/config.json",
-		"REPO_PATH": "${containerWorkspaceFolder}"
+		"DEVCONTAINER": "true"
 	},
 	"customizations": {
 		"vscode": {
