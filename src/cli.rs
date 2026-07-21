@@ -1,5 +1,5 @@
 use crate::cache::CacheManager;
-use crate::check::{self, Report, ResolvedOptions, RuleResult};
+use crate::check::{self, Report, ResolvedOptions, RuleFailureKind, RuleResult};
 use crate::config::{
     load_resolved_with_diagnostics, prepare_resolved_root, resolve_path, ConfigDiagnostic,
     PreparedRoot,
@@ -299,7 +299,7 @@ fn run_check(
         match check_with_fixes(opts, stdout, stderr) {
             Ok(r) => r,
             Err(e) => {
-                writeln!(stderr, "check failed: {}", e).ok();
+                writeln!(stderr, "{}", e).ok();
                 return 2;
             }
         }
@@ -312,6 +312,14 @@ fn run_check(
             }
         }
     };
+
+    if let Some(failure) = report.first_operational_failure() {
+        if !apply_fixes {
+            print_report_results(&report, stdout, stderr);
+        }
+        print_operational_failure(failure, stderr);
+        return 2;
+    }
 
     if !apply_fixes {
         print_report_results(&report, stdout, stderr);
@@ -768,7 +776,24 @@ fn print_report_results(report: &Report, stdout: &mut dyn Write, stderr: &mut dy
         };
 
     for result in &report.rules {
-        print_rule_outcome(result, fail_severity, stdout, stderr);
+        if result.operational_failure() {
+            print_rule_failure(result, stdout, stderr);
+        } else {
+            print_rule_outcome(result, fail_severity, stdout, stderr);
+        }
+    }
+}
+
+fn print_operational_failure(result: &RuleResult, stderr: &mut dyn Write) {
+    let message = result
+        .err
+        .as_deref()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "command runner failed".to_string());
+    if result.failure_kind() == Some(RuleFailureKind::Timeout) {
+        let _ = writeln!(stderr, "operation-timeout: {}: {}", result.name(), message);
+    } else {
+        let _ = writeln!(stderr, "check failed: {}: {}", result.name(), message);
     }
 }
 
@@ -847,14 +872,62 @@ fn summarize_report(report: &Report, no_fail: bool, stdout: &mut dyn Write) -> i
     3
 }
 
+#[derive(Debug)]
+enum CheckWithFixesError {
+    Planning(String),
+    Operational {
+        name: String,
+        kind: RuleFailureKind,
+        message: String,
+    },
+}
+
+impl std::fmt::Display for CheckWithFixesError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Planning(message) => write!(formatter, "check failed: {message}"),
+            Self::Operational {
+                name,
+                kind: RuleFailureKind::Timeout,
+                message,
+            } => write!(formatter, "operation-timeout: {name}: {message}"),
+            Self::Operational {
+                name,
+                kind: _,
+                message,
+            } => write!(formatter, "check failed: {name}: {message}"),
+        }
+    }
+}
+
+fn operational_fix_error(result: &RuleResult) -> CheckWithFixesError {
+    CheckWithFixesError::Operational {
+        name: result.name(),
+        kind: result
+            .failure_kind()
+            .unwrap_or(RuleFailureKind::Supervision),
+        message: result
+            .err
+            .as_deref()
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "command runner failed".to_string()),
+    }
+}
+
 fn check_with_fixes(
     opts: ResolvedOptions,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
-) -> Result<Report, String> {
+) -> Result<Report, CheckWithFixesError> {
+    check::validate_resolved_timeouts(
+        &opts.definition,
+        crate::process_runner::DEFAULT_COMMAND_TIMEOUT,
+    )
+    .map_err(CheckWithFixesError::Planning)?;
     // Resolve and confine every pattern match before a check or fix can mutate
     // the host. Pattern-only definitions are valid and must reach execution.
-    let rule_files = check::expand_resolved_rule_files(&opts.definition.pattern_groups)?;
+    let rule_files = check::expand_resolved_rule_files(&opts.definition.pattern_groups)
+        .map_err(CheckWithFixesError::Planning)?;
     let mut results = vec![];
 
     let preconditions =
@@ -862,6 +935,10 @@ fn check_with_fixes(
     for resolved_rule in preconditions {
         let rule = resolved_rule.rule.clone();
         let result = check::run_resolved_rule(resolved_rule.clone());
+        if result.operational_failure() {
+            print_rule_failure(&result, stdout, stderr);
+            return Err(operational_fix_error(&result));
+        }
         if result.success() {
             print_rule_success(&result, stdout, stderr);
             results.push(result);
@@ -881,6 +958,7 @@ fn check_with_fixes(
                 name: Some(format!("{} fix", rule_display_name(&rule))),
                 check: Some(rule.fix.clone().unwrap_or_default()),
                 severity: rule.severity,
+                timeout: rule.timeout.clone(),
                 fix: None,
                 hint: rule.hint.clone(),
                 remote: None,
@@ -888,6 +966,10 @@ fn check_with_fixes(
             origin: resolved_rule.origin.clone(),
         };
         let fix_result = check::run_resolved_rule(fix_rule);
+        if fix_result.operational_failure() {
+            print_rule_failure(&fix_result, stdout, stderr);
+            return Err(operational_fix_error(&fix_result));
+        }
         if !fix_result.success() {
             print_rule_failure(&fix_result, stdout, stderr);
             print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
@@ -898,6 +980,10 @@ fn check_with_fixes(
         print_rule_success(&fix_result, stdout, stderr);
 
         let result = check::run_resolved_rule(resolved_rule);
+        if result.operational_failure() {
+            print_rule_failure(&result, stdout, stderr);
+            return Err(operational_fix_error(&result));
+        }
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }
@@ -906,6 +992,10 @@ fn check_with_fixes(
     for resolved_rule in rules {
         let rule = resolved_rule.rule.clone();
         let result = check::run_resolved_rule(resolved_rule.clone());
+        if result.operational_failure() {
+            print_rule_failure(&result, stdout, stderr);
+            return Err(operational_fix_error(&result));
+        }
         if result.success() {
             print_rule_success(&result, stdout, stderr);
             results.push(result);
@@ -925,6 +1015,7 @@ fn check_with_fixes(
                 name: Some(format!("{} fix", rule_display_name(&rule))),
                 check: Some(rule.fix.clone().unwrap_or_default()),
                 severity: rule.severity,
+                timeout: rule.timeout.clone(),
                 fix: None,
                 hint: rule.hint.clone(),
                 remote: None,
@@ -932,6 +1023,10 @@ fn check_with_fixes(
             origin: resolved_rule.origin.clone(),
         };
         let fix_result = check::run_resolved_rule(fix_rule);
+        if fix_result.operational_failure() {
+            print_rule_failure(&fix_result, stdout, stderr);
+            return Err(operational_fix_error(&fix_result));
+        }
         if !fix_result.success() {
             print_rule_failure(&fix_result, stdout, stderr);
             print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
@@ -942,12 +1037,20 @@ fn check_with_fixes(
         print_rule_success(&fix_result, stdout, stderr);
 
         let result = check::run_resolved_rule(resolved_rule);
+        if result.operational_failure() {
+            print_rule_failure(&result, stdout, stderr);
+            return Err(operational_fix_error(&result));
+        }
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }
 
     for rule_file in rule_files {
         let result = check::run_resolved_rule_file(rule_file);
+        if result.operational_failure() {
+            print_rule_failure(&result, stdout, stderr);
+            return Err(operational_fix_error(&result));
+        }
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }
@@ -1020,6 +1123,7 @@ mod tests {
             name: None,
             check: Some("echo hi".to_string()),
             severity: None,
+            timeout: None,
             fix: None,
             hint: None,
             remote: None,
@@ -1030,6 +1134,7 @@ mod tests {
             name: Some("custom".to_string()),
             check: Some("echo hi".to_string()),
             severity: None,
+            timeout: None,
             fix: None,
             hint: None,
             remote: None,
@@ -1195,6 +1300,217 @@ mod tests {
             "unexpected stderr: {:?}",
             String::from_utf8(stderr)
         );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_command_timeout_is_operational_and_no_fail_cannot_mask_it() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config = temp.path().join("config.yaml");
+        std::fs::write(
+            &config,
+            concat!(
+                "rules:\n",
+                "  - name: bounded command\n",
+                "    check: printf before-timeout; exec sleep 10\n",
+                "    timeout: 250ms\n"
+            ),
+        )
+        .unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "check".to_string(),
+                "--no-fail".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 2);
+        assert!(String::from_utf8(stdout)
+            .unwrap()
+            .contains("❌ bounded command"));
+        let stderr = String::from_utf8(stderr).unwrap();
+        assert!(stderr.contains("before-timeout"), "{stderr:?}");
+        assert!(stderr.contains("operation-timeout:"), "{stderr:?}");
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_fix_timeout_is_operational_and_stops_before_recheck() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config = temp.path().join("config.yaml");
+        let check_log = temp.path().join("checks.log");
+        let fix_marker = temp.path().join("fix-started");
+        std::fs::write(
+            &config,
+            format!(
+                concat!(
+                    "cachePath: cache\n",
+                    "rules:\n",
+                    "  - name: bounded fix\n",
+                    "    check: echo check >> {0}; false\n",
+                    "    fix: printf fix-before-timeout; touch {1}; exec sleep 10\n",
+                    "    timeout: 250ms\n"
+                ),
+                check_log.display(),
+                fix_marker.display()
+            ),
+        )
+        .unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "check".to_string(),
+                "--fix".to_string(),
+                "--no-fail".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 2);
+        assert!(fix_marker.exists(), "the fix must have started");
+        assert_eq!(std::fs::read_to_string(&check_log).unwrap(), "check\n");
+        let stderr = String::from_utf8(stderr).unwrap();
+        assert!(stderr.contains("fix-before-timeout"), "{stderr:?}");
+        assert!(stderr.contains("operation-timeout:"), "{stderr:?}");
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_signal_termination_is_operational_and_fix_is_not_attempted() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config = temp.path().join("config.yaml");
+        let fix_marker = temp.path().join("fix-must-not-run");
+        std::fs::write(
+            &config,
+            format!(
+                concat!(
+                    "cachePath: cache\n",
+                    "rules:\n",
+                    "  - name: terminated command\n",
+                    "    severity: warn\n",
+                    "    check: kill -TERM $$\n",
+                    "    fix: touch {}\n"
+                ),
+                fix_marker.display()
+            ),
+        )
+        .unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "check".to_string(),
+                "--fix".to_string(),
+                "--no-fail".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 2);
+        assert!(!fix_marker.exists());
+        let stderr = String::from_utf8(stderr).unwrap();
+        assert!(
+            stderr.contains("command terminated by signal"),
+            "{stderr:?}"
+        );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_rule_timeout_is_reapplied_to_the_post_fix_recheck() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config = temp.path().join("config.yaml");
+        let check_log = temp.path().join("checks.log");
+        let fixed_marker = temp.path().join("fixed");
+        std::fs::write(
+            &config,
+            format!(
+                concat!(
+                    "cachePath: cache\n",
+                    "rules:\n",
+                    "  - name: bounded recheck\n",
+                    "    check: echo check >> {0}; if test -f {1}; then printf recheck-before-timeout; exec sleep 10; else false; fi\n",
+                    "    fix: touch {1}\n",
+                    "    timeout: 250ms\n"
+                ),
+                check_log.display(),
+                fixed_marker.display()
+            ),
+        )
+        .unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "check".to_string(),
+                "--fix".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 2);
+        assert_eq!(
+            std::fs::read_to_string(&check_log).unwrap(),
+            "check\ncheck\n"
+        );
+        let stderr = String::from_utf8(stderr).unwrap();
+        assert!(stderr.contains("recheck-before-timeout"), "{stderr:?}");
+        assert!(stderr.contains("operation-timeout:"), "{stderr:?}");
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_rule_timeout_cannot_raise_global_limit_and_is_preflighted() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let marker = temp.path().join("must-not-run");
+        let config = temp.path().join("config.yaml");
+        std::fs::write(
+            &config,
+            format!(
+                concat!(
+                    "rules:\n",
+                    "  - check: touch {0}\n",
+                    "  - check: 'true'\n",
+                    "    timeout: 16m\n"
+                ),
+                marker.display()
+            ),
+        )
+        .unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "check".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 2);
+        assert!(!marker.exists());
+        assert!(stdout.is_empty(), "unexpected stdout: {stdout:?}");
+        assert!(String::from_utf8(stderr)
+            .unwrap()
+            .contains("exceeds the effective command timeout"));
     }
 
     #[test]

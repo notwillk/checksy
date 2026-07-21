@@ -17,6 +17,10 @@ pub mod schema {
     );
 
     const NO_NUL_PATTERN: &str = r"^[^\u0000]*$";
+    const DURATION_PATTERN: &str = r"^[1-9][0-9]*(ms|s|m|h|d)$";
+
+    pub(crate) const MAX_RULE_TIMEOUT: std::time::Duration =
+        std::time::Duration::from_secs(2 * 60 * 60);
 
     fn no_nul_string_schema(_generator: &mut SchemaGenerator) -> Schema {
         schemars::json_schema!({
@@ -34,6 +38,53 @@ pub mod schema {
                 { "pattern": has_non_whitespace }
             ]
         })
+    }
+
+    fn duration_string_schema(_generator: &mut SchemaGenerator) -> Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "pattern": DURATION_PATTERN,
+            "description": "Positive fixed-unit duration; runtime validation enforces a 2h hard maximum."
+        })
+    }
+
+    /// Parse a positive fixed-unit duration accepted by Checksy's public
+    /// configuration contract. Calendar units are deliberately unsupported;
+    /// every suffix has an exact millisecond multiplier.
+    pub(crate) fn parse_fixed_duration(value: &str) -> Result<std::time::Duration, String> {
+        let (digits, unit_millis) = if let Some(digits) = value.strip_suffix("ms") {
+            (digits, 1_u64)
+        } else if let Some(digits) = value.strip_suffix('s') {
+            (digits, 1_000)
+        } else if let Some(digits) = value.strip_suffix('m') {
+            (digits, 60_000)
+        } else if let Some(digits) = value.strip_suffix('h') {
+            (digits, 3_600_000)
+        } else if let Some(digits) = value.strip_suffix('d') {
+            (digits, 86_400_000)
+        } else {
+            return Err(format!("duration `{value}` must match {DURATION_PATTERN}"));
+        };
+
+        if digits.is_empty()
+            || digits.starts_with('0')
+            || !digits.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err(format!("duration `{value}` must match {DURATION_PATTERN}"));
+        }
+
+        let amount = digits
+            .parse::<u64>()
+            .map_err(|_| format!("duration `{value}` exceeds the supported numeric range"))?;
+        let millis = amount
+            .checked_mul(unit_millis)
+            .ok_or_else(|| format!("duration `{value}` exceeds the supported numeric range"))?;
+        let duration = std::time::Duration::from_millis(millis);
+        if duration > MAX_RULE_TIMEOUT {
+            return Err(format!("duration `{value}` exceeds the hard maximum of 2h"));
+        }
+
+        Ok(duration)
     }
 
     fn pattern_string_schema(_generator: &mut SchemaGenerator) -> Schema {
@@ -251,6 +302,8 @@ pub mod schema {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub severity: Option<Severity>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        pub timeout: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub fix: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub hint: Option<String>,
@@ -276,6 +329,9 @@ pub mod schema {
         check: StrictString,
         #[serde(default)]
         severity: StrictOptional<Severity>,
+        #[serde(default)]
+        #[schemars(schema_with = "duration_string_schema")]
+        timeout: StrictOptional<StrictString>,
         #[serde(default)]
         #[schemars(schema_with = "no_nul_string_schema")]
         fix: StrictOptional<StrictString>,
@@ -308,6 +364,8 @@ pub mod schema {
         #[serde(default)]
         severity: StrictOptional<Severity>,
         #[serde(default)]
+        timeout: StrictOptional<StrictString>,
+        #[serde(default)]
         fix: StrictOptional<StrictString>,
         #[serde(default)]
         hint: StrictOptional<StrictString>,
@@ -323,6 +381,7 @@ pub mod schema {
                 name: raw.name.into_option().map(StrictString::into_string),
                 check: raw.check.into_option().map(StrictString::into_string),
                 severity: raw.severity.into_option(),
+                timeout: raw.timeout.into_option().map(StrictString::into_string),
                 fix: raw.fix.into_option().map(StrictString::into_string),
                 hint: raw.hint.into_option().map(StrictString::into_string),
                 remote: raw.remote.into_option().map(StrictString::into_string),
@@ -377,6 +436,10 @@ pub mod schema {
             if check.contains('\0') || self.fix.as_deref().is_some_and(|fix| fix.contains('\0')) {
                 return Err("inline rule commands cannot contain NUL bytes".to_string());
             }
+            if let Some(timeout) = self.timeout.as_deref() {
+                parse_fixed_duration(timeout)
+                    .map_err(|error| format!("invalid `timeout`: {error}"))?;
+            }
 
             Ok(())
         }
@@ -403,6 +466,9 @@ pub mod schema {
             }
             if self.severity.is_some() {
                 invalid_props.push("severity");
+            }
+            if self.timeout.is_some() {
+                invalid_props.push("timeout");
             }
             if self.fix.is_some() {
                 invalid_props.push("fix");
@@ -577,6 +643,10 @@ pub mod schema {
             assert_eq!(branches[1]["additionalProperties"], false);
             assert_eq!(branches[1]["required"], json!(["check"]));
             assert!(branches[1]["properties"].get("remote").is_none());
+            assert!(branches[1]["properties"].get("timeout").is_some());
+            assert!(branches[1]["properties"]["timeout"]
+                .get("default")
+                .is_none());
 
             let severity = &schema["definitions"]["Severity"];
             assert!(severity.get("default").is_none());
@@ -598,6 +668,7 @@ pub mod schema {
                         "name": "",
                         "check": "echo ok",
                         "severity": "warning",
+                        "timeout": "15m",
                         "fix": "",
                         "hint": ""
                     }]
@@ -622,6 +693,11 @@ pub mod schema {
                 json!({"rules": [{"check": " \t\n"}]}),
                 json!({"rules": [{"check": "\u{3000}"}]}),
                 json!({"rules": [{"check": "echo ok", "name": null}]}),
+                json!({"rules": [{"check": "echo ok", "timeout": null}]}),
+                json!({"rules": [{"check": "echo ok", "timeout": "0s"}]}),
+                json!({"rules": [{"check": "echo ok", "timeout": "1.5s"}]}),
+                json!({"rules": [{"check": "echo ok", "timeout": "1s\n"}]}),
+                json!({"rules": [{"remote": "nested.yaml", "timeout": "1m"}]}),
                 json!({"rules": [{"check": "echo ok", "severity": "critical"}]}),
                 json!({"rules": [{"check": "echo ok", "severity": "ERROR\n"}]}),
                 json!({"rules": [], "unknown": true}),
@@ -649,6 +725,64 @@ pub mod schema {
                 serde_yaml::from_str::<Config>("rules: []\npatterns:\n  - '[unterminated'\n")
                     .is_err()
             );
+        }
+
+        #[test]
+        fn fixed_duration_parser_enforces_syntax_conversion_and_hard_maximum() {
+            use std::time::Duration;
+
+            assert_eq!(
+                parse_fixed_duration("1ms").unwrap(),
+                Duration::from_millis(1)
+            );
+            assert_eq!(parse_fixed_duration("1s").unwrap(), Duration::from_secs(1));
+            assert_eq!(
+                parse_fixed_duration("2m").unwrap(),
+                Duration::from_secs(120)
+            );
+            assert_eq!(parse_fixed_duration("2h").unwrap(), MAX_RULE_TIMEOUT);
+            assert_eq!(parse_fixed_duration("7200s").unwrap(), MAX_RULE_TIMEOUT);
+            assert_eq!(parse_fixed_duration("7200000ms").unwrap(), MAX_RULE_TIMEOUT);
+
+            for value in ["", "0s", "01s", "1", "+1s", "1.5s", " 1s", "1S"] {
+                let error = parse_fixed_duration(value).unwrap_err();
+                assert!(
+                    error.contains("must match"),
+                    "unexpected error for {value}: {error}"
+                );
+            }
+
+            for value in ["7200001ms", "121m", "3h", "1d"] {
+                let error = parse_fixed_duration(value).unwrap_err();
+                assert!(
+                    error.contains("hard maximum of 2h"),
+                    "unexpected error for {value}: {error}"
+                );
+            }
+
+            let error = parse_fixed_duration("18446744073709551616ms").unwrap_err();
+            assert!(error.contains("supported numeric range"));
+            let error = parse_fixed_duration("18446744073709551615d").unwrap_err();
+            assert!(error.contains("supported numeric range"));
+        }
+
+        #[test]
+        fn timeout_numeric_bounds_remain_a_runtime_validation_layer() {
+            let validator = configuration_validator();
+            for timeout in ["3h", "18446744073709551616ms"] {
+                let instance = json!({"rules": [{"check": "true", "timeout": timeout}]});
+                assert!(
+                    validator.is_valid(&instance),
+                    "syntax-valid duration must pass the structural schema: {timeout}"
+                );
+                assert!(
+                    serde_yaml::from_str::<Config>(&format!(
+                        "rules:\n  - check: 'true'\n    timeout: {timeout}\n"
+                    ))
+                    .is_err(),
+                    "runtime validation must reject {timeout}"
+                );
+            }
         }
     }
 }

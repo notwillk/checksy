@@ -1,0 +1,4 @@
+rules:
+  - name: Bounded check
+    check: test -f ready
+    timeout: 15m

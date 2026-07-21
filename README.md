@@ -13,8 +13,15 @@ operating-system advisory lock on the canonical legacy cache root for their full
 run, serializing cooperating Checksy processes. Ordinary `check` and stdin
 `check --fix` remain unlocked, and the advisory lock neither authenticates the
 mutable cache nor excludes an uncooperative local actor. An authorized shell
-command can still access anything its process identity can access. Run only
-definitions you trust. The planned fail-closed security contract and current
+command can still access anything its process identity can access. On Linux and
+macOS, checks, fixes, pattern scripts, and Git operations use a shared bounded
+subprocess runner: stdin is `/dev/null`, each child starts in its own process
+group, and a timeout sends `TERM` to that group before a bounded `KILL` fallback.
+This is process control, not a sandbox; a background descendant that closes its
+capture descriptors before the command leader exits, a deliberately detached
+descendant, or work surviving an external signal to Checksy may outlive the
+invocation. Run only definitions you trust. The planned fail-closed security
+contract and current
 implementation gaps are documented in the [threat model](THREAT_MODEL.md). The
 frozen target formats, CLI, and resource bounds are specified in the
 [pull-agent contract](PULL_AGENT_CONTRACT.md).
@@ -41,6 +48,7 @@ src/
   cli.rs               # Argument parsing and command wiring
   config.rs            # Configuration loading
   check.rs             # Check execution and reporting helpers
+  process_runner.rs    # Bounded Bash/Git subprocess supervision
   git.rs               # Git operations for caching remotes
   resolved.rs          # Internal source/origin-aware definition model
   state_lock.rs        # Advisory state/cache-directory lock
@@ -84,6 +92,21 @@ checksy check --check-severity=warn --fail-severity=error
 
 The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command prints a deterministic Draft 7 JSON Schema generated from the strict Rust configuration model for downstream tooling.
 
+On Linux and macOS, Bash rules default to a 15-minute timeout. A rule's optional
+`timeout` duration may shorten that default but cannot extend it. Configured
+durations use positive fixed units (`ms`, `s`, `m`, `h`, or `d`) and have a
+2-hour format-level maximum; the current runner rejects values above its
+effective 15-minute command ceiling. Checksy keeps
+at most 1 MiB from each stdout/stderr stream by retaining equal head and tail
+regions while continuously draining the discarded middle. On timeout it sends
+`TERM` to the command's process group, waits up to 5 seconds, and then sends
+`KILL`; a timeout or signal termination remains distinct from an ordinary
+nonzero exit. Bash's inherited stdin is `/dev/null`, so an ordinary stdin read
+gets EOF. Arbitrary shell code can still open `/dev/tty` or another device
+explicitly, but the command timeout remains in force. A timeout or signal
+termination is an operational failure (exit `2`) and `--no-fail` cannot mask
+it; ordinary rule exits continue through the configured severity policy.
+
 Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. The current implementation defaults to `debug` check severity and `error` fail severity, so all rules run and only error-level failures make the command fail. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but no longer abort the run. Configuration severity values are case-insensitive for compatibility, but `debug`, `info`, `warn`, `warning`, and `error` are the canonical spellings; successful CLI loads warn when a recognized non-lowercase spelling is used.
 
 ### Git-based Remote Configs
@@ -124,6 +147,12 @@ locator is mapped to a legacy shallow-clone slot (`--depth 1`). The root config 
 chooses this legacy cache location; a nested local or Git definition cannot
 redirect acquisition with its own `cachePath`. `install` discovers nested file
 and Git remotes iteratively as their parent repositories become available.
+Git revision lookups use a 1-minute timeout and clone/fetch work uses a 5-minute
+timeout. Git stdin is `/dev/null`; Git terminal prompts and OpenSSH password
+prompts are disabled, and credential helpers are requested to run
+noninteractively. A nonconforming helper can still open `/dev/tty`, but remains
+inside the source timeout. HTTPS acquisition is not implemented yet, so its
+separately specified HTTP bounds remain P4 work.
 
 For a file-backed root config, `install` and the complete `check --fix`
 invocation acquire a nonblocking operating-system advisory lock anchored at the
@@ -153,7 +182,7 @@ rules:
 
 ## Configuration
 
-`checksy --config=path/to/workspace.yaml check` strictly deserializes the provided YAML using the Rust configuration types. Unknown and duplicate fields, incorrectly typed or null values, malformed rule forms, empty commands, NUL bytes in command/path/pattern fields, and invalid patterns are rejected before remote expansion or execution. The generated Draft 7 schema has fixture-tested parity for structural validation. Duplicate YAML keys remain a parser-layer check, and the complete Rust glob grammar remains a runtime-layer check; these narrow exceptions are documented in the [strict configuration fixture corpus](fixtures/strict-config/README.md). When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default.
+`checksy --config=path/to/workspace.yaml check` strictly deserializes the provided YAML using the Rust configuration types. Unknown and duplicate fields, incorrectly typed or null values, malformed rule forms, empty commands, NUL bytes in command/path/pattern fields, invalid patterns, and invalid or excessive rule timeouts are rejected before any configured rule command executes. The generated Draft 7 schema has fixture-tested parity for structural validation. Duplicate YAML keys remain a parser-layer check; the complete Rust glob grammar plus duration numeric overflow and the 2-hour hard maximum remain runtime-layer checks. These narrow exceptions are documented in the [strict configuration fixture corpus](fixtures/strict-config/README.md). When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default.
 
 The `check` CLI and its deprecated `diagnose` alias retain an internal origin for
 every resolved rule and pattern group. Inline checks and fixes run from the
@@ -172,7 +201,7 @@ resolved path.
 ### Inline rules, preconditions, and patterns
 
 - **`preconditions`** — An array of rule objects that run **before** the main rules. They follow the same failure/fix behavior as regular rules. Useful for checks that must pass before proceeding (e.g., verifying dependencies).
-- **`rules`** — An array of rule objects, each with `name`, `check`, optional `severity`, `fix`, and `hint`. These run first in config order.
+- **`rules`** — An array of rule objects, each with `name`, `check`, optional `severity`, `fix`, `hint`, and positive fixed-unit `timeout` (format maximum `2h`, current effective maximum `15m`). These run first in config order. A per-rule timeout can only shorten the 15-minute command default and applies to its check, fix, and post-fix recheck.
 - **`patterns`** — An array of glob-style patterns that select script files to run as rules (e.g. `tests/*.sh`). Success and failure are determined by the script's exit code, same as inline rules. There is no fix step for file-based rules. All pattern groups run after inline rules; the selected config's group comes first, followed by nested groups in deterministic discovery order, with files sorted within each group. Patterns are resolved relative to the config that defines them. You can use **positive** patterns (any match is included) and **negated** patterns (prefix with `!` to exclude). Negations apply only within their defining config's group.
 
 ### Remote Config References

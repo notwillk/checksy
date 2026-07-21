@@ -3,13 +3,14 @@ pub mod check;
 pub mod cli;
 pub mod config;
 pub mod git;
+mod process_runner;
 mod resolved;
 pub mod schema;
 mod state_lock;
 pub mod version;
 
 pub use cache::{CacheManager, GitRemote};
-pub use check::{diagnose, Options, Report, RuleResult};
+pub use check::{diagnose, Options, Report, RuleFailureKind, RuleResult};
 pub use cli::run;
 pub use config::{load, parse_git_remote, resolve_path};
 pub use git::GitCache;

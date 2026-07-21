@@ -19,9 +19,16 @@ advisory lock on the canonical legacy cache root for their full run. This
 serializes cooperating Checksy processes; ordinary `check`, stdin fix mode, and
 uncooperative local actors remain outside that lock. The path-based checks remain
 raceable without descriptor-relative ancestor opening. Shell commands retain
-ambient filesystem access. Current `check` and `install` behavior does not yet
+ambient filesystem access. On Linux and macOS, one bounded runner now gives
+Bash and Git subprocesses `/dev/null` stdin, separate process groups, capped
+output capture, and timeout escalation from `TERM` to `KILL`. It does not impose
+CPU, memory, disk, or network quotas. Background children that close their
+capture descriptors before the leader exits, deliberately detached children,
+and work not reached when Checksy itself receives a signal may outlive the
+invocation. Current `check` and `install` behavior still does not
 implement authentication, a protected generation state store, atomic promotion,
-timeouts, or privilege controls required for safe unattended remote execution.
+HTTP acquisition bounds, or privilege controls required for safe unattended
+remote execution.
 [THREAT_MODEL.md](THREAT_MODEL.md) is the normative target contract for security
 invariants and current gaps;
 [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) is the normative policy contract; and
@@ -51,6 +58,8 @@ state projection, and resource bounds.
 - **Mutation serialization**: File-backed `install` and the complete
   `check --fix` path hold one advisory lock on the canonical legacy cache root;
   ordinary checks and stdin fix mode do not lock
+- **Bounded source work**: Git revision lookup and clone/fetch operations use
+  the shared runner's noninteractive 1-minute and 5-minute budgets
 - **Global flags**: `--config`, `--stdin-config` parsing
 
 ### config.rs (Configuration Layer)
@@ -112,13 +121,25 @@ state projection, and resource bounds.
 ### git.rs (Git Operations)
 - **Shallow clones**: `git clone --depth 1 --branch <ref>`
 - **External dependency**: Requires `git` CLI in PATH
-- **Error handling**: Captures stderr from failed clones
+- **Error handling**: Preserves bounded stdout/stderr and distinguishes timeout
+  from an ordinary failed Git exit
+- **Noninteractive operation**: Uses `/dev/null` stdin, disables Git terminal
+  and OpenSSH password prompts, and requests noninteractive credential helpers
+- **Timeouts**: Revision lookup defaults to 1 minute; clone/fetch work defaults
+  to 5 minutes
 - **Transport**: Clone/ref resolution may use network or local Git transports;
   cached HEAD lookup is local
 
 ### check.rs (Execution Engine)
-- **Rule runner**: Executes shell commands via `std::process::Command`
-- **Result collection**: `RuleResult` contains stdout, stderr, exit status
+- **Rule runner**: Executes Bash checks, fixes, rechecks, and pattern scripts
+  through the shared bounded subprocess runner
+- **Timeouts**: Commands default to 15 minutes; an optional positive rule
+  timeout may shorten, but never extend, that default
+- **Timeout preflight**: Rejects every rule timeout above the effective ceiling
+  before executing any command in the definition
+- **Result collection**: `RuleResult` retains bounded stdout/stderr and
+  distinguishes ordinary nonzero exits from operational timeouts, signal
+  termination, launch, and supervision failures
 - **Filtering**: `filter_rules()`, `filter_preconditions()` by severity
 - **Pattern expansion**: Glob matching for script files (`tests/*.sh`)
 - **Origin-aware runner**: Runs resolved checks/fixes in their defining config's
@@ -127,17 +148,35 @@ state projection, and resource bounds.
   rejects fetched matches outside the bundle root
 - **Reporting**: `Report` aggregates results, calculates failures
 
+### process_runner.rs (Bounded Subprocesses)
+- **Private API**: `run(Command, ProcessLimits)` returns `CompletedProcess` for
+  any ordinary exit and typed `ProcessError` values for launch, supervision,
+  timeout, and unsupported-platform failures
+- **Native scope**: Supports Linux and macOS and fails closed on unsupported
+  native platforms
+- **Isolation unit**: Starts each Bash or Git child in a separate process group
+  with `/dev/null` stdin
+- **Timeout cleanup**: Sends `TERM` to the process group, waits up to 5 seconds,
+  then sends `KILL` and reaps the direct child
+- **Output bounds**: Continuously drains both streams and retains at most 1 MiB
+  per stream as equal head and tail regions with original-byte/truncation data
+- **Residuals**: This is not a sandbox or resource quota; background work that
+  closes capture descriptors before leader exit, process-group/session
+  detachment, and absent parent-signal forwarding can let work outlive Checksy
+
 ### schema.rs (Data Definitions)
 - **Domain types**: `Config`, `Rule`, `Severity` with strict serde decoding
 - **Custom serialization**: `Severity` maps to strings ("warn", "error", etc.)
 - **Validation**: Rejects unknown/duplicate fields, invalid scalar types,
   malformed rule forms, empty commands/remotes, NUL bytes in constrained
-  fields, and invalid glob patterns
+  fields, invalid glob patterns, and invalid or greater-than-2-hour rule
+  timeout durations
 - **Schema generation**: Uses the strict deserialization projection to generate
   a closed Draft 7 schema with an exact remote/executable rule union
-- **Layered parity**: Duplicate YAML keys remain parser-owned and complete Rust
-  glob syntax remains runtime-owned; all other fixture structure is checked
-  against both the generated schema and typed deserialization
+- **Layered parity**: Duplicate YAML keys remain parser-owned; complete Rust
+  glob syntax plus duration numeric overflow and hard-maximum checks remain
+  runtime-owned. Other fixture structure is checked against both the generated
+  schema and typed deserialization
 - **CamelCase mapping**: Config fields use camelCase in YAML
 
 ### version.rs
@@ -159,9 +198,9 @@ main.rs
       → ResolvedOptions
       → diagnose_resolved() [check.rs]
         → expand_resolved_rule_files()  # Preflight all origin-scoped patterns
-        → run resolved preconditions    # Defining-config working directory
-        → run resolved rules/fixes      # Defining-config working directory
-        → run resolved pattern scripts  # Defining-config working directory
+        → run resolved preconditions    # Defining-config cwd, bounded runner
+        → run resolved rules/fixes      # Defining-config cwd, bounded runner
+        → run resolved pattern scripts  # Defining-config cwd, bounded runner
       → print_report_results() [cli.rs] # Print ✓/⚠/✗
       → summarize_report()              # Exit code
 ```
@@ -174,7 +213,7 @@ run_install() [cli.rs]
   → PreparedRoot::resolve_for_install(RefreshOrClone)
   → refresh discovered Git dependencies
   → repeat resolution                  # Newly cached parents reveal nested Git
-  → GitCache::{get_local_sha,get_remote_sha,shallow_clone}()
+  → GitCache::{get_local_sha,get_remote_sha,shallow_clone}() # Bounded runner
   → (optional) CacheManager::prune()    # Remove unused
 ```
 
@@ -184,6 +223,10 @@ run_install() [cli.rs]
 - **git**: Required for `install` command (shallow clones)
 - **bash**: Required for rule execution (all checks run via `bash -c`)
 
+Both tools receive `/dev/null` stdin. Git disables its own terminal prompts and
+OpenSSH password prompts and requests noninteractive credential helpers; a
+nonconforming helper can still access `/dev/tty` until the source timeout.
+
 ### Rust Dependencies (Cargo.toml)
 - **serde**: Serialization framework
 - **serde_yaml**: YAML config parsing
@@ -191,7 +234,7 @@ run_install() [cli.rs]
 - **schemars**: Draft 7 schema generation from configuration types
 - **glob**: Pattern matching for rule files
 - **rustix**: Linux/macOS descriptor-relative lock-file operations, ownership
-  inspection, and advisory locking
+  inspection, advisory locking, and process-group signaling
 - **jsonschema**: Draft 7 metaschema and fixture validation (dev dependency)
 - **tempfile**: Test utilities (dev dependency)
 
@@ -202,6 +245,8 @@ run_install() [cli.rs]
 - **Lock file**: File-backed mutation scopes use a persistent advisory-lock file
   beneath the canonical legacy cache root
 - **Work directory**: Resolved CLI commands use the defining config's directory
+- **Subprocess capture**: Bash and Git stdout/stderr are continuously drained and
+  retained with a 1 MiB-per-stream head/tail cap
 - **Glob expansion**: Expands each config's patterns relative to that config;
   fetched matches are canonicalized and confined to the checkout
 
@@ -243,6 +288,7 @@ cli.rs
   ├── config.rs (resolved loading, resolve_path, parse_git_remote)
   ├── resolved.rs (ResolvedLoad and Git dependency descriptors)
   ├── check.rs (ResolvedOptions, resolved/compatibility execution, Report)
+  ├── process_runner.rs (bounded child supervision)
   ├── cache.rs (CacheManager)
   ├── git.rs (GitCache)
   ├── state_lock.rs (legacy cache-root mutation guard)
@@ -257,6 +303,7 @@ config.rs
 
 check.rs
   ├── resolved.rs (resolved rules and pattern groups)
+  ├── process_runner.rs (bounded Bash execution)
   └── schema.rs (Config, Rule, Severity)
 
 cache.rs
@@ -266,7 +313,11 @@ state_lock.rs
   └── rustix (Linux/macOS file locking and filesystem metadata)
 
 git.rs
-  └── cache.rs (CacheManager)
+  ├── cache.rs (CacheManager)
+  └── process_runner.rs (bounded noninteractive Git execution)
+
+process_runner.rs
+  └── rustix (Linux/macOS process groups, signals, and nonblocking I/O)
 
 schema.rs
   └── serde, serde_yaml, schemars, glob
@@ -317,3 +368,10 @@ main.rs
 - Universal availability
 - Consistent shell syntax across platforms
 - No need to parse shebang lines
+
+### Why One Bounded Subprocess Runner?
+- Gives checks, fixes, rechecks, pattern scripts, and Git operations the same
+  timeout, process-group cleanup, stdin, and output-capture semantics
+- Keeps ordinary nonzero exits distinct from timeout failures
+- Makes per-rule timeouts a narrowing policy rather than a way for fetched
+  configuration to extend the compiled 15-minute command default

@@ -20,6 +20,10 @@ cases:
     fixture: valid/mixed-case-severity.yaml
     expected: accept
     validationLayer: structural
+  - id: rule-timeout
+    fixture: valid/rule-timeout.yaml
+    expected: accept
+    validationLayer: structural
   - id: unknown-top-level
     fixture: invalid/unknown-top-level.yaml
     expected: reject
@@ -84,7 +88,27 @@ cases:
     fixture: invalid/unsupported-timeout.yaml
     expected: reject
     validationLayer: structural
-    errorContains: unknown field
+    errorContains: must match
+  - id: invalid-timeout-syntax
+    fixture: invalid/invalid-timeout-syntax.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: must match
+  - id: timeout-overflow
+    fixture: invalid/timeout-overflow.yaml
+    expected: reject
+    validationLayer: runtime-only
+    errorContains: supported numeric range
+  - id: timeout-over-hard-max
+    fixture: invalid/timeout-over-hard-max.yaml
+    expected: reject
+    validationLayer: runtime-only
+    errorContains: hard maximum of 2h
+  - id: remote-with-timeout
+    fixture: invalid/remote-with-timeout.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: remote rule cannot have properties
   - id: duplicate-top-level-key
     fixture: invalid/duplicate-top-level-key.yaml
     expected: reject

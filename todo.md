@@ -75,7 +75,7 @@ Exit gate: strict parsing matches the schema, nested remotes retain their origin
   - Return the documented distinct result when the lock is held.
   - Add contention and stale-process tests; do not use a PID file as the locking mechanism.
 
-- [ ] Build one hardened command runner for checks, fixes, and source operations.
+- [x] Build one hardened command runner for checks, fixes, and source operations.
   - Support a global command timeout and optional positive per-rule timeout.
   - Run child commands in their own process group.
   - On timeout, terminate the whole group gracefully, wait a bounded grace period, then force-kill remaining descendants.

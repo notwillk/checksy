@@ -1,3 +1,7 @@
+use crate::process_runner::{
+    self, CapturedOutput, CompletedProcess, ProcessError, ProcessLimits, DEFAULT_GIT_FETCH_TIMEOUT,
+    DEFAULT_GIT_RESOLVE_TIMEOUT, DEFAULT_TERM_GRACE,
+};
 use std::path::Path;
 use std::process::Command;
 
@@ -26,29 +30,30 @@ impl GitCache {
         }
 
         // Check if git is available
-        match Command::new("git").arg("--version").output() {
-            Ok(_) => (),
-            Err(_) => return Err("git command not found. Please install git".to_string()),
+        let mut version = git_command();
+        version.arg("--version");
+        match run_git(version, DEFAULT_GIT_RESOLVE_TIMEOUT, "version check") {
+            Ok(output) if output.status.success() => {}
+            Ok(output) => {
+                return Err(with_process_output(
+                    "git command not found. Please install git".to_string(),
+                    &output.stdout,
+                    &output.stderr,
+                ))
+            }
+            Err(error) => return Err(error),
         }
 
         // Perform shallow clone
         // git clone --depth 1 --branch <ref> <url> <dest>
-        let output = Command::new("git")
-            .arg("clone")
-            .arg("--depth")
-            .arg("1")
-            .arg("--branch")
-            .arg(ref_)
-            .arg(repo_url)
-            .arg(dest)
-            .output()
-            .map_err(|e| format!("failed to execute git clone: {}", e))?;
+        let command = clone_command(repo_url, ref_, dest);
+        let output = run_git(command, DEFAULT_GIT_FETCH_TIMEOUT, "clone")?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!(
-                "git clone failed for {} (ref: {}): {}",
-                repo_url, ref_, stderr
+            return Err(with_process_output(
+                format!("git clone failed for {} (ref: {})", repo_url, ref_),
+                &output.stdout,
+                &output.stderr,
             ));
         }
 
@@ -88,20 +93,23 @@ impl GitCache {
     /// * `Ok(String)` with the SHA if successful
     /// * `Err(String)` with error message if command fails
     pub fn get_local_sha(cache_path: &Path) -> Result<String, String> {
-        let output = Command::new("git")
+        let mut command = git_command();
+        command
             .arg("-C")
             .arg(cache_path)
             .arg("rev-parse")
-            .arg("HEAD")
-            .output()
-            .map_err(|e| format!("failed to execute git rev-parse: {}", e))?;
+            .arg("HEAD");
+        let output = run_git(command, DEFAULT_GIT_RESOLVE_TIMEOUT, "rev-parse")?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("git rev-parse failed: {}", stderr));
+            return Err(with_process_output(
+                "git rev-parse failed".to_string(),
+                &output.stdout,
+                &output.stderr,
+            ));
         }
 
-        let sha = String::from_utf8_lossy(&output.stdout);
+        let sha = output.stdout.render_lossy();
         Ok(sha.trim().to_string())
     }
 
@@ -116,21 +124,20 @@ impl GitCache {
     /// * `Ok(String)` with the SHA if successful
     /// * `Err(String)` with error message if command fails (network, auth, etc.)
     pub fn get_remote_sha(repo_url: &str, ref_: &str) -> Result<String, String> {
-        let output = Command::new("git")
-            .arg("ls-remote")
-            .arg(repo_url)
-            .arg(ref_)
-            .output()
-            .map_err(|e| format!("failed to execute git ls-remote: {}", e))?;
+        let command = ls_remote_command(repo_url, ref_);
+        let output = run_git(command, DEFAULT_GIT_RESOLVE_TIMEOUT, "ls-remote")?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("git ls-remote failed: {}", stderr));
+            return Err(with_process_output(
+                "git ls-remote failed".to_string(),
+                &output.stdout,
+                &output.stderr,
+            ));
         }
 
         // Parse output: first column is SHA, second is ref name
         // Example: "abc123\trefs/heads/main\n"
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout = output.stdout.render_lossy();
         let line = stdout.lines().next().ok_or("empty ls-remote output")?;
         let parts: Vec<&str> = line.split('\t').collect();
         if parts.is_empty() {
@@ -141,10 +148,202 @@ impl GitCache {
     }
 }
 
+fn git_command() -> Command {
+    #[cfg(target_os = "linux")]
+    const ASKPASS_PROGRAM: &str = "/bin/false";
+    #[cfg(target_os = "macos")]
+    const ASKPASS_PROGRAM: &str = "/usr/bin/false";
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    const ASKPASS_PROGRAM: &str = "false";
+
+    const BATCH_SSH_COMMAND: &str = "ssh -oBatchMode=yes";
+
+    let mut command = Command::new("git");
+    command
+        .arg("-c")
+        .arg("credential.interactive=false")
+        .arg("-c")
+        .arg(format!("core.askPass={ASKPASS_PROGRAM}"))
+        .arg("-c")
+        .arg(format!("core.sshCommand={BATCH_SSH_COMMAND}"))
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GCM_INTERACTIVE", "Never")
+        .env("GIT_ASKPASS", ASKPASS_PROGRAM)
+        .env("SSH_ASKPASS", ASKPASS_PROGRAM)
+        .env("SSH_ASKPASS_REQUIRE", "never")
+        // Environment-level SSH commands override `core.sshCommand`; replace
+        // them explicitly so an inherited wrapper cannot re-enable prompts.
+        .env("GIT_SSH_COMMAND", BATCH_SSH_COMMAND)
+        .env_remove("GIT_SSH")
+        .env("GIT_SSH_VARIANT", "ssh")
+        // Do not inherit environment-injected command-scope Git config that
+        // could countermand the fixed noninteractive profile.
+        .env_remove("GIT_CONFIG_PARAMETERS")
+        .env_remove("GIT_CONFIG_COUNT");
+    command
+}
+
+fn clone_command(repo_url: &str, ref_: &str, dest: &Path) -> Command {
+    let mut command = git_command();
+    command
+        .arg("clone")
+        .arg("--depth")
+        .arg("1")
+        .arg("--branch")
+        .arg(ref_)
+        .arg("--")
+        .arg(repo_url)
+        .arg(dest);
+    command
+}
+
+fn ls_remote_command(repo_url: &str, ref_: &str) -> Command {
+    let mut command = git_command();
+    command.arg("ls-remote").arg("--").arg(repo_url).arg(ref_);
+    command
+}
+
+fn run_git(
+    command: Command,
+    timeout: std::time::Duration,
+    operation: &str,
+) -> Result<CompletedProcess, String> {
+    process_runner::run(
+        command,
+        ProcessLimits {
+            timeout,
+            term_grace: DEFAULT_TERM_GRACE,
+        },
+    )
+    .map_err(|error| {
+        let mut message = match &error {
+            ProcessError::TimedOut { timeout, .. } => format!(
+                "operation-timeout: git {operation} exceeded {}ms",
+                timeout.as_millis()
+            ),
+            other => format!("failed to execute git {operation}: {other}"),
+        };
+        if let Some(output) = error.output() {
+            message = with_process_output(message, &output.stdout, &output.stderr);
+        }
+        message
+    })
+}
+
+fn with_process_output(
+    mut message: String,
+    stdout: &CapturedOutput,
+    stderr: &CapturedOutput,
+) -> String {
+    if stdout.original_bytes != 0 {
+        message.push_str("\nstdout:\n");
+        message.push_str(&stdout.render_lossy());
+    }
+    if stderr.original_bytes != 0 {
+        message.push_str("\nstderr:\n");
+        message.push_str(&stderr.render_lossy());
+    }
+    message
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
     use tempfile::TempDir;
+
+    #[test]
+    fn git_commands_disable_interactive_credentials_and_passwords() {
+        let command = git_command();
+        let args: Vec<_> = command.get_args().collect();
+        assert!(args.contains(&OsStr::new("credential.interactive=false")));
+        #[cfg(target_os = "linux")]
+        assert!(args.contains(&OsStr::new("core.askPass=/bin/false")));
+        #[cfg(target_os = "macos")]
+        assert!(args.contains(&OsStr::new("core.askPass=/usr/bin/false")));
+        assert!(args.contains(&OsStr::new("core.sshCommand=ssh -oBatchMode=yes")));
+
+        let environment: std::collections::HashMap<_, _> = command.get_envs().collect();
+        assert_eq!(
+            environment.get(OsStr::new("GIT_TERMINAL_PROMPT")),
+            Some(&Some(OsStr::new("0")))
+        );
+        assert_eq!(
+            environment.get(OsStr::new("GCM_INTERACTIVE")),
+            Some(&Some(OsStr::new("Never")))
+        );
+        #[cfg(target_os = "linux")]
+        assert_eq!(
+            environment.get(OsStr::new("GIT_ASKPASS")),
+            Some(&Some(OsStr::new("/bin/false")))
+        );
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            environment.get(OsStr::new("GIT_ASKPASS")),
+            Some(&Some(OsStr::new("/usr/bin/false")))
+        );
+        #[cfg(target_os = "linux")]
+        assert_eq!(
+            environment.get(OsStr::new("SSH_ASKPASS")),
+            Some(&Some(OsStr::new("/bin/false")))
+        );
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            environment.get(OsStr::new("SSH_ASKPASS")),
+            Some(&Some(OsStr::new("/usr/bin/false")))
+        );
+        assert_eq!(
+            environment.get(OsStr::new("SSH_ASKPASS_REQUIRE")),
+            Some(&Some(OsStr::new("never")))
+        );
+        assert_eq!(
+            environment.get(OsStr::new("GIT_SSH_COMMAND")),
+            Some(&Some(OsStr::new("ssh -oBatchMode=yes")))
+        );
+        assert_eq!(environment.get(OsStr::new("GIT_SSH")), Some(&None));
+        assert_eq!(
+            environment.get(OsStr::new("GIT_CONFIG_PARAMETERS")),
+            Some(&None)
+        );
+        assert_eq!(environment.get(OsStr::new("GIT_CONFIG_COUNT")), Some(&None));
+    }
+
+    #[test]
+    fn git_repository_locators_are_separated_from_options() {
+        let clone = clone_command("--upload-pack=malicious", "main", Path::new("destination"));
+        let clone_args: Vec<_> = clone.get_args().collect();
+        let clone_repo = clone_args
+            .iter()
+            .position(|arg| *arg == OsStr::new("--upload-pack=malicious"))
+            .unwrap();
+        assert_eq!(clone_args[clone_repo - 1], OsStr::new("--"));
+
+        let ls_remote = ls_remote_command("--upload-pack=malicious", "main");
+        let ls_remote_args: Vec<_> = ls_remote.get_args().collect();
+        let remote_repo = ls_remote_args
+            .iter()
+            .position(|arg| *arg == OsStr::new("--upload-pack=malicious"))
+            .unwrap();
+        assert_eq!(ls_remote_args[remote_repo - 1], OsStr::new("--"));
+    }
+
+    #[test]
+    fn git_diagnostics_preserve_both_bounded_output_streams() {
+        let stdout = CapturedOutput {
+            bytes: b"partial stdout".to_vec(),
+            original_bytes: 14,
+            truncated: false,
+        };
+        let stderr = CapturedOutput {
+            bytes: b"partial stderr".to_vec(),
+            original_bytes: 14,
+            truncated: false,
+        };
+
+        let diagnostic = with_process_output("git failed".to_string(), &stdout, &stderr);
+        assert!(diagnostic.contains("stdout:\npartial stdout"));
+        assert!(diagnostic.contains("stderr:\npartial stderr"));
+    }
 
     // Note: These tests would require network access to real git repos
     // They're marked as ignored by default for offline development

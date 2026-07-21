@@ -1019,6 +1019,7 @@ mod tests {
                     name: None,
                     check: Some("echo hi".to_string()),
                     severity: None,
+                    timeout: None,
                     fix: None,
                     hint: None,
                     remote: None,
@@ -1027,6 +1028,7 @@ mod tests {
                     name: None,
                     check: Some("echo warn".to_string()),
                     severity: Some(Severity::Warning),
+                    timeout: None,
                     fix: None,
                     hint: None,
                     remote: None,
@@ -1275,7 +1277,7 @@ mod tests {
             }
         }
 
-        assert_eq!(structural_count, 24);
+        assert_eq!(structural_count, 27);
         assert_eq!(
             parser_case_ids,
             HashSet::from([
@@ -1285,7 +1287,11 @@ mod tests {
         );
         assert_eq!(
             runtime_case_ids,
-            HashSet::from(["invalid-pattern".to_string()])
+            HashSet::from([
+                "invalid-pattern".to_string(),
+                "timeout-overflow".to_string(),
+                "timeout-over-hard-max".to_string(),
+            ])
         );
     }
 

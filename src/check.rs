@@ -1,9 +1,13 @@
+use crate::process_runner::{
+    self, CapturedOutput, ProcessError, ProcessLimits, DEFAULT_COMMAND_TIMEOUT, DEFAULT_TERM_GRACE,
+};
 use crate::resolved::{DefinitionOrigin, ResolvedDefinition, ResolvedPatternGroup, ResolvedRule};
-use crate::schema::{severity_order, Config, Rule, Severity};
+use crate::schema::{parse_fixed_duration, severity_order, Config, Rule, Severity};
 use std::collections::{BTreeMap, HashSet};
+use std::fmt;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 const DEFAULT_RULE_SEVERITY: Severity = Severity::Error;
 
@@ -52,11 +56,44 @@ pub struct RuleResult {
     pub stderr: String,
 }
 
+/// Stable categories exposed by rule execution without changing the legacy
+/// `RuleResult::err` representation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuleFailureKind {
+    Exit,
+    Terminated,
+    Timeout,
+    Spawn,
+    Supervision,
+    UnsupportedPlatform,
+    InvalidTimeout,
+}
+
+#[derive(Debug, Clone)]
+struct RuleExecutionError {
+    kind: RuleFailureKind,
+    message: String,
+}
+
+impl fmt::Display for RuleExecutionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for RuleExecutionError {}
+
 impl Clone for RuleResult {
     fn clone(&self) -> Self {
+        let err = self.err.as_deref().and_then(|error| {
+            error
+                .downcast_ref::<RuleExecutionError>()
+                .cloned()
+                .map(|error| Box::new(error) as Box<dyn std::error::Error>)
+        });
         RuleResult {
             rule: self.rule.clone(),
-            err: None,
+            err,
             stdout: self.stdout.clone(),
             stderr: self.stderr.clone(),
         }
@@ -66,6 +103,27 @@ impl Clone for RuleResult {
 impl RuleResult {
     pub fn success(&self) -> bool {
         self.err.is_none()
+    }
+
+    pub fn failure_kind(&self) -> Option<RuleFailureKind> {
+        self.err
+            .as_deref()
+            .and_then(|error| error.downcast_ref::<RuleExecutionError>())
+            .map(|error| error.kind)
+    }
+
+    pub fn operational_failure(&self) -> bool {
+        matches!(
+            self.failure_kind(),
+            Some(
+                RuleFailureKind::Timeout
+                    | RuleFailureKind::Terminated
+                    | RuleFailureKind::Spawn
+                    | RuleFailureKind::Supervision
+                    | RuleFailureKind::UnsupportedPlatform
+                    | RuleFailureKind::InvalidTimeout
+            )
+        )
     }
 
     pub fn name(&self) -> String {
@@ -82,6 +140,9 @@ impl RuleResult {
     pub fn should_fail(&self, threshold: Severity) -> bool {
         if self.success() {
             return false;
+        }
+        if self.operational_failure() {
+            return true;
         }
         let normalized = normalize_fail_severity(threshold);
         severity_order(self.severity()) >= severity_order(normalized)
@@ -102,9 +163,16 @@ impl Report {
             .map(|r| (*r).clone())
             .collect()
     }
+
+    pub(crate) fn first_operational_failure(&self) -> Option<&RuleResult> {
+        self.rules
+            .iter()
+            .find(|result| result.operational_failure())
+    }
 }
 
 pub fn diagnose(opts: Options) -> Result<Report, String> {
+    validate_config_timeouts(&opts.config, DEFAULT_COMMAND_TIMEOUT)?;
     let workdir = if opts.workdir.is_empty() {
         "."
     } else {
@@ -112,17 +180,31 @@ pub fn diagnose(opts: Options) -> Result<Report, String> {
     };
     let mut results = run_preconditions(&opts, workdir);
 
-    let rules = filter_rules(&opts.config, opts.min_severity);
-    for rule in rules {
-        results.push(run_rule(rule, workdir));
+    if !results.iter().any(RuleResult::operational_failure) {
+        let rules = filter_rules(&opts.config, opts.min_severity);
+        for rule in rules {
+            let result = run_rule(rule, workdir);
+            let operational = result.operational_failure();
+            results.push(result);
+            if operational {
+                break;
+            }
+        }
     }
 
     // Keep the public flat API's legacy timing: rules may create files that its
     // pattern phase subsequently discovers. The resolved CLI path preflights
     // fetched patterns before any command instead.
-    let file_paths = expand_rule_files(workdir, &opts.config.patterns)?;
-    for rel_path in file_paths {
-        results.push(run_rule_file(workdir, &rel_path));
+    if !results.iter().any(RuleResult::operational_failure) {
+        let file_paths = expand_rule_files(workdir, &opts.config.patterns)?;
+        for rel_path in file_paths {
+            let result = run_rule_file(workdir, &rel_path);
+            let operational = result.operational_failure();
+            results.push(result);
+            if operational {
+                break;
+            }
+        }
     }
 
     Ok(Report {
@@ -132,6 +214,7 @@ pub fn diagnose(opts: Options) -> Result<Report, String> {
 }
 
 pub(crate) fn diagnose_resolved(opts: ResolvedOptions) -> Result<Report, String> {
+    validate_resolved_timeouts(&opts.definition, DEFAULT_COMMAND_TIMEOUT)?;
     // Pattern expansion is part of execution-plan validation. Finish it before
     // invoking arbitrary commands so a confined-path failure cannot arrive
     // after a precondition or rule has already changed the host.
@@ -139,15 +222,36 @@ pub(crate) fn diagnose_resolved(opts: ResolvedOptions) -> Result<Report, String>
     let mut results = Vec::new();
 
     for rule in filter_resolved_rules(&opts.definition.preconditions, opts.min_severity) {
-        results.push(run_resolved_rule(rule));
+        let result = run_resolved_rule(rule);
+        let operational = result.operational_failure();
+        results.push(result);
+        if operational {
+            return Ok(Report {
+                rules: results,
+                fail_severity: opts.fail_severity,
+            });
+        }
     }
 
     for rule in filter_resolved_rules(&opts.definition.rules, opts.min_severity) {
-        results.push(run_resolved_rule(rule));
+        let result = run_resolved_rule(rule);
+        let operational = result.operational_failure();
+        results.push(result);
+        if operational {
+            return Ok(Report {
+                rules: results,
+                fail_severity: opts.fail_severity,
+            });
+        }
     }
 
     for rule_file in rule_files {
-        results.push(run_resolved_rule_file(rule_file));
+        let result = run_resolved_rule_file(rule_file);
+        let operational = result.operational_failure();
+        results.push(result);
+        if operational {
+            break;
+        }
     }
 
     Ok(Report {
@@ -158,10 +262,16 @@ pub(crate) fn diagnose_resolved(opts: ResolvedOptions) -> Result<Report, String>
 
 fn run_preconditions(opts: &Options, workdir: &str) -> Vec<RuleResult> {
     let preconditions = filter_preconditions(&opts.config, opts.min_severity);
-    preconditions
-        .into_iter()
-        .map(|r| run_rule(r, workdir))
-        .collect()
+    let mut results = Vec::new();
+    for rule in preconditions {
+        let result = run_rule(rule, workdir);
+        let operational = result.operational_failure();
+        results.push(result);
+        if operational {
+            break;
+        }
+    }
+    results
 }
 
 pub fn filter_rules(cfg: &Config, min: Severity) -> Vec<Rule> {
@@ -191,6 +301,69 @@ pub(crate) fn filter_resolved_rules(rules: &[ResolvedRule], min: Severity) -> Ve
         .collect()
 }
 
+pub(crate) fn validate_resolved_timeouts(
+    definition: &ResolvedDefinition,
+    command_timeout: std::time::Duration,
+) -> Result<(), String> {
+    validate_rule_timeouts(&definition.preconditions, command_timeout, "preconditions")?;
+    validate_rule_timeouts(&definition.rules, command_timeout, "rules")
+}
+
+fn validate_config_timeouts(
+    config: &Config,
+    command_timeout: std::time::Duration,
+) -> Result<(), String> {
+    validate_plain_rule_timeouts(&config.preconditions, command_timeout, "preconditions")?;
+    validate_plain_rule_timeouts(&config.rules, command_timeout, "rules")
+}
+
+fn validate_rule_timeouts(
+    rules: &[ResolvedRule],
+    command_timeout: std::time::Duration,
+    section: &str,
+) -> Result<(), String> {
+    for (index, resolved) in rules.iter().enumerate() {
+        validate_rule_timeout(&resolved.rule, command_timeout)
+            .map_err(|error| format!("{section}[{index}]: {error}"))?;
+    }
+    Ok(())
+}
+
+fn validate_plain_rule_timeouts(
+    rules: &[Rule],
+    command_timeout: std::time::Duration,
+    section: &str,
+) -> Result<(), String> {
+    for (index, rule) in rules.iter().enumerate() {
+        validate_rule_timeout(rule, command_timeout)
+            .map_err(|error| format!("{section}[{index}]: {error}"))?;
+    }
+    Ok(())
+}
+
+fn validate_rule_timeout(rule: &Rule, command_timeout: std::time::Duration) -> Result<(), String> {
+    let Some(value) = rule.timeout.as_deref() else {
+        return Ok(());
+    };
+    let timeout =
+        parse_fixed_duration(value).map_err(|error| format!("invalid timeout: {error}"))?;
+    if timeout > command_timeout {
+        return Err(format!(
+            "timeout `{value}` exceeds the effective command timeout of {}ms",
+            command_timeout.as_millis()
+        ));
+    }
+    Ok(())
+}
+
+fn effective_rule_timeout(rule: &Rule) -> Result<std::time::Duration, String> {
+    validate_rule_timeout(rule, DEFAULT_COMMAND_TIMEOUT)?;
+    match rule.timeout.as_deref() {
+        Some(value) => parse_fixed_duration(value),
+        None => Ok(DEFAULT_COMMAND_TIMEOUT),
+    }
+}
+
 pub fn run_rule(rule: Rule, workdir: &str) -> RuleResult {
     run_rule_in_dir(rule, Path::new(workdir))
 }
@@ -200,6 +373,12 @@ pub(crate) fn run_resolved_rule(rule: ResolvedRule) -> RuleResult {
 }
 
 fn run_rule_in_dir(rule: Rule, workdir: &Path) -> RuleResult {
+    let timeout = match effective_rule_timeout(&rule) {
+        Ok(timeout) => timeout,
+        Err(error) => {
+            return failed_rule_result(rule, RuleFailureKind::InvalidTimeout, error, None)
+        }
+    };
     let script = rule.check.clone().unwrap_or_else(|| "true".to_string());
     let script = if script.ends_with('\n') {
         script
@@ -207,38 +386,87 @@ fn run_rule_in_dir(rule: Rule, workdir: &Path) -> RuleResult {
         format!("{}\n", script)
     };
 
-    let output = Command::new("bash")
-        .current_dir(workdir)
-        .arg("-c")
-        .arg(&script)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output();
+    let mut command = Command::new("bash");
+    command.current_dir(workdir).arg("-c").arg(&script);
+    run_rule_command(rule, command, timeout)
+}
 
-    match output {
-        Ok(out) => {
-            let exit_error = if !out.status.success() {
-                Some(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("command failed with exit code: {:?}", out.status.code()),
-                )) as Box<dyn std::error::Error>)
-            } else {
+fn run_rule_command(rule: Rule, command: Command, timeout: std::time::Duration) -> RuleResult {
+    let limits = ProcessLimits {
+        timeout,
+        term_grace: DEFAULT_TERM_GRACE,
+    };
+    match process_runner::run(command, limits) {
+        Ok(completed) => {
+            let err = if completed.status.success() {
                 None
+            } else if let Some(signal) = terminating_signal(completed.status) {
+                Some(Box::new(RuleExecutionError {
+                    kind: RuleFailureKind::Terminated,
+                    message: format!("command terminated by signal: {signal}"),
+                }) as Box<dyn std::error::Error>)
+            } else {
+                Some(Box::new(RuleExecutionError {
+                    kind: RuleFailureKind::Exit,
+                    message: format!(
+                        "command failed with exit code: {:?}",
+                        completed.status.code()
+                    ),
+                }) as Box<dyn std::error::Error>)
             };
             RuleResult {
                 rule,
-                err: exit_error,
-                stdout: String::from_utf8_lossy(&out.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+                err,
+                stdout: render_captured_output(&completed.stdout),
+                stderr: render_captured_output(&completed.stderr),
             }
         }
-        Err(e) => RuleResult {
-            rule,
-            err: Some(Box::new(e) as Box<dyn std::error::Error>),
-            stdout: String::new(),
-            stderr: String::new(),
-        },
+        Err(error) => {
+            let kind = match &error {
+                ProcessError::TimedOut { .. } => RuleFailureKind::Timeout,
+                ProcessError::Spawn(_) => RuleFailureKind::Spawn,
+                ProcessError::Supervision { .. } => RuleFailureKind::Supervision,
+                ProcessError::UnsupportedPlatform => RuleFailureKind::UnsupportedPlatform,
+            };
+            let rendered_output = error.output().map(|output| {
+                (
+                    render_captured_output(&output.stdout),
+                    render_captured_output(&output.stderr),
+                )
+            });
+            failed_rule_result(rule, kind, error.to_string(), rendered_output)
+        }
     }
+}
+
+#[cfg(unix)]
+fn terminating_signal(status: std::process::ExitStatus) -> Option<i32> {
+    use std::os::unix::process::ExitStatusExt;
+    status.signal()
+}
+
+#[cfg(not(unix))]
+fn terminating_signal(_status: std::process::ExitStatus) -> Option<i32> {
+    None
+}
+
+fn failed_rule_result(
+    rule: Rule,
+    kind: RuleFailureKind,
+    message: String,
+    output: Option<(String, String)>,
+) -> RuleResult {
+    let (stdout, stderr) = output.unwrap_or_default();
+    RuleResult {
+        rule,
+        err: Some(Box::new(RuleExecutionError { kind, message })),
+        stdout,
+        stderr,
+    }
+}
+
+fn render_captured_output(output: &CapturedOutput) -> String {
+    output.render_lossy()
 }
 
 pub(crate) fn expand_resolved_rule_files(
@@ -742,40 +970,15 @@ fn run_rule_file_at(workdir: &Path, display_path: &str, script_path: &Path) -> R
         name: Some(display_path.to_string()),
         check: Some(display_path.to_string()),
         severity: Some(Severity::Error),
+        timeout: None,
         fix: None,
         hint: None,
         remote: None,
     };
 
-    let output = Command::new("bash")
-        .arg(script_path)
-        .current_dir(workdir)
-        .output();
-
-    match output {
-        Ok(out) => {
-            let exit_error = if !out.status.success() {
-                Some(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("command failed with exit code: {:?}", out.status.code()),
-                )) as Box<dyn std::error::Error>)
-            } else {
-                None
-            };
-            RuleResult {
-                rule,
-                err: exit_error,
-                stdout: String::from_utf8_lossy(&out.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&out.stderr).to_string(),
-            }
-        }
-        Err(e) => RuleResult {
-            rule,
-            err: Some(Box::new(e) as Box<dyn std::error::Error>),
-            stdout: String::new(),
-            stderr: String::new(),
-        },
-    }
+    let mut command = Command::new("bash");
+    command.arg(script_path).current_dir(workdir);
+    run_rule_command(rule, command, DEFAULT_COMMAND_TIMEOUT)
 }
 
 fn rule_meets_severity(rule: &Rule, min: Severity) -> bool {
@@ -826,6 +1029,7 @@ mod tests {
             name: Some(name.to_string()),
             check: Some(check.to_string()),
             severity: Some(Severity::Error),
+            timeout: None,
             fix: None,
             hint: None,
             remote: None,
@@ -858,6 +1062,7 @@ mod tests {
                     name: Some("debug".to_string()),
                     check: Some("true".to_string()),
                     severity: Some(Severity::Debug),
+                    timeout: None,
                     fix: None,
                     hint: None,
                     remote: None,
@@ -866,6 +1071,7 @@ mod tests {
                     name: Some("info".to_string()),
                     check: Some("true".to_string()),
                     severity: Some(Severity::Info),
+                    timeout: None,
                     fix: None,
                     hint: None,
                     remote: None,
@@ -874,6 +1080,7 @@ mod tests {
                     name: Some("warn".to_string()),
                     check: Some("true".to_string()),
                     severity: Some(Severity::Warning),
+                    timeout: None,
                     fix: None,
                     hint: None,
                     remote: None,
@@ -894,6 +1101,7 @@ mod tests {
                 name: None,
                 check: Some("".to_string()),
                 severity: Some(Severity::Warning),
+                timeout: None,
                 fix: None,
                 hint: None,
                 remote: None,
@@ -909,6 +1117,65 @@ mod tests {
         assert!(result.should_fail(Severity::Warning));
     }
 
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn rule_timeout_is_distinct_from_an_ordinary_nonzero_exit() {
+        let mut timed_rule = executable_rule("timed", "printf before-timeout; exec sleep 10");
+        timed_rule.timeout = Some("250ms".to_string());
+        let timed = run_rule(timed_rule, ".");
+        assert_eq!(timed.failure_kind(), Some(RuleFailureKind::Timeout));
+        assert!(timed.operational_failure());
+        assert!(timed.stdout.contains("before-timeout"));
+
+        let exited = run_rule(executable_rule("ordinary", "exit 7"), ".");
+        assert_eq!(exited.failure_kind(), Some(RuleFailureKind::Exit));
+        assert!(!exited.operational_failure());
+
+        let mut terminated_rule = executable_rule("terminated", "kill -TERM $$");
+        terminated_rule.severity = Some(Severity::Warning);
+        let terminated = run_rule(terminated_rule, ".");
+        assert_eq!(terminated.failure_kind(), Some(RuleFailureKind::Terminated));
+        assert!(terminated.operational_failure());
+        assert!(terminated.should_fail(Severity::Error));
+        assert_eq!(
+            terminated.clone().failure_kind(),
+            Some(RuleFailureKind::Terminated),
+            "cloning a runner result must preserve its failure category"
+        );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn effective_timeout_is_preflighted_before_any_public_diagnose_command() {
+        let temp = TempDir::new().unwrap();
+        let marker = temp.path().join("must-not-run");
+        let config = Config {
+            cache_path: None,
+            check_severity: None,
+            fail_severity: None,
+            preconditions: vec![],
+            rules: vec![
+                executable_rule("first", &format!("touch {}", marker.display())),
+                Rule {
+                    timeout: Some("16m".to_string()),
+                    ..executable_rule("too long", "true")
+                },
+            ],
+            patterns: vec![],
+        };
+
+        let error = diagnose(Options {
+            config,
+            workdir: temp.path().display().to_string(),
+            min_severity: Severity::Debug,
+            fail_severity: Severity::Error,
+        })
+        .unwrap_err();
+
+        assert!(error.contains("exceeds the effective command timeout"));
+        assert!(!marker.exists());
+    }
+
     #[test]
     fn test_report_aggregates_failures() {
         let results = vec![
@@ -917,6 +1184,7 @@ mod tests {
                     name: Some("warn".to_string()),
                     check: Some("".to_string()),
                     severity: Some(Severity::Warning),
+                    timeout: None,
                     fix: None,
                     hint: None,
                     remote: None,
@@ -933,6 +1201,7 @@ mod tests {
                     name: Some("error".to_string()),
                     check: Some("".to_string()),
                     severity: Some(Severity::Error),
+                    timeout: None,
                     fix: None,
                     hint: None,
                     remote: None,
