@@ -106,6 +106,12 @@ gets EOF. Arbitrary shell code can still open `/dev/tty` or another device
 explicitly, but the command timeout remains in force. A timeout or signal
 termination is an operational failure (exit `2`) and `--no-fail` cannot mask
 it; ordinary rule exits continue through the configured severity policy.
+The checked-in [deterministic process contract](fixtures/pull-agent-contract/process/README.md)
+maps the executable timeout-tree, output-retention, exit-classification, capture
+boundary, and continuous-drain scenarios to their Rust tests. Its cleanup claim
+is limited to descendants that remain in the runner-managed process group;
+deliberate process-group/session changes and parent-signal forwarding remain
+outside that completed P2 test slice.
 
 Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. The current implementation defaults to `debug` check severity and `error` fail severity, so all rules run and only error-level failures make the command fail. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but no longer abort the run. Configuration severity values are case-insensitive for compatibility, but `debug`, `info`, `warn`, `warning`, and `error` are the canonical spellings; successful CLI loads warn when a recognized non-lowercase spelling is used.
 

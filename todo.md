@@ -83,12 +83,16 @@ Exit gate: strict parsing matches the schema, nested remotes retain their origin
   - Apply bounded timeouts to Git and HTTP work as well as checks/fixes.
   - Disable interactive Git credentials and unattended password prompts.
 
-- [ ] Add deterministic process tests.
+- [x] Add deterministic process tests.
   - Verify a hanging child and its descendants are terminated.
   - Verify output produced before timeout is preserved.
   - Verify normal nonzero exits remain distinguishable from timeouts.
 
-Exit gate: concurrent mutation is excluded and no unattended subprocess can hang indefinitely or leave a known descendant running after timeout.
+Exit gate: concurrent mutation is excluded, and a subprocess that remains in
+Checksy's runner-managed process group cannot hang indefinitely or leave a known
+in-group descendant running after timeout. Deliberate process-group/session
+detachment and forwarding signals received by the Checksy parent remain
+explicit residuals.
 
 ## P3 — Add a recoverable state store and source abstraction
 

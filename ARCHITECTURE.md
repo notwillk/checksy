@@ -260,6 +260,18 @@ exclusion of scripts that must never execute. Temporary-directory and local-Git
 unit tests continue to cover cycles, deduplication, fix/recheck behavior, nested
 acquisition, and fetched-checkout confinement.
 
+### Deterministic Process Coverage
+
+The executable [process contract](fixtures/pull-agent-contract/process/README.md)
+maps six Linux/macOS scenarios to Rust tests: forced timeout of a
+TERM-resistant leader/child/grandchild tree inside one runner-managed process
+group, preservation of pre-timeout stdout/stderr, ordinary exit classification,
+the exact and maximum-plus-one capture boundaries, and continuous output
+draining. Readiness handshakes and per-process death sentinels avoid public
+network access and timing-only survival guesses. This proves cleanup only for
+the process group Checksy created; deliberate process-group/session detachment
+and forwarding signals received by the Checksy parent remain explicit residuals.
+
 ## Entry Points
 
 ### CLI Entry (Primary)

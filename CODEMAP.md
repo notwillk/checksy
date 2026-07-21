@@ -21,7 +21,7 @@
 │   └── Cargo.lock
 ├── fixtures/
 │   ├── strict-config/           # Runtime/schema parity corpus
-│   ├── pull-agent-contract/     # Static future-agent contract corpus
+│   ├── pull-agent-contract/     # Agent contracts plus executable process matrix
 │   ├── origin-regression/       # Defining-config asset/command regression
 │   ├── remote-config/           # File/Git inclusion examples
 │   └── rule-files/              # Pattern-script examples
@@ -231,14 +231,17 @@ prompts are disabled, and credential helpers are requested to be noninteractive.
   install orchestration, prepared-root, and mutation-lock behavior.
 - `cache.rs` and `git.rs`: cache paths/pruning and Git command helpers; network
   tests remain ignored by default.
-- `process_runner.rs`: focused tests cover bounded capture, ordinary
-  exit versus timeout, process-group escalation, and noninteractive stdin/Git
-  setup. The broader deterministic process-integration roadmap item remains
-  separate.
+- `process_runner.rs`: deterministic Linux/macOS tests cover forced timeout of
+  a TERM-resistant managed leader/child/grandchild tree, pre-timeout output,
+  ordinary nonzero completion, exact/max-plus-one capture, and continuous
+  output draining.
 - `state_lock.rs`: owner/mode/type validation, contention, release, stale-process
   recovery, and descriptor-inheritance behavior.
 - `fixtures/strict-config/`: indexed structural, YAML-parser, and runtime-only
   cases.
+- `fixtures/pull-agent-contract/process/`: executable case-to-test mapping for
+  the completed P2 process scenarios; its boundary is the runner-managed
+  process group, not deliberately detached work or parent-signal forwarding.
 - `fixtures/origin-regression/`: network-free CLI regression proving root and
   nested rules, assets, and pattern scripts use their defining config's
   directory and that origin-scoped exclusions never execute.
@@ -254,7 +257,8 @@ prompts are disabled, and credential helpers are requested to be noninteractive.
 - Check/fix/pattern execution: update `check.rs` and the CLI fix path.
 - Git cache discovery or refresh: update `cli.rs`, `cache.rs`, and `git.rs`.
 - Timeout, capture, process-group, or child-stdin semantics: update
-  `process_runner.rs` and focused check/Git integration tests.
+  `process_runner.rs`, its deterministic tests, and the executable process
+  contract index.
 - Mutation serialization or lock-file safety: update `state_lock.rs` and the
   complete mutation scopes in `cli.rs`.
 - New command: update dispatch, parser/help text, exit behavior, and CLI tests in

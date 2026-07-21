@@ -4,6 +4,7 @@ indexes:
   - formats/cases.yaml
   - cli/cases.yaml
   - limits/cases.yaml
+  - process/cases.yaml
 descriptors:
   - descriptors/future-harnesses.yaml
 cases:

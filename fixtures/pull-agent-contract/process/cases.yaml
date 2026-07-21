@@ -1,0 +1,118 @@
+schemaVersion: 1
+status: executable-contract
+milestone: P2
+platforms:
+  - linux
+  - macos
+defaults:
+  publicNetwork: false
+  coordination: readiness-handshake
+  timeoutClock: monotonic
+  processBoundary: runner-managed-process-group
+cases:
+  - id: managed-tree-forced-timeout
+    category: timeout-process-tree
+    test: process_runner::tests::managed_tree_forced_timeout
+    stimulus:
+      topology:
+        - leader
+        - child
+        - grandchild
+      oneRunnerManagedProcessGroup: true
+      termResistant:
+        - leader
+        - child
+        - grandchild
+      readinessHandshake:
+        nonceRequired: true
+        reportsPids: true
+      deathSentinels:
+        kind: distinct-state-directory-locks
+        participants:
+          - child
+          - grandchild
+    expected:
+      outcome: timed-out
+      sequence:
+        - spawn
+        - term-process-group
+        - kill-process-group
+        - reap-leader
+      childAliveAfterReturn: false
+      grandchildAliveAfterReturn: false
+      childDeathSentinelLockReacquired: true
+      grandchildDeathSentinelLockReacquired: true
+      pidPollingIsLivenessAuthority: false
+
+  - id: pre-timeout-output-retained
+    category: timeout-output
+    test: process_runner::tests::pre_timeout_output_retained
+    stimulus:
+      stdoutSentinelPrefix: "PRE_TIMEOUT_STDOUT:"
+      stderrSentinelPrefix: "PRE_TIMEOUT_STDERR:"
+      sentinelSuffix: readiness-handshake-nonce
+      then: wait-for-timeout
+    expected:
+      outcome: timed-out
+      partialOutput:
+        stdoutContainsTemplate: "PRE_TIMEOUT_STDOUT:{nonce}"
+        stderrContainsTemplate: "PRE_TIMEOUT_STDERR:{nonce}"
+
+  - id: ordinary-nonzero-distinct
+    category: exit-classification
+    test: process_runner::tests::ordinary_nonzero_distinct
+    stimulus:
+      exitCode: 23
+    expected:
+      outcome: completed-process
+      exitCode: 23
+      timedOut: false
+      termSent: false
+      killSent: false
+
+  - id: capture-exact-limit
+    category: output-boundary
+    test: process_runner::tests::capture_exact_limit
+    stimulus:
+      streams:
+        - stdout
+        - stderr
+      originalBytes: 1048576
+    expected:
+      perStream:
+        retainedBytes: 1048576
+        originalBytes: 1048576
+        truncated: false
+
+  - id: capture-max-plus-one
+    category: output-boundary
+    test: process_runner::tests::capture_max_plus_one
+    stimulus:
+      streams:
+        - stdout
+        - stderr
+      originalBytes: 1048577
+      firstByteSentinel: H
+      lastByteSentinel: T
+    expected:
+      perStream:
+        retainedBytes: 1048576
+        retainedHeadBytes: 524288
+        retainedTailBytes: 524288
+        originalBytes: 1048577
+        truncated: true
+        firstRetainedByte: H
+        lastRetainedByte: T
+
+  - id: continuous-output-drain
+    category: output-drain
+    test: process_runner::tests::continuous_output_drain
+    stimulus:
+      stdout: continuous-until-timeout
+      stderrSentinel: stderr-marker
+    expected:
+      outcome: timed-out
+      timeoutDeadlineCannotBeStarved: true
+      stdoutOriginalBytesPositive: true
+      stderrContains: stderr-marker
+      pipeDeadlock: false

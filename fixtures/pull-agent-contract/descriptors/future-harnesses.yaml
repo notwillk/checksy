@@ -19,18 +19,6 @@ harnesses:
       writesExecutableStagingBeforePreflight: false
       embedsGeneratedPayloadsInRepository: false
 
-  - id: process-tree-runner
-    kind: process-tree
-    milestone: P2
-    capabilities:
-      - spawn-child-and-descendant
-      - emit-bounded-and-over-boundary-stdout-stderr
-      - ignore-term-until-kill-grace-expires
-      - report-descendant-survival
-    assertions:
-      descendantsRemainAfterTimeout: false
-      drainsDiscardedOutputContinuously: true
-
   - id: deterministic-http-provider
     kind: http-server
     milestone: P4

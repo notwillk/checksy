@@ -1,13 +1,15 @@
 # Pull-Agent Contract Fixtures
 
 These files describe accepted and rejected behavior for the planned pull-based
-agent. They are a contract for future tests; current production code does not
-parse this corpus or implement the outcomes.
+agent. Most remain a contract for future tests; the current deterministic
+process-runner cases are explicitly mapped to executable Rust tests. Production
+code does not parse this corpus.
 
 [cases.yaml](cases.yaml) is the root machine-readable index. Its `indexes`
-entries lead to the public-format, CLI, and resource-limit matrices; its
+entries lead to the public-format, CLI, resource-limit, and process matrices; its
 `cases` entries retain the earlier policy, source, authentication, and behavior
-fixtures. Every file in this corpus remains static input for future tests.
+fixtures. Every file in this corpus remains static fixture data even where a
+current test consumes or maps to it.
 
 Expected accept/reject describes whether the requested transition, fallback, or
 promotion is permitted; it does not merely describe whether YAML parses.
@@ -20,8 +22,10 @@ promotion is permitted; it does not merely describe whether YAML parses.
   Schema.
 - `cli/cases.yaml` is an argv/context/result matrix for the new command surface.
 - `limits` contains the normative numeric table and exact-boundary scenarios.
-- `descriptors/future-harnesses.yaml` specifies future archive, process-tree,
-  HTTP-server, and scheduler harnesses without implementing them.
+- [`process`](process/README.md) maps the executable Linux/macOS process-runner
+  scenarios to deterministic Rust tests.
+- `descriptors/future-harnesses.yaml` specifies future archive, HTTP-server, and
+  scheduler harnesses without implementing them.
 - `policy` contains the earlier privilege-policy examples and abstract
   prohibited enrollment exception cases.
 - local covers defaults, ambiguity, confinement, and protected external roots.
@@ -55,7 +59,7 @@ The fixture-local .gitattributes forces LF endings so autocrlf cannot alter the
 signed bytes. The SSH fixtures contain only a test public key; no private
 Minisign or SSH key is committed.
 
-## Future harness requirements
+## Fixture and harness requirements
 
 - Materialize allowed-external-roots.yaml.in by replacing __EXTERNAL_ROOT__ with
   the canonical absolute path of local/external-assets.
@@ -69,3 +73,6 @@ Minisign or SSH key is committed.
 - Reject duplicate object keys, a UTF-8 BOM, and trailing JSON values before
   invoking JSON Schema validation.
 - Verify every path in every index before executing a case.
+- Treat the process matrix's managed process-group boundary literally. Deliberate
+  process-group/session detachment and signal forwarding from the Checksy parent
+  remain residual behavior, not executable cases in that matrix.
