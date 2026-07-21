@@ -1,0 +1,10 @@
+rules:
+  - name: nested inline origin
+    check: |
+      set -euo pipefail
+      [[ -f .checksy.yaml ]]
+      [[ "$(<Brewfile)" == "NESTED_BREWFILE_SENTINEL" ]]
+      [[ "$(<template.txt)" == "NESTED_TEMPLATE_SENTINEL" ]]
+patterns:
+  - scripts/*.sh
+  - "!scripts/excluded.sh"

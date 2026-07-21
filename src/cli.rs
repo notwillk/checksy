@@ -1113,6 +1113,101 @@ mod tests {
     }
 
     #[test]
+    fn test_origin_regression_fixture_uses_defining_directories_without_mutation() {
+        fn snapshot_tree(root: &std::path::Path) -> Vec<(std::path::PathBuf, String, Vec<u8>)> {
+            fn visit(
+                root: &std::path::Path,
+                directory: &std::path::Path,
+                snapshot: &mut Vec<(std::path::PathBuf, String, Vec<u8>)>,
+            ) {
+                let mut entries = std::fs::read_dir(directory)
+                    .unwrap()
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap();
+                entries.sort_by_key(|entry| entry.file_name());
+
+                for entry in entries {
+                    let path = entry.path();
+                    let relative = path.strip_prefix(root).unwrap().to_path_buf();
+                    let file_type = entry.file_type().unwrap();
+                    if file_type.is_dir() {
+                        snapshot.push((relative, "directory".to_string(), Vec::new()));
+                        visit(root, &path, snapshot);
+                    } else if file_type.is_file() {
+                        snapshot.push((relative, "file".to_string(), std::fs::read(path).unwrap()));
+                    } else if file_type.is_symlink() {
+                        snapshot.push((
+                            relative,
+                            "symlink".to_string(),
+                            std::fs::read_link(path)
+                                .unwrap()
+                                .to_string_lossy()
+                                .into_owned()
+                                .into_bytes(),
+                        ));
+                    } else {
+                        panic!("unsupported fixture entry: {}", path.display());
+                    }
+                }
+            }
+
+            let mut snapshot = Vec::new();
+            visit(root, root, &mut snapshot);
+            snapshot
+        }
+
+        let fixture_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures")
+            .join("origin-regression")
+            .canonicalize()
+            .unwrap();
+        let fixture = fixture_root.join(".checksy.yaml");
+        let before = snapshot_tree(&fixture_root);
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", fixture.display()),
+                "check".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        let after = snapshot_tree(&fixture_root);
+        assert_eq!(after, before, "origin regression fixture was mutated");
+        assert_eq!(
+            code,
+            0,
+            "stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&stdout),
+            String::from_utf8_lossy(&stderr)
+        );
+        assert!(
+            stderr.is_empty(),
+            "unexpected stderr: {:?}",
+            String::from_utf8_lossy(&stderr)
+        );
+
+        let stdout = String::from_utf8(stdout).unwrap();
+        assert_eq!(
+            stdout,
+            concat!(
+                "✅ root inline origin\n",
+                "✅ nested inline origin\n",
+                "✅ scripts/root-origin.sh\n",
+                "✅ scripts/nested-origin.sh\n",
+                "😎 All rules validated\n"
+            )
+        );
+        assert!(!stdout.contains("scripts/excluded.sh"));
+        assert!(!stdout.contains("ROOT_EXCLUDED_PATTERN_EXECUTED"));
+        assert!(!stdout.contains("NESTED_EXCLUDED_PATTERN_EXECUTED"));
+    }
+
+    #[test]
     fn test_cli_uses_nested_origins_for_checks_fixes_and_patterns() {
         let temp = tempfile::TempDir::new().unwrap();
         let root = temp.path();

@@ -62,7 +62,7 @@ Exit gate: the trust model, state model, manifest/signature format, CLI behavior
   - Detect cycles by canonical source identity instead of only local path.
   - Reject traversal and symlink escapes from remote bundle roots; allow exceptions only through an explicit local-only policy.
 
-- [ ] Add an origin regression bundle.
+- [x] Add an origin regression bundle.
   - Include `.checksy.yaml`, a nested config, pattern scripts, a `Brewfile`, a template, and an excluded pattern.
   - Prove every asset is resolved from the config that defines it.
 

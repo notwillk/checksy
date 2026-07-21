@@ -52,7 +52,9 @@ cd fixtures/remote-config/circular
 checksy check --config=a.yaml
 ```
 
-Expected: 3 rules (A, B, C - A's remote to B is skipped since A was already visited when C tries to reference it)
+Expected: configuration loading fails with a deterministic active-cycle error
+that identifies the `a.yaml` → `b.yaml` → `c.yaml` → `a.yaml` inclusion
+chain. Completed, non-active repeated inclusions remain deduplicated.
 
 ## Invalid Cases (`invalid/`)
 

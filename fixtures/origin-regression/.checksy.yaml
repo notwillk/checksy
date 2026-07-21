@@ -1,0 +1,11 @@
+rules:
+  - name: root inline origin
+    check: |
+      set -euo pipefail
+      [[ -f .checksy.yaml ]]
+      [[ "$(<Brewfile)" == "ROOT_BREWFILE_SENTINEL" ]]
+      [[ "$(<template.txt)" == "ROOT_TEMPLATE_SENTINEL" ]]
+  - remote: nested/.checksy.yaml
+patterns:
+  - scripts/*.sh
+  - "!scripts/excluded.sh"

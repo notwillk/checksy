@@ -146,6 +146,9 @@ every resolved rule and pattern group. Inline checks and fixes run from the
 directory containing the config that defined them; relative shell references to
 Brewfiles, templates, and other files therefore use that same directory.
 Patterns are also expanded and executed from their defining config's directory.
+The checked-in [origin regression fixture](fixtures/origin-regression/README.md)
+exercises these rules across a root definition, a nested definition, and their
+separately owned auxiliary assets and pattern scripts.
 The public Rust `load()` and `diagnose(Options)` interfaces remain flat for
 source compatibility and do not expose this per-definition origin model.
 Their compatibility projection retains only the selected root config's pattern

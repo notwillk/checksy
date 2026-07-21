@@ -172,6 +172,16 @@ run_install() [cli.rs]
 - **Glob expansion**: Expands each config's patterns relative to that config;
   fetched matches are canonicalized and confined to the checkout
 
+### Origin Regression Coverage
+
+The checked-in [origin regression fixture](fixtures/origin-regression/README.md)
+drives the CLI through a root definition and nested definition with distinct
+same-named assets. It locks down defining-config working directories,
+root-before-nested execution order, origin-scoped pattern negation, and
+exclusion of scripts that must never execute. Temporary-directory and local-Git
+unit tests continue to cover cycles, deduplication, fix/recheck behavior, nested
+acquisition, and fetched-checkout confinement.
+
 ## Entry Points
 
 ### CLI Entry (Primary)

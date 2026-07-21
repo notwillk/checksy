@@ -75,9 +75,13 @@ rm -rf fixtures/remote-config/git/.git-cache
 
 ## Expected Behavior
 
-When running `checksy check`, you may see failures from the remote rules because the happy-path fixture references scripts (like `./pass.sh`) with relative paths. When the config is loaded from the cache, these scripts are not in the current working directory. This demonstrates that:
-1. ✅ The git remote config is being loaded from cache
-2. ✅ The rules are being executed
-3. ⚠️ Remote configs with relative script paths may need adjustment for cached usage
+When running `checksy check`, rules loaded from the cached Git definition execute
+with that definition's directory as their working directory. Relative references
+such as `./pass.sh` therefore resolve inside the cached checkout just as they do
+for the source definition. This demonstrates that:
+
+1. ✅ The git remote config is loaded from cache
+2. ✅ Cached rules retain their defining-config working directory
+3. ✅ Relative assets resolve within the cached checkout
 
 The local verification rule at the end should always pass.

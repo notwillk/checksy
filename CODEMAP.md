@@ -20,6 +20,7 @@
 ├── fixtures/
 │   ├── strict-config/           # Runtime/schema parity corpus
 │   ├── pull-agent-contract/     # Static future-agent contract corpus
+│   ├── origin-regression/       # Defining-config asset/command regression
 │   ├── remote-config/           # File/Git inclusion examples
 │   └── rule-files/              # Pattern-script examples
 ├── schemas/pull-agent/          # Public 2020-12 pull-agent schemas
@@ -169,9 +170,11 @@ later roadmap work.
   tests remain ignored by default.
 - `fixtures/strict-config/`: indexed structural, YAML-parser, and runtime-only
   cases.
+- `fixtures/origin-regression/`: network-free CLI regression proving root and
+  nested rules, assets, and pattern scripts use their defining config's
+  directory and that origin-scoped exclusions never execute.
 - `fixtures/remote-config/` and `fixtures/rule-files/`: human-readable legacy
-  examples. The dedicated origin regression bundle remains a separate roadmap
-  item.
+  examples.
 
 ## Change Routing
 
