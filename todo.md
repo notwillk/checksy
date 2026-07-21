@@ -70,7 +70,7 @@ Exit gate: strict parsing matches the schema, nested remotes retain their origin
 
 ## P2 — Build shared locking and process-control primitives
 
-- [ ] Implement an operating-system advisory state-directory lock.
+- [x] Implement an operating-system advisory state-directory lock.
   - Allow only one `apply` or cache mutation per state directory.
   - Return the documented distinct result when the lock is held.
   - Add contention and stale-process tests; do not use a PID file as the locking mechanism.

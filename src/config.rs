@@ -29,10 +29,65 @@ impl fmt::Display for ConfigDiagnostic {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct LoadedConfig {
     pub(crate) config: Config,
     pub(crate) diagnostics: Vec<ConfigDiagnostic>,
+}
+
+/// A strictly decoded, canonical root definition whose legacy cache selection
+/// is fixed for one CLI operation.
+///
+/// Install and `check --fix` may resolve the graph more than once as newly
+/// materialized Git definitions reveal additional dependencies. Keeping the
+/// selected root in memory prevents those passes from rereading a changed root
+/// document or switching to a different nested/cachePath-selected cache.
+#[derive(Debug)]
+pub(crate) struct PreparedRoot {
+    origin: DefinitionOrigin,
+    loaded: LoadedConfig,
+    cache_root: PathBuf,
+}
+
+impl PreparedRoot {
+    pub(crate) fn cache_root(&self) -> &Path {
+        &self.cache_root
+    }
+
+    /// Bind subsequent resolver/cache work to the canonical directory selected
+    /// by the mutation lock rather than retaining a possibly retargetable
+    /// operator-selected symlink.
+    pub(crate) fn use_canonical_cache_root(&mut self, cache_root: &Path) {
+        self.cache_root = cache_root.to_path_buf();
+    }
+
+    pub(crate) fn resolve(&self, mode: ResolverMode) -> Result<ResolvedLoad, String> {
+        self.resolve_inner(mode, None)
+    }
+
+    pub(crate) fn resolve_for_install(
+        &self,
+        expanded: &HashSet<(String, String)>,
+    ) -> Result<ResolvedLoad, String> {
+        self.resolve_inner(ResolverMode::RefreshOrClone, Some(expanded))
+    }
+
+    fn resolve_inner(
+        &self,
+        mode: ResolverMode,
+        install_expanded: Option<&HashSet<(String, String)>>,
+    ) -> Result<ResolvedLoad, String> {
+        let cache = CacheManager::from_root(self.cache_root.clone());
+        let mut resolver = DefinitionResolver::new(mode, cache, install_expanded.cloned());
+        let definition =
+            resolver.resolve_config(self.origin.clone(), None, Some(self.loaded.clone()))?;
+
+        Ok(ResolvedLoad {
+            definition,
+            diagnostics: resolver.diagnostics,
+            git_dependencies: resolver.git_dependencies,
+        })
+    }
 }
 
 pub fn resolve_path(explicit: &str) -> Result<Option<String>, String> {
@@ -84,7 +139,10 @@ pub(crate) fn load_resolved_with_mode(
     path: &str,
     mode: ResolverMode,
 ) -> Result<ResolvedLoad, String> {
-    load_resolved(path, mode, None)
+    if path == "-" {
+        return load_resolved_stdin(mode);
+    }
+    prepare_resolved_root(path)?.resolve(mode)
 }
 
 /// Discover the next Git dependency frontier for `install`.
@@ -93,27 +151,18 @@ pub(crate) fn load_resolved_with_mode(
 /// reported but deliberately not decoded. Once a dependency is present in
 /// `expanded`, resolution descends into its freshly materialized checkout and
 /// can reveal the next nested frontier.
-pub(crate) fn load_resolved_for_install(
+#[cfg(test)]
+fn load_resolved_for_install(
     path: &str,
     expanded: &HashSet<(String, String)>,
 ) -> Result<ResolvedLoad, String> {
-    load_resolved(path, ResolverMode::RefreshOrClone, Some(expanded))
+    if path == "-" {
+        return load_resolved_stdin(ResolverMode::RefreshOrClone);
+    }
+    prepare_resolved_root(path)?.resolve_for_install(expanded)
 }
 
-fn load_resolved(
-    path: &str,
-    mode: ResolverMode,
-    install_expanded: Option<&HashSet<(String, String)>>,
-) -> Result<ResolvedLoad, String> {
-    if path == "-" {
-        let mut stdin = std::io::stdin();
-        let mut buffer = String::new();
-        stdin
-            .read_to_string(&mut buffer)
-            .map_err(|error| format!("read stdin: {}", error))?;
-        return resolve_stdin(&buffer, mode);
-    }
-
+pub(crate) fn prepare_resolved_root(path: &str) -> Result<PreparedRoot, String> {
     let config_path = Path::new(path)
         .canonicalize()
         .map_err(|error| format!("failed to resolve config path '{}': {}", path, error))?;
@@ -148,16 +197,25 @@ fn load_resolved(
 
     // Decode the selected root first: only its cachePath may choose the legacy
     // cache anchor. Nested definitions cannot redirect acquisition.
-    let root_loaded = decode_file(&config_path)?;
-    let cache = CacheManager::new(&root_dir, root_loaded.config.cache_path.as_deref());
-    let mut resolver = DefinitionResolver::new(mode, cache, install_expanded.cloned());
-    let definition = resolver.resolve_config(origin, None, Some(root_loaded))?;
+    let loaded = decode_file(&config_path)?;
+    let cache_root = CacheManager::new(&root_dir, loaded.config.cache_path.as_deref())
+        .root()
+        .to_path_buf();
 
-    Ok(ResolvedLoad {
-        definition,
-        diagnostics: resolver.diagnostics,
-        git_dependencies: resolver.git_dependencies,
+    Ok(PreparedRoot {
+        origin,
+        loaded,
+        cache_root,
     })
+}
+
+fn load_resolved_stdin(mode: ResolverMode) -> Result<ResolvedLoad, String> {
+    let mut stdin = std::io::stdin();
+    let mut buffer = String::new();
+    stdin
+        .read_to_string(&mut buffer)
+        .map_err(|error| format!("read stdin: {}", error))?;
+    resolve_stdin(&buffer, mode)
 }
 
 pub(crate) fn decode_with_diagnostics(data: &str, source: &str) -> Result<LoadedConfig, String> {
@@ -998,6 +1056,62 @@ mod tests {
         let cfg = result.unwrap();
         assert_eq!(cfg.rules[0].severity, Some(Severity::Warning));
         assert_eq!(cfg.rules[1].severity, Some(Severity::Error));
+    }
+
+    #[test]
+    fn test_prepared_root_freezes_root_document_and_cache_selection() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.yaml");
+        fs::write(
+            &path,
+            concat!(
+                "cachePath: frozen-cache\n",
+                "rules:\n",
+                "  - name: frozen rule\n",
+                "    check: 'true'\n",
+                "  - remote: git+https://example.invalid/root.git#main:checks.yaml\n",
+            ),
+        )
+        .unwrap();
+
+        let canonical_parent = path.canonicalize().unwrap().parent().unwrap().to_path_buf();
+        let prepared = prepare_resolved_root(path.to_str().unwrap()).unwrap();
+        assert_eq!(prepared.cache_root(), canonical_parent.join("frozen-cache"));
+
+        fs::write(
+            &path,
+            "cachePath: replacement-cache\nrules:\n  - name: replacement rule\n    check: 'true'\n",
+        )
+        .unwrap();
+
+        for _ in 0..2 {
+            let loaded = prepared.resolve(ResolverMode::CacheMissing).unwrap();
+            assert_eq!(
+                loaded.definition.cache_path.as_deref(),
+                Some("frozen-cache")
+            );
+            assert_eq!(loaded.definition.rules.len(), 1);
+            assert_eq!(
+                loaded.definition.rules[0].rule.name.as_deref(),
+                Some("frozen rule")
+            );
+            assert_eq!(loaded.git_dependencies.len(), 1);
+            assert_eq!(
+                loaded.git_dependencies[0].cache_root,
+                canonical_parent.join("frozen-cache")
+            );
+        }
+
+        let reloaded =
+            load_resolved_with_mode(path.to_str().unwrap(), ResolverMode::CacheMissing).unwrap();
+        assert_eq!(
+            reloaded.definition.cache_path.as_deref(),
+            Some("replacement-cache")
+        );
+        assert_eq!(
+            reloaded.definition.rules[0].rule.name.as_deref(),
+            Some("replacement rule")
+        );
     }
 
     #[test]

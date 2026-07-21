@@ -108,7 +108,7 @@ the root-relative path is derived; a symlink cannot create a second identity.
 
 - Keep three verified payloads per source: current, previous, and the newest
   remaining historical generation. Never prune current or previous.
-- Cleanup runs under the source lock after durable promotion metadata.
+- Cleanup runs under the state-directory lock after durable promotion metadata.
 - Delete staging payloads after handled failures. Locked startup deletes orphan
   staging from interrupted runs; staging content is never reused.
 - Failure records contain bounded metadata/output, never executable source.

@@ -1,12 +1,13 @@
 use crate::cache::CacheManager;
 use crate::check::{self, Report, ResolvedOptions, RuleResult};
 use crate::config::{
-    load_resolved_for_install, load_resolved_with_diagnostics, load_resolved_with_mode,
-    resolve_path, ConfigDiagnostic,
+    load_resolved_with_diagnostics, prepare_resolved_root, resolve_path, ConfigDiagnostic,
+    PreparedRoot,
 };
 use crate::git::GitCache;
 use crate::resolved::{GitDependency, ResolvedLoad, ResolvedRule, ResolverMode};
 use crate::schema::{configuration_schema, Rule, Severity};
+use crate::state_lock::{LockError, StateDirectoryLock};
 use crate::version::VERSION;
 use std::collections::HashSet;
 use std::io::Write;
@@ -205,11 +206,54 @@ fn run_check(
         }
     };
 
-    let loaded = match load_resolved_with_fix(&abs_config_path, apply_fixes, stdout) {
-        Ok(loaded) => loaded,
-        Err(e) => {
-            writeln!(stderr, "failed to load config '{}': {}", abs_config_path, e).ok();
-            return 2;
+    // File-backed fix mode is one complete mutation scope. Freeze the selected
+    // root before locking so every discovery pass uses the same cache root,
+    // then keep the guard alive through acquisition, checks, fixes, and the
+    // final report. Stdin has no stable state/cache root and cannot expand
+    // remotes, so it retains its legacy unlocked behavior.
+    let _mutation_lock: Option<StateDirectoryLock>;
+    let loaded = if apply_fixes && abs_config_path != "-" {
+        let mut prepared = match prepare_resolved_root(&abs_config_path) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                writeln!(
+                    stderr,
+                    "failed to load config '{}': {}",
+                    abs_config_path, error
+                )
+                .ok();
+                return 2;
+            }
+        };
+        _mutation_lock = match acquire_mutation_lock(&mut prepared, stderr) {
+            Ok(lock) => Some(lock),
+            Err(exit) => return exit,
+        };
+        match load_resolved_with_fix(&prepared, stdout) {
+            Ok(loaded) => loaded,
+            Err(error) => {
+                writeln!(
+                    stderr,
+                    "failed to load config '{}': {}",
+                    abs_config_path, error
+                )
+                .ok();
+                return 2;
+            }
+        }
+    } else {
+        _mutation_lock = None;
+        match load_resolved_with_diagnostics(&abs_config_path) {
+            Ok(loaded) => loaded,
+            Err(error) => {
+                writeln!(
+                    stderr,
+                    "failed to load config '{}': {}",
+                    abs_config_path, error
+                )
+                .ok();
+                return 2;
+            }
         }
     };
     print_config_diagnostics(&loaded.diagnostics, stderr);
@@ -280,19 +324,12 @@ fn run_check(
 /// dependency before retrying. Discovery is repeated because a newly cloned
 /// parent can reveal more nested Git references.
 fn load_resolved_with_fix(
-    abs_config_path: &str,
-    apply_fixes: bool,
+    prepared: &PreparedRoot,
     stdout: &mut dyn Write,
 ) -> Result<ResolvedLoad, String> {
-    // Stdin definitions cannot contain remotes and the stream is not replayable.
-    // Resolve it exactly once even when command fixes are enabled.
-    if !apply_fixes || abs_config_path == "-" {
-        return load_resolved_with_diagnostics(abs_config_path);
-    }
-
     let mut announced = false;
     loop {
-        let discovered = load_resolved_with_mode(abs_config_path, ResolverMode::CacheMissing)?;
+        let discovered = prepared.resolve(ResolverMode::CacheMissing)?;
         let missing: Vec<GitDependency> = discovered
             .git_dependencies
             .into_iter()
@@ -300,7 +337,7 @@ fn load_resolved_with_fix(
             .collect();
 
         if missing.is_empty() {
-            return load_resolved_with_diagnostics(abs_config_path);
+            return prepared.resolve(ResolverMode::CachedOnly);
         }
 
         if !announced {
@@ -334,6 +371,40 @@ fn load_resolved_with_fix(
         }
 
         writeln!(stdout, "✅ Git remotes cached, retrying...").ok();
+    }
+}
+
+fn acquire_mutation_lock(
+    prepared: &mut PreparedRoot,
+    stderr: &mut dyn Write,
+) -> Result<StateDirectoryLock, i32> {
+    let selected_root = prepared.cache_root().to_path_buf();
+    match StateDirectoryLock::acquire(&selected_root) {
+        Ok(lock) => {
+            prepared.use_canonical_cache_root(lock.canonical_root());
+            Ok(lock)
+        }
+        Err(LockError::Held) => {
+            writeln!(
+                stderr,
+                "lock-held: mutation lock is already held for '{}'",
+                selected_root.display()
+            )
+            .ok();
+            Err(4)
+        }
+        Err(LockError::State(error)) => {
+            writeln!(stderr, "state-failed: {}", error).ok();
+            Err(2)
+        }
+        Err(LockError::UnsupportedPlatform) => {
+            writeln!(
+                stderr,
+                "unsupported-platform: state directory locking is supported only on Linux and macOS"
+            )
+            .ok();
+            Err(2)
+        }
     }
 }
 
@@ -454,12 +525,23 @@ fn run_install(
     };
 
     let config_path = abs_config_path.to_string_lossy().into_owned();
+    let mut prepared = match prepare_resolved_root(&config_path) {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            writeln!(stderr, "failed to load config '{}': {}", config_path, error).ok();
+            return 2;
+        }
+    };
+    let _mutation_lock = match acquire_mutation_lock(&mut prepared, stderr) {
+        Ok(lock) => lock,
+        Err(exit) => return exit,
+    };
     let mut processed: HashSet<(std::path::PathBuf, String, String)> = HashSet::new();
     let mut expanded = HashSet::new();
     let mut announced = false;
 
     loop {
-        let discovered = match load_resolved_for_install(&config_path, &expanded) {
+        let discovered = match prepared.resolve_for_install(&expanded) {
             Ok(discovered) => discovered,
             Err(error) => {
                 writeln!(stderr, "failed to collect git remotes: {}", error).ok();
@@ -505,7 +587,7 @@ fn run_install(
 
     // The frontier walk deliberately defers unrefreshed Git parsing. Validate
     // the complete fresh graph once more before reporting success or pruning.
-    let final_load = match load_resolved_with_diagnostics(&config_path) {
+    let final_load = match prepared.resolve(ResolverMode::CachedOnly) {
         Ok(loaded) => loaded,
         Err(error) => {
             writeln!(stderr, "failed to load refreshed config: {}", error).ok();
@@ -1051,12 +1133,15 @@ mod tests {
 
     #[test]
     fn test_install_reports_config_severity_deprecations() {
-        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let source_fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("fixtures")
             .join("strict-config")
             .join("valid")
             .join("mixed-case-severity.yaml");
+        let temp = tempfile::TempDir::new().unwrap();
+        let fixture = temp.path().join("mixed-case-severity.yaml");
+        std::fs::copy(source_fixture, &fixture).unwrap();
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
 
@@ -1205,6 +1290,217 @@ mod tests {
         assert!(!stdout.contains("scripts/excluded.sh"));
         assert!(!stdout.contains("ROOT_EXCLUDED_PATTERN_EXECUTED"));
         assert!(!stdout.contains("NESTED_EXCLUDED_PATTERN_EXECUTED"));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_install_lock_contention_returns_exit_four_before_progress() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config = temp.path().join("config.yaml");
+        std::fs::write(&config, "cachePath: cache\nrules: []\n").unwrap();
+        let cache_root = temp.path().join("cache");
+        let _held = StateDirectoryLock::acquire(&cache_root).unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "install".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 4);
+        assert!(stdout.is_empty(), "unexpected stdout: {stdout:?}");
+        let stderr = String::from_utf8(stderr).unwrap();
+        assert!(stderr.starts_with("lock-held:"), "{stderr:?}");
+        assert!(stderr.contains(&cache_root.display().to_string()));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_check_fix_lock_contention_prevents_fix_and_no_fail_cannot_mask_it() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config = temp.path().join("config.yaml");
+        std::fs::write(
+            &config,
+            concat!(
+                "cachePath: cache\n",
+                "rules:\n",
+                "  - name: must not fix\n",
+                "    check: test -f fixed\n",
+                "    fix: touch fixed\n"
+            ),
+        )
+        .unwrap();
+        let cache_root = temp.path().join("cache");
+        let _held = StateDirectoryLock::acquire(&cache_root).unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "check".to_string(),
+                "--fix".to_string(),
+                "--no-fail".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 4);
+        assert!(stdout.is_empty(), "unexpected stdout: {stdout:?}");
+        assert!(!temp.path().join("fixed").exists());
+        assert!(String::from_utf8(stderr).unwrap().starts_with("lock-held:"));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_deprecated_diagnose_fix_uses_the_same_mutation_lock() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config = temp.path().join("config.yaml");
+        std::fs::write(
+            &config,
+            "cachePath: cache\nrules:\n  - check: test -f fixed\n    fix: touch fixed\n",
+        )
+        .unwrap();
+        let _held = StateDirectoryLock::acquire(&temp.path().join("cache")).unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "diagnose".to_string(),
+                "--fix".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 4);
+        assert!(stdout.is_empty(), "unexpected stdout: {stdout:?}");
+        assert!(!temp.path().join("fixed").exists());
+        let stderr = String::from_utf8(stderr).unwrap();
+        assert!(stderr.contains("is deprecated"), "{stderr:?}");
+        assert!(stderr.contains("lock-held:"), "{stderr:?}");
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_lock_integrity_failure_is_operational_not_contention() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config = temp.path().join("config.yaml");
+        std::fs::write(&config, "cachePath: cache\nrules: []\n").unwrap();
+        let cache_root = temp.path().join("cache");
+        std::fs::create_dir_all(cache_root.join("lock")).unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "install".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 2);
+        assert!(stdout.is_empty(), "unexpected stdout: {stdout:?}");
+        assert!(String::from_utf8(stderr)
+            .unwrap()
+            .starts_with("state-failed:"));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_ordinary_check_remains_lock_free() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config = temp.path().join("config.yaml");
+        std::fs::write(
+            &config,
+            "cachePath: cache\nrules:\n  - name: ordinary check\n    check: 'true'\n",
+        )
+        .unwrap();
+        let _held = StateDirectoryLock::acquire(&temp.path().join("cache")).unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "check".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 0);
+        assert!(stderr.is_empty(), "unexpected stderr: {stderr:?}");
+        assert_eq!(
+            String::from_utf8(stdout).unwrap(),
+            "✅ ordinary check\n😎 All rules validated\n"
+        );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_canonical_cache_aliases_share_one_lock() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::TempDir::new().unwrap();
+        let real_cache = temp.path().join("real-cache");
+        let alias_cache = temp.path().join("cache-alias");
+        std::fs::create_dir(&real_cache).unwrap();
+        symlink(&real_cache, &alias_cache).unwrap();
+        let _held = StateDirectoryLock::acquire(&real_cache).unwrap();
+        let config = temp.path().join("config.yaml");
+        std::fs::write(&config, "cachePath: cache-alias\nrules: []\n").unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "install".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 4);
+        assert!(stdout.is_empty(), "unexpected stdout: {stdout:?}");
+        assert!(String::from_utf8(stderr).unwrap().starts_with("lock-held:"));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn test_mutation_lock_rebinds_prepared_root_before_alias_retarget() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::TempDir::new().unwrap();
+        let first_cache = temp.path().join("first-cache");
+        let second_cache = temp.path().join("second-cache");
+        let alias_cache = temp.path().join("cache-alias");
+        std::fs::create_dir(&first_cache).unwrap();
+        std::fs::create_dir(&second_cache).unwrap();
+        symlink(&first_cache, &alias_cache).unwrap();
+
+        let config = temp.path().join("config.yaml");
+        std::fs::write(&config, "cachePath: cache-alias\nrules: []\n").unwrap();
+        let mut prepared = prepare_resolved_root(config.to_str().unwrap()).unwrap();
+        let mut stderr = Vec::new();
+        let _lock = acquire_mutation_lock(&mut prepared, &mut stderr).unwrap();
+        assert!(stderr.is_empty());
+        assert_eq!(prepared.cache_root(), first_cache.canonicalize().unwrap());
+
+        std::fs::remove_file(&alias_cache).unwrap();
+        symlink(&second_cache, &alias_cache).unwrap();
+        assert_eq!(prepared.cache_root(), first_cache.canonicalize().unwrap());
     }
 
     #[test]

@@ -94,6 +94,7 @@ version = "0.5.2"
 dependencies = [
  "glob",
  "jsonschema",
+ "rustix",
  "schemars",
  "serde",
  "serde_json",

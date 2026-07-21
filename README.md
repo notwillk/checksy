@@ -8,11 +8,15 @@ Checksy rules and fixes are arbitrary shell code executed with the invoking
 process's permissions; they are not sandboxed. Current Git remote caching does
 not verify an authorized publisher and is not suitable for unattended privileged
 execution. The CLI confines fetched Git config files and pattern matches to their
-cached checkout, but an authorized shell command can still access anything its
-process identity can access. Run only definitions you trust. The planned
-fail-closed security contract and current implementation gaps are documented in
-the [threat model](THREAT_MODEL.md). The frozen target formats, CLI, and
-resource bounds are specified in the
+cached checkout. File-backed `install` and `check --fix` invocations also hold an
+operating-system advisory lock on the canonical legacy cache root for their full
+run, serializing cooperating Checksy processes. Ordinary `check` and stdin
+`check --fix` remain unlocked, and the advisory lock neither authenticates the
+mutable cache nor excludes an uncooperative local actor. An authorized shell
+command can still access anything its process identity can access. Run only
+definitions you trust. The planned fail-closed security contract and current
+implementation gaps are documented in the [threat model](THREAT_MODEL.md). The
+frozen target formats, CLI, and resource bounds are specified in the
 [pull-agent contract](PULL_AGENT_CONTRACT.md).
 
 ## Installation
@@ -39,6 +43,7 @@ src/
   check.rs             # Check execution and reporting helpers
   git.rs               # Git operations for caching remotes
   resolved.rs          # Internal source/origin-aware definition model
+  state_lock.rs        # Advisory state/cache-directory lock
   schema.rs            # Configuration schema definitions
   version.rs           # Centralized version string
 ```
@@ -120,6 +125,15 @@ chooses this legacy cache location; a nested local or Git definition cannot
 redirect acquisition with its own `cachePath`. `install` discovers nested file
 and Git remotes iteratively as their parent repositories become available.
 
+For a file-backed root config, `install` and the complete `check --fix`
+invocation acquire a nonblocking operating-system advisory lock anchored at the
+canonical legacy cache root's persistent `lock` file. A competing mutation of
+that root exits with the distinct lock-held result (`4`) instead of starting
+work. The lock is released automatically when its owning process exits, so stale
+PID text is not used to decide ownership. Ordinary `check` does not take the
+cache lock, and stdin fix mode has no file-backed cache root to lock; configured
+commands can still have arbitrary host side effects in either mode.
+
 This cache is still legacy, mutable, and unauthenticated. Its `.git` directory
 only indicates that a clone exists; it does not establish an authorized signer
 or make the cached content safe for unattended execution. Its historical ref
@@ -192,9 +206,12 @@ concrete pattern matches must instead remain inside the canonical cached
 checkout; traversal and symlink escapes fail before any rule runs. These fetched
 path checks constrain structured references only. Before clone, refresh, or
 prune, the CLI rejects cache symlink components already present below the
-operator-selected root. There is not yet a mutation lock or descriptor-relative
-no-follow operation, so a concurrent local actor can race that check. Checks and
-fixes remain arbitrary shell and can deliberately access paths outside the
+operator-selected root. The advisory cache-root lock serializes cooperating
+file-backed `install` and `check --fix` processes, but ordinary checks and
+uncooperative local actors do not participate. Descriptor-relative ancestor
+opening and a protected generation state store are not implemented, so an actor
+that can modify the legacy cache can still race these path-based checks. Checks
+and fixes remain arbitrary shell and can deliberately access paths outside the
 checkout.
 
 Example with preconditions:

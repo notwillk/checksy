@@ -12,6 +12,7 @@
 │   ├── check.rs                 # Compatibility and resolved execution
 │   ├── cache.rs                 # Legacy Git cache layout
 │   ├── git.rs                   # Git CLI operations
+│   ├── state_lock.rs            # Advisory mutation lock
 │   ├── schema.rs                # Config types and generated Draft 7 schema
 │   ├── version.rs               # Version constant
 │   ├── lib.rs                   # Modules and public compatibility exports
@@ -41,7 +42,9 @@
 main.rs
   → cli::run
   → run_check
-  → config::load_resolved_with_*
+  → config::prepare_resolved_root       # File-backed --fix only
+  → acquire cache-root advisory lock    # File-backed --fix only
+  → PreparedRoot::resolve or config::load_resolved_with_*
       → strict Config decode
       → DefinitionResolver
           → local/Git remote expansion
@@ -62,11 +65,17 @@ behavior. Fetched Git config files and concrete pattern matches are canonicalize
 and must remain inside their checkout. These fetched path boundaries do not
 sandbox shell commands.
 
+For a file-backed config, the complete `check --fix` path holds the advisory
+lock for the canonical legacy cache root. Ordinary `check` and stdin fix mode do
+not acquire it.
+
 ### `install`
 
 ```text
 cli::run_install
-  → resolve in RefreshOrClone mode
+  → prepare and freeze the root-selected legacy cache directory
+  → acquire the advisory cache-root guard
+  → resolve the prepared root in RefreshOrClone mode
   → refresh each newly discovered Git dependency
   → resolve again to discover remotes inside fetched parents
   → repeat until the dependency graph is complete
@@ -74,9 +83,10 @@ cli::run_install
 ```
 
 The legacy updater still compares refs through Git, removes a changed checkout,
-and shallow-clones its replacement. Authentication, locking, atomic replacement,
-collision-resistant provider identities, and last-known-good state belong to
-later roadmap work.
+and shallow-clones its replacement. Its advisory lock serializes cooperating
+file-backed Checksy mutations, but does not authenticate the mutable cache or
+provide atomic replacement, collision-resistant provider identities, or
+last-known-good state.
 
 ## Source Responsibilities
 
@@ -87,6 +97,9 @@ later roadmap work.
 - Uses the resolved-definition path for CLI checking and fix/recheck behavior.
 - Iteratively discovers nested Git dependencies for `install` and missing-cache
   repair during `check --fix`.
+- Holds the canonical legacy cache-root lock across complete file-backed
+  `install` and `check --fix` invocations; ordinary checks and stdin fix mode are
+  unlocked.
 - Prints configuration diagnostics, rule outcomes, summaries, and the generated
   schema.
 
@@ -105,6 +118,8 @@ later roadmap work.
 - Validates canonical repository-relative Git entry config paths.
 - Preserves the public `load() -> Config` API through a flat compatibility
   projection that retains only the selected root pattern group.
+- Prepares file-backed mutation roots once, freezing the decoded root definition
+  and root-selected cache path across all locked resolution passes.
 
 ### `resolved.rs`
 
@@ -142,6 +157,20 @@ later roadmap work.
 - A present `.git` directory is still only a legacy cache-presence check, not an
   integrity or authentication proof.
 
+### `state_lock.rs`
+
+- Defines private `StateDirectoryLock` and structured `LockError` acquisition
+  results for contention, state failures, and unsupported platforms.
+- Canonicalizes the selected root and uses Linux/macOS `rustix` operations to
+  open its persistent `lock` leaf without following that leaf.
+- Requires a single-link regular file owned by the effective uid/gid with exact
+  mode `0600`; contention remains distinct from lock-file integrity failure.
+- Relies on the operating system to release ownership on descriptor close or
+  process death instead of treating recorded PID text as the lock.
+- Serializes cooperating processes only. It does not prevent direct mutation by
+  another local actor, authenticate cached content, provide descriptor-relative
+  ancestor traversal, or implement atomic promotion.
+
 ### `schema.rs`
 
 - Owns strict `Config`, `Rule`, and `Severity` deserialization.
@@ -165,9 +194,11 @@ later roadmap work.
 - `check.rs`: severity behavior, compatibility execution, origin-relative rules
   and patterns, pattern-only configs, and fetched pattern confinement.
 - `cli.rs`: dispatch, schema output, diagnostics, resolved fix behavior, and
-  install orchestration helpers.
+  install orchestration, prepared-root, and mutation-lock behavior.
 - `cache.rs` and `git.rs`: cache paths/pruning and Git command helpers; network
   tests remain ignored by default.
+- `state_lock.rs`: owner/mode/type validation, contention, release, stale-process
+  recovery, and descriptor-inheritance behavior.
 - `fixtures/strict-config/`: indexed structural, YAML-parser, and runtime-only
   cases.
 - `fixtures/origin-regression/`: network-free CLI regression proving root and
@@ -184,6 +215,8 @@ later roadmap work.
   private types in `resolved.rs`.
 - Check/fix/pattern execution: update `check.rs` and the CLI fix path.
 - Git cache discovery or refresh: update `cli.rs`, `cache.rs`, and `git.rs`.
+- Mutation serialization or lock-file safety: update `state_lock.rs` and the
+  complete mutation scopes in `cli.rs`.
 - New command: update dispatch, parser/help text, exit behavior, and CLI tests in
   `cli.rs`.
 - Pull-agent public formats or policy: update the normative contract, its

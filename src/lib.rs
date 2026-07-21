@@ -5,6 +5,7 @@ pub mod config;
 pub mod git;
 mod resolved;
 pub mod schema;
+mod state_lock;
 pub mod version;
 
 pub use cache::{CacheManager, GitRemote};

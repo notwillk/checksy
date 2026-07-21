@@ -14,11 +14,14 @@ containment. The current CLI rejects fetched Git config and pattern paths that
 traverse or follow symlinks outside their canonical checkout, but the legacy
 cache remains mutable and unauthenticated. Mutation paths reject symlinked
 components found below the operator-selected cache root during preflight, but
-the current path-based checks remain raceable until locking and descriptor-based
-mutation are implemented. Shell commands retain ambient filesystem access.
-Current `check` and `install` behavior does not yet
-implement the authentication, atomic state, timeout, and privilege controls
-required for safe unattended remote execution.
+file-backed `install` and `check --fix` now hold a nonblocking operating-system
+advisory lock on the canonical legacy cache root for their full run. This
+serializes cooperating Checksy processes; ordinary `check`, stdin fix mode, and
+uncooperative local actors remain outside that lock. The path-based checks remain
+raceable without descriptor-relative ancestor opening. Shell commands retain
+ambient filesystem access. Current `check` and `install` behavior does not yet
+implement authentication, a protected generation state store, atomic promotion,
+timeouts, or privilege controls required for safe unattended remote execution.
 [THREAT_MODEL.md](THREAT_MODEL.md) is the normative target contract for security
 invariants and current gaps;
 [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) is the normative policy contract; and
@@ -45,6 +48,9 @@ state projection, and resource bounds.
   preserving the public flat Rust API
 - **Nested acquisition**: `install` and `check --fix` repeatedly discover Git
   dependencies after newly fetched parents become available
+- **Mutation serialization**: File-backed `install` and the complete
+  `check --fix` path hold one advisory lock on the canonical legacy cache root;
+  ordinary checks and stdin fix mode do not lock
 - **Global flags**: `--config`, `--stdin-config` parsing
 
 ### config.rs (Configuration Layer)
@@ -61,6 +67,9 @@ state projection, and resource bounds.
 - **Git URL parsing**: `parse_git_remote()` handles `git+<url>#<ref>:<path>` format
 - **Cache ownership**: Only the selected root config's `cachePath` establishes
   the legacy cache root; nested definitions cannot redirect it
+- **Prepared mutation root**: File-backed mutation commands decode the selected
+  root once and retain its canonical origin, diagnostics, and cache selection
+  across every locked nested-discovery pass
 
 ### resolved.rs (Resolved Definition Model)
 - **Source identity**: Distinguishes canonical local roots, exact Git locator
@@ -83,6 +92,22 @@ state projection, and resource bounds.
 - **URL encoding**: Sanitizes repo URLs for filesystem (`:/?` → `_`)
 - **Cache queries**: `is_cached()`, `get_config_path()`
 - **Pruning**: Removes unused cache entries based on used set
+
+### state_lock.rs (Advisory Locking)
+- **RAII guard**: `StateDirectoryLock` holds a nonblocking operating-system
+  advisory lock for the lifetime of a mutation scope and releases it on drop or
+  process exit
+- **Structured result**: `LockError` distinguishes contention from state/open
+  failures and unsupported platforms so callers can return the documented
+  lock-held exit `4`
+- **Filesystem checks**: Canonicalizes the legacy root, opens its persistent
+  `lock` entry relative to the directory descriptor without following that
+  leaf, and requires a single-link regular file with mode `0600` and the
+  effective uid/gid
+- **Scope**: Current callers serialize canonical legacy cache roots; the future
+  protected state directory will reuse the same primitive
+- **Limit**: Advisory locks coordinate Checksy processes only and are not an
+  integrity or authentication mechanism
 
 ### git.rs (Git Operations)
 - **Shallow clones**: `git clone --depth 1 --branch <ref>`
@@ -126,7 +151,9 @@ main.rs
   → cli::run()
     → run_check() [cli.rs]
       → resolve_path() [config.rs]      # Find config file
-      → load_resolved_with_*() [config.rs]
+      → prepare_resolved_root()         # File-backed --fix freezes root/cache
+      → acquire cache-root advisory lock  # File-backed --fix only
+      → PreparedRoot::resolve() or load_resolved_with_*() [config.rs]
         → DefinitionResolver            # Recursive file/Git resolution
           → ResolvedDefinition          # Rules and pattern groups retain origins
       → ResolvedOptions
@@ -142,7 +169,9 @@ main.rs
 ### 2. Install Command Flow
 ```
 run_install() [cli.rs]
-  → load_resolved_for_install(RefreshOrClone)
+  → prepare selected root and canonical legacy cache selection
+  → acquire advisory lock on that cache root
+  → PreparedRoot::resolve_for_install(RefreshOrClone)
   → refresh discovered Git dependencies
   → repeat resolution                  # Newly cached parents reveal nested Git
   → GitCache::{get_local_sha,get_remote_sha,shallow_clone}()
@@ -161,6 +190,8 @@ run_install() [cli.rs]
 - **serde_json**: JSON schema serialization
 - **schemars**: Draft 7 schema generation from configuration types
 - **glob**: Pattern matching for rule files
+- **rustix**: Linux/macOS descriptor-relative lock-file operations, ownership
+  inspection, and advisory locking
 - **jsonschema**: Draft 7 metaschema and fixture validation (dev dependency)
 - **tempfile**: Test utilities (dev dependency)
 
@@ -168,6 +199,8 @@ run_install() [cli.rs]
 - **Config discovery**: Looks for `.checksy.yaml`, `.checksy.yml` in CWD
 - **Cache directory**: Creates `<root-config-cache-path>/git/`; nested
   definitions cannot choose another cache anchor
+- **Lock file**: File-backed mutation scopes use a persistent advisory-lock file
+  beneath the canonical legacy cache root
 - **Work directory**: Resolved CLI commands use the defining config's directory
 - **Glob expansion**: Expands each config's patterns relative to that config;
   fetched matches are canonicalized and confined to the checkout
@@ -212,6 +245,7 @@ cli.rs
   ├── check.rs (ResolvedOptions, resolved/compatibility execution, Report)
   ├── cache.rs (CacheManager)
   ├── git.rs (GitCache)
+  ├── state_lock.rs (legacy cache-root mutation guard)
   ├── schema.rs (Config, Rule, Severity)
   └── version.rs (VERSION)
 
@@ -227,6 +261,9 @@ check.rs
 
 cache.rs
   └── (self-contained, only std)
+
+state_lock.rs
+  └── rustix (Linux/macOS file locking and filesystem metadata)
 
 git.rs
   └── cache.rs (CacheManager)
@@ -257,6 +294,13 @@ main.rs
 - Prevents a fetched or nested definition from selecting an acquisition path
 - Gives `install`, `check`, and `check --fix` one consistent location for nested Git
 - Preserves the selected root config's existing `cachePath` behavior
+
+### Why One Advisory Lock per Legacy Cache Root?
+- Serializes the complete file-backed `install` or `check --fix` mutation scope
+- Covers nested discovery, clone/refresh, execution/fix, and optional pruning
+- Uses kernel lock lifetime rather than stale PID-file decisions
+- Leaves ordinary checks lock-free while the future state-store path remains
+  free to reuse the primitive
 
 ### Why Separate Install Command?
 - Explicit network operations (user consent)
