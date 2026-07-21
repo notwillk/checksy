@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "snapshotSequence": 45,
+  "source": {"id": "6161616161616161616161616161616161616161616161616161616161616161", "kind": "https", "display": "https://agent.example/manifest.json", "canonical": {"kind": "https", "manifestUrl": "https://agent.example/manifest.json"}},
+  "selection": {
+    "current": {"generationId": "7171717171717171717171717171717171717171717171717171717171717171", "revision": "release-41", "configPath": ".checksy.yaml", "providerGeneration": 41, "manifestSha256": "7272727272727272727272727272727272727272727272727272727272727272", "artifactSha256": "7373737373737373737373737373737373737373737373737373737373737373", "bundleSha256": "7474747474747474747474747474747474747474747474747474747474747474", "signer": {"kind": "minisign", "keyId": "d4c85dd87ebcbf65", "publicKeySha256": "6666666666666666666666666666666666666666666666666666666666666666"}, "verifiedAt": "2026-07-19T00:00:00.000Z", "promotedAt": "2026-07-21T04:00:01.000Z"},
+    "previous": {"generationId": "6262626262626262626262626262626262626262626262626262626262626262", "revision": "release-42", "configPath": ".checksy.yaml", "providerGeneration": 42, "manifestSha256": "6363636363636363636363636363636363636363636363636363636363636363", "artifactSha256": "6464646464646464646464646464646464646464646464646464646464646464", "bundleSha256": "6565656565656565656565656565656565656565656565656565656565656565", "signer": {"kind": "minisign", "keyId": "d4c85dd87ebcbf65", "publicKeySha256": "6666666666666666666666666666666666666666666666666666666666666666"}, "verifiedAt": "2026-07-20T00:00:00.000Z", "promotedAt": "2026-07-20T00:00:01.000Z"},
+    "additional": []
+  },
+  "freshness": {"kind": "https", "highWaterGeneration": 42, "manifestSha256": "6363636363636363636363636363636363636363636363636363636363636363", "revision": "release-42", "artifactSha256": "6464646464646464646464646464646464646464646464646464646464646464", "etag": "\"release-42\"", "lastModified": null, "lastOnlineContact": "2026-07-21T04:00:00.000Z"},
+  "lastAttempt": {"attemptId": "7575757575757575757575757575757575757575757575757575757575757575", "startedAt": "2026-07-21T04:00:00.000Z", "finishedAt": "2026-07-21T04:00:01.000Z", "outcome": "success", "exitCode": 0, "revision": "release-41", "generationId": "7171717171717171717171717171717171717171717171717171717171717171", "offline": false, "rollback": true, "sourceChanged": true, "promoted": true, "error": null, "capturedOutput": null},
+  "lastSuccess": {"at": "2026-07-21T04:00:01.000Z", "revision": "release-41", "generationId": "7171717171717171717171717171717171717171717171717171717171717171", "compliance": "compliant", "offline": false, "promoted": true},
+  "lastError": null,
+  "recordedCompliance": {"state": "compliant", "revision": "release-41", "generationId": "7171717171717171717171717171717171717171717171717171717171717171", "checkedAt": "2026-07-21T04:00:01.000Z", "offline": false, "failSeverity": "error", "failingRules": 0, "degradedRules": 0, "counts": {"debug": 0, "info": 0, "warn": 0, "error": 0}},
+  "updatedAt": "2026-07-21T04:00:01.000Z"
+}

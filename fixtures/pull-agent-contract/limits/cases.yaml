@@ -1,0 +1,460 @@
+schemaVersion: 1
+status: contract-only
+limitsFixture: limits-v1.yaml
+cases:
+  - id: limits-timeout-defaults
+    category: timeout
+    input:
+      configured: null
+    expected:
+      accept: true
+      effectiveMs:
+        httpConnect: 10000
+        httpReadIdle: 30000
+        httpManifestAndSignatureOverall: 120000
+        httpArtifactOverall: 600000
+        gitResolveAndVerify: 60000
+        gitCloneAndFetch: 300000
+        command: 900000
+        termToKillGrace: 5000
+
+  - id: limits-timeout-hard-max-inclusive
+    category: timeout
+    inputMs:
+      httpConnect: 60000
+      httpReadIdle: 300000
+      httpManifestAndSignatureOverall: 300000
+      httpArtifactOverall: 1800000
+      gitResolveAndVerify: 300000
+      gitCloneAndFetch: 1800000
+      command: 7200000
+      termToKillGrace: 30000
+    expected:
+      accept: true
+
+  - id: limits-timeout-over-hard-max
+    category: timeout
+    inputMs:
+      httpConnect: 60001
+      httpReadIdle: 300001
+      httpManifestAndSignatureOverall: 300001
+      httpArtifactOverall: 1800001
+      gitResolveAndVerify: 300001
+      gitCloneAndFetch: 1800001
+      command: 7200001
+      termToKillGrace: 30001
+    expected:
+      acceptEach: false
+      errorCode: definition-invalid
+
+  - id: limits-zero-values-fail-before-execution
+    category: validation
+    input:
+      eachBoundedNumericValue: 0
+    expected:
+      acceptEach: false
+      errorCode: policy-denied
+      fetchStarted: false
+      executionStarted: false
+
+  - id: limits-integer-overflow-fails-before-execution
+    category: validation
+    input:
+      integerToken: "18446744073709551616"
+      targetRepresentation: unsigned-64-bit
+    expected:
+      accept: false
+      errorCode: policy-denied
+      fetchStarted: false
+      executionStarted: false
+
+  - id: limits-command-timeout-definition-shortens-policy
+    category: timeout-precedence
+    input:
+      compiledDefault: 15m
+      protectedPolicy: 30m
+      signedDefinition: 5m
+    expected:
+      accept: true
+      effective: 5m
+
+  - id: limits-command-timeout-definition-cannot-lengthen-policy
+    category: timeout-precedence
+    input:
+      compiledDefault: 15m
+      protectedPolicy: 30m
+      signedDefinition: 1h
+    expected:
+      accept: false
+      errorCode: definition-invalid
+      executionStarted: false
+
+  - id: limits-redirect-at-max
+    category: redirect
+    input:
+      followed: 5
+    expected:
+      accept: true
+
+  - id: limits-redirect-over-max
+    category: redirect
+    input:
+      followed: 6
+    expected:
+      accept: false
+      errorCode: source-unavailable
+
+  - id: limits-input-files-at-max
+    category: input-size
+    inputBytes:
+      manifest: 1048576
+      signature: 16384
+      trust: 65536
+      policy: 65536
+    expected:
+      accept: true
+
+  - id: limits-input-files-over-max
+    category: input-size
+    inputBytes:
+      manifest: 1048577
+      signature: 16385
+      trust: 65537
+      policy: 65537
+    expected:
+      acceptEach: false
+      errorCodes:
+        manifest: manifest-invalid
+        signature: authentication-failed
+        trust: authentication-failed
+        policy: policy-denied
+
+  - id: limits-archive-at-max
+    category: archive
+    input:
+      compressedBytes: 268435456
+      entries: 10000
+      largestExpandedFileBytes: 536870912
+      totalExpandedBytes: 2147483648
+      longestNormalizedPathBytes: 4096
+    expected:
+      accept: true
+
+  - id: limits-archive-compressed-over-max
+    category: archive
+    input:
+      compressedBytes: 268435457
+    expected:
+      accept: false
+      errorCode: archive-invalid
+      extractionStarted: false
+
+  - id: limits-archive-entry-count-over-max
+    category: archive
+    input:
+      entries: 10001
+    expected:
+      accept: false
+      errorCode: archive-invalid
+
+  - id: limits-archive-expanded-file-over-max
+    category: archive
+    input:
+      largestExpandedFileBytes: 536870913
+    expected:
+      accept: false
+      errorCode: archive-invalid
+
+  - id: limits-archive-expanded-total-over-max
+    category: archive
+    input:
+      totalExpandedBytes: 2147483649
+    expected:
+      accept: false
+      errorCode: archive-invalid
+
+  - id: limits-archive-path-over-max
+    category: archive
+    input:
+      longestNormalizedPathBytes: 4097
+    expected:
+      accept: false
+      errorCode: archive-invalid
+
+  - id: limits-captured-streams-at-max
+    category: output
+    inputBytes:
+      stdout: 1048576
+      stderr: 1048576
+    expected:
+      capturedBytes:
+        stdout: 1048576
+        stderr: 1048576
+      truncated:
+        stdout: false
+        stderr: false
+
+  - id: limits-captured-streams-over-max
+    category: output
+    inputBytes:
+      stdout: 1048577
+      stderr: 1048577
+    expected:
+      originalBytes:
+        stdout: 1048577
+        stderr: 1048577
+      capturedBytes:
+        stdout: 1048576
+        stderr: 1048576
+      retainedHeadBytes:
+        stdout: 524288
+        stderr: 524288
+      retainedTailBytes:
+        stdout: 524288
+        stderr: 524288
+      discardedMiddleBytes:
+        stdout: 1
+        stderr: 1
+      truncated:
+        stdout: true
+        stderr: true
+      discardedMiddleDrainedContinuously: true
+
+  - id: limits-persisted-failure-streams-at-max
+    category: output
+    inputBytes:
+      stdout: 65536
+      stderr: 65536
+    expected:
+      persistedBytes:
+        stdout: 65536
+        stderr: 65536
+      truncated:
+        stdout: false
+        stderr: false
+
+  - id: limits-persisted-failure-streams-over-max
+    category: output
+    inputBytes:
+      stdout: 65537
+      stderr: 65537
+    expected:
+      originalBytes:
+        stdout: 65537
+        stderr: 65537
+      persistedBytes:
+        stdout: 65536
+        stderr: 65536
+      retainedHeadBytes:
+        stdout: 32768
+        stderr: 32768
+      retainedTailBytes:
+        stdout: 32768
+        stderr: 32768
+      discardedMiddleBytes:
+        stdout: 1
+        stderr: 1
+      truncated:
+        stdout: true
+        stderr: true
+
+  - id: limits-error-message-at-max
+    category: output
+    input:
+      messageBytes: 16384
+    expected:
+      persistedBytes: 16384
+      truncated: false
+
+  - id: limits-error-message-over-max
+    category: output
+    input:
+      messageBytes: 16385
+    expected:
+      persistedBytes: 16384
+      truncated: true
+
+  - id: limits-scheduler-missing
+    category: scheduler
+    input:
+      interval: null
+    expected:
+      accept: false
+      errorCode: invalid-arguments
+
+  - id: limits-scheduler-below-min
+    category: scheduler
+    input:
+      interval: 4m
+    expected:
+      accept: false
+      errorCode: invalid-arguments
+
+  - id: limits-scheduler-at-min
+    category: scheduler
+    input:
+      interval: 5m
+    expected:
+      accept: true
+
+  - id: limits-scheduler-at-max
+    category: scheduler
+    input:
+      interval: 30d
+    expected:
+      accept: true
+
+  - id: limits-scheduler-over-max
+    category: scheduler
+    input:
+      interval: 31d
+    expected:
+      accept: false
+      errorCode: invalid-arguments
+
+  - id: limits-offline-default
+    category: offline
+    input:
+      configuredMaximumAge: null
+    expected:
+      enabled: true
+      effectiveMaximumAge: 24h
+      effectiveMaximumAgeMs: 86400000
+
+  - id: limits-offline-at-configurable-max
+    category: offline
+    input:
+      configuredMaximumAge: 7d
+    expected:
+      accept: true
+
+  - id: limits-offline-over-configurable-max
+    category: offline
+    input:
+      configuredMaximumAge: 8d
+    expected:
+      accept: false
+      errorCode: policy-denied
+
+  - id: limits-generation-fourth-prunes-history
+    category: retention
+    input:
+      existingRoles:
+        - current
+        - previous
+        - newest-remaining
+      promoteOne: true
+    expected:
+      retainedCount: 3
+      preserves:
+        - current
+        - previous
+        - newest-remaining
+      prunes: oldest-unprotected-generation
+
+  - id: limits-failures-at-count-and-age
+    category: retention
+    input:
+      count: 10
+      oldestAge: 30d
+    expected:
+      retainedCount: 10
+      oldestRetained: true
+
+  - id: limits-failures-over-count
+    category: retention
+    input:
+      count: 11
+      oldestAge: 1d
+    expected:
+      retainedCount: 10
+      prunes: oldest-failure
+
+  - id: limits-failures-over-age
+    category: retention
+    input:
+      count: 1
+      oldestAgeMs: 2592000001
+    expected:
+      retainedCount: 0
+      prunes: age-expired-failure
+
+  - id: limits-audit-at-count-and-age
+    category: retention
+    input:
+      ordinaryCount: 100
+      oldestOrdinaryAge: 90d
+    expected:
+      retainedOrdinaryCount: 100
+      oldestOrdinaryRetained: true
+
+  - id: limits-audit-over-count
+    category: retention
+    input:
+      ordinaryCount: 101
+      oldestOrdinaryAge: 1d
+    expected:
+      retainedOrdinaryCount: 100
+      prunes: oldest-unprotected-audit
+
+  - id: limits-audit-over-age-preserves-protected
+    category: retention
+    input:
+      ordinaryCount: 1
+      oldestOrdinaryAgeMs: 7776000001
+      protectedRecords:
+        - current
+        - previous
+        - latest-rollback
+    expected:
+      retainedOrdinaryCount: 0
+      retainedProtectedCount: 3
+
+  - id: limits-retention-timestamp-tie-is-deterministic
+    category: retention
+    input:
+      limit: 2
+      records:
+        - id: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+          timestamp: "2026-07-21T00:00:00.000Z"
+        - id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          timestamp: "2026-07-21T00:00:00.000Z"
+        - id: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          timestamp: "2026-07-21T00:00:00.000Z"
+    expected:
+      ordering: timestamp-descending-then-id-ascending
+      retained:
+        - aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        - bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      pruned:
+        - cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+
+  - id: limits-log-at-max-no-rotation
+    category: log-rotation
+    input:
+      stream: stdout
+      activeBytesAfterAppend: 10485760
+      olderFiles: 5
+    expected:
+      rotate: false
+      olderFilesRetained: 5
+
+  - id: limits-log-over-max-rotates-and-prunes
+    category: log-rotation
+    input:
+      stream: stdout
+      activeBytesAfterAppendWithoutRotation: 10485761
+      olderFiles: 5
+    expected:
+      rotateBeforeAppend: true
+      olderFilesRetained: 5
+      prunes: oldest-log
+
+  - id: limits-log-streams-rotate-independently
+    category: log-rotation
+    input:
+      stdoutActiveBytesAfterAppendWithoutRotation: 10485761
+      stderrActiveBytesAfterAppend: 10485760
+    expected:
+      stdoutRotates: true
+      stderrRotates: false

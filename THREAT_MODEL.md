@@ -6,7 +6,9 @@
 > controls and must not be treated as safe unattended remote execution. See
 > [Current implementation gaps](#current-implementation-gaps).
 > Normative policy defaults are recorded in
-> [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
+> [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md). Exact public formats, CLI behavior,
+> and resource ceilings are specified in
+> [PULL_AGENT_CONTRACT.md](PULL_AGENT_CONTRACT.md).
 
 ## Purpose
 
@@ -157,8 +159,9 @@ within the configured staleness window. Offline operation:
 
 State paths and ownership, the 24-hour default offline window, rollback
 semantics, duration syntax, and retention limits are fixed in
-[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md). Exact numeric network and command
-timeout limits remain part of the next P0 public-contract task.
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md). Exact numeric network, command,
+archive, and output limits are fixed in
+[PULL_AGENT_CONTRACT.md](PULL_AGENT_CONTRACT.md#resource-limits).
 
 ## Privilege and mutation limits
 

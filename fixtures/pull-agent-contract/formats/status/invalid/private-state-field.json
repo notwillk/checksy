@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "result": "status",
+  "mode": "recorded",
+  "generatedAt": "2026-07-21T05:00:00.000Z",
+  "status": {
+    "source": {"id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "kind": "local", "display": "/srv/checksy/source", "canonicalPathBytes": "L3Nydi9jaGVja3N5L3NvdXJjZQ"},
+    "current": null,
+    "previous": null,
+    "lastAttempt": null,
+    "lastSuccess": null,
+    "lastError": null,
+    "recordedCompliance": null,
+    "observedCompliance": null
+  },
+  "error": null
+}

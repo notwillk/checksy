@@ -1,0 +1,442 @@
+schemaVersion: 1
+status: contract-only
+schemaRoot: ../../schemas/pull-agent
+cases:
+  - id: manifest-signed-relative
+    schema: manifest-v1.schema.json
+    fixture: authentication/https/manifest.json
+    expected: accept
+    validationLayer: strict-json-and-schema
+  - id: manifest-valid-absolute-boundary
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/valid/absolute-url.json
+    expected: accept
+    validationLayer: strict-json-schema-and-runtime
+  - id: manifest-missing-version
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/missing-schema-version.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-wrong-version
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/wrong-schema-version.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-generation-zero
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/generation-zero.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-generation-overflow
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/generation-overflow.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-empty-revision
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/revision-empty.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-revision-whitespace
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/revision-leading-space.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-missing-size
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/missing-size.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-wrong-format
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/format-zip.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-zero-size
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/size-zero.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-size-over-limit
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/size-over-limit.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-uppercase-sha
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/sha-uppercase.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-url-userinfo
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/url-userinfo.json
+    expected: reject
+    validationLayer: runtime-url-policy
+  - id: manifest-url-fragment
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/url-fragment.json
+    expected: reject
+    validationLayer: runtime-url-policy
+  - id: manifest-url-unsupported-scheme
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/url-ftp.json
+    expected: reject
+    validationLayer: runtime-url-policy
+  - id: manifest-config-absolute
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/config-absolute.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-config-parent
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/config-parent.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-config-backslash
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/config-backslash.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-config-trailing-slash
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/config-trailing-slash.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-unknown-top-level
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/unknown-top-level.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-unknown-artifact-field
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/unknown-artifact-field.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-duplicate-key
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/duplicate-key.json
+    expected: reject
+    validationLayer: strict-json-parser
+  - id: manifest-bom
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/bom.json
+    expected: reject
+    validationLayer: strict-json-parser
+  - id: manifest-trailing-data
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/trailing-data.json
+    expected: reject
+    validationLayer: strict-json-parser
+  - id: manifest-valid-exact-length-boundaries
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/valid/exact-length-boundaries.json
+    expected: accept
+    validationLayer: schema
+  - id: manifest-missing-generation
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/missing-generation.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-missing-revision
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/missing-revision.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-missing-artifact
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/missing-artifact.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-missing-config-path
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/missing-config-path.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-missing-format
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/missing-format.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-missing-url
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/missing-url.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-missing-sha256
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/missing-sha256.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-short-sha256
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/sha-short.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-empty-url
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/url-empty.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-config-empty-component
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/config-empty-component.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-config-dot-component
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/config-dot.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-config-control
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/config-control.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-revision-over-limit
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/revision-over-limit.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-revision-trailing-space
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/revision-trailing-space.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-revision-control
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/revision-control.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-url-over-limit
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/url-over-limit.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-config-over-limit
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/config-over-limit.json
+    expected: reject
+    validationLayer: schema
+  - id: manifest-config-utf8-byte-over-limit
+    schema: manifest-v1.schema.json
+    fixture: formats/manifest/invalid/config-utf8-byte-over-limit.json
+    expected: reject
+    validationLayer: runtime-byte-limit
+  - id: policy-valid-user-defaults
+    schema: policy-v1.schema.json
+    fixture: formats/policy/valid/user-defaults.json
+    expected: accept
+    validationLayer: schema
+  - id: policy-valid-system-bounded
+    schema: policy-v1.schema.json
+    fixture: formats/policy/valid/system-bounded.json
+    expected: accept
+    validationLayer: schema
+  - id: policy-unknown-field
+    schema: policy-v1.schema.json
+    fixture: formats/policy/invalid/unknown-field.json
+    expected: reject
+    validationLayer: schema
+  - id: policy-wildcard-run-as
+    schema: policy-v1.schema.json
+    fixture: formats/policy/invalid/wildcard-run-as.json
+    expected: reject
+    validationLayer: schema
+  - id: policy-offline-enabled-null-age
+    schema: policy-v1.schema.json
+    fixture: formats/policy/invalid/offline-enabled-null-age.json
+    expected: reject
+    validationLayer: schema
+  - id: policy-zero-redirects
+    schema: policy-v1.schema.json
+    fixture: formats/policy/invalid/zero-redirects.json
+    expected: reject
+    validationLayer: schema
+  - id: policy-archive-entries-over-max
+    schema: policy-v1.schema.json
+    fixture: formats/policy/invalid/archive-entries-over-max.json
+    expected: reject
+    validationLayer: schema
+  - id: policy-offline-over-max
+    schema: policy-v1.schema.json
+    fixture: formats/policy/invalid/offline-over-max.json
+    expected: reject
+    validationLayer: runtime-policy-bounds
+  - id: policy-offline-under-min
+    schema: policy-v1.schema.json
+    fixture: formats/policy/invalid/offline-under-min.json
+    expected: reject
+    validationLayer: runtime-policy-bounds
+  - id: policy-command-timeout-over-max
+    schema: policy-v1.schema.json
+    fixture: formats/policy/invalid/command-timeout-over-max.json
+    expected: reject
+    validationLayer: runtime-policy-bounds
+  - id: enrollment-local-user
+    schema: enrollment-v1.schema.json
+    fixture: formats/enrollment/valid/local-user.json
+    expected: accept
+    validationLayer: schema
+  - id: enrollment-https-minisign-user
+    schema: enrollment-v1.schema.json
+    fixture: formats/enrollment/valid/https-minisign-user.json
+    expected: accept
+    validationLayer: schema
+  - id: enrollment-git-ssh-system
+    schema: enrollment-v1.schema.json
+    fixture: formats/enrollment/valid/git-ssh-system.json
+    expected: accept
+    validationLayer: schema
+  - id: enrollment-git-content-pin-user
+    schema: enrollment-v1.schema.json
+    fixture: formats/enrollment/valid/git-content-pin-user.json
+    expected: accept
+    validationLayer: schema
+  - id: enrollment-persisted-exception
+    schema: enrollment-v1.schema.json
+    fixture: formats/enrollment/invalid/persisted-exception.json
+    expected: reject
+    validationLayer: schema
+  - id: enrollment-source-trust-mismatch
+    schema: enrollment-v1.schema.json
+    fixture: formats/enrollment/invalid/source-trust-mismatch.json
+    expected: reject
+    validationLayer: schema
+  - id: enrollment-system-nonroot-executor
+    schema: enrollment-v1.schema.json
+    fixture: formats/enrollment/invalid/system-nonroot-executor.json
+    expected: reject
+    validationLayer: schema
+  - id: enrollment-git-pin-mismatch
+    schema: enrollment-v1.schema.json
+    fixture: formats/enrollment/invalid/git-pin-mismatch.json
+    expected: reject
+    validationLayer: runtime-enrollment-policy
+  - id: enrollment-remote-external-root
+    schema: enrollment-v1.schema.json
+    fixture: formats/enrollment/invalid/remote-external-root.json
+    expected: reject
+    validationLayer: schema
+  - id: state-no-current-local
+    schema: state-v1.schema.json
+    fixture: formats/state/valid/no-current-local.json
+    expected: accept
+    validationLayer: schema
+  - id: state-no-current-signed-http-direct
+    schema: state-v1.schema.json
+    fixture: formats/state/valid/no-current-signed-http-direct.json
+    expected: accept
+    validationLayer: schema
+  - id: state-degraded-local
+    schema: state-v1.schema.json
+    fixture: formats/state/valid/degraded-local.json
+    expected: accept
+    validationLayer: schema
+  - id: state-git-ssh
+    schema: state-v1.schema.json
+    fixture: formats/state/valid/git-ssh.json
+    expected: accept
+    validationLayer: schema
+  - id: state-git-content-pin
+    schema: state-v1.schema.json
+    fixture: formats/state/valid/git-content-pin.json
+    expected: accept
+    validationLayer: schema
+  - id: state-current-without-convergence
+    schema: state-v1.schema.json
+    fixture: formats/state/invalid/current-without-convergence.json
+    expected: reject
+    validationLayer: schema
+  - id: state-https-failed-candidate
+    schema: state-v1.schema.json
+    fixture: formats/state/valid/https-failed-candidate.json
+    expected: accept
+    validationLayer: schema
+  - id: state-https-offline-success
+    schema: state-v1.schema.json
+    fixture: formats/state/valid/https-offline-success.json
+    expected: accept
+    validationLayer: schema
+  - id: state-https-rollback
+    schema: state-v1.schema.json
+    fixture: formats/state/valid/https-rollback.json
+    expected: accept
+    validationLayer: schema
+  - id: state-additional-over-limit
+    schema: state-v1.schema.json
+    fixture: formats/state/invalid/additional-over-limit.json
+    expected: reject
+    validationLayer: schema
+  - id: state-timestamp-no-milliseconds
+    schema: state-v1.schema.json
+    fixture: formats/state/invalid/timestamp-no-milliseconds.json
+    expected: reject
+    validationLayer: schema
+  - id: state-corrupt-json
+    schema: state-v1.schema.json
+    fixture: formats/state/invalid/corrupt.json
+    expected: reject
+    validationLayer: strict-json-parser
+  - id: state-audit-rollback-record
+    schema: state-v1.schema.json
+    schemaPointer: /$defs/auditRecord
+    fixture: formats/state/records/valid/audit-rollback.json
+    expected: accept
+    validationLayer: schema-definition
+  - id: state-failure-output-record
+    schema: state-v1.schema.json
+    schemaPointer: /$defs/failureRecord
+    fixture: formats/state/records/valid/failure-output.json
+    expected: accept
+    validationLayer: schema-definition
+  - id: state-failure-output-padding
+    schema: state-v1.schema.json
+    schemaPointer: /$defs/failureRecord
+    fixture: formats/state/records/invalid/failure-output-padding.json
+    expected: reject
+    validationLayer: schema-definition
+  - id: status-recorded-degraded
+    schema: status-v1.schema.json
+    fixture: formats/status/valid/recorded-degraded.json
+    expected: accept
+    validationLayer: schema
+  - id: status-live-observation
+    schema: status-v1.schema.json
+    fixture: formats/status/valid/live-observation.json
+    expected: accept
+    validationLayer: schema
+  - id: status-noncompliant
+    schema: status-v1.schema.json
+    fixture: formats/status/valid/noncompliant.json
+    expected: accept
+    validationLayer: schema
+  - id: status-live-error-with-recorded
+    schema: status-v1.schema.json
+    fixture: formats/status/valid/live-error-with-recorded.json
+    expected: accept
+    validationLayer: schema
+  - id: status-missing-state-error
+    schema: status-v1.schema.json
+    fixture: formats/status/valid/missing-state-error.json
+    expected: accept
+    validationLayer: schema
+  - id: status-corrupt-state-error
+    schema: status-v1.schema.json
+    fixture: formats/status/valid/corrupt-state-error.json
+    expected: accept
+    validationLayer: schema
+  - id: status-recorded-observation
+    schema: status-v1.schema.json
+    fixture: formats/status/invalid/recorded-observation.json
+    expected: reject
+    validationLayer: schema
+  - id: status-private-state-field
+    schema: status-v1.schema.json
+    fixture: formats/status/invalid/private-state-field.json
+    expected: reject
+    validationLayer: schema
+  - id: status-error-extra-phase
+    schema: status-v1.schema.json
+    fixture: formats/status/invalid/error-extra-phase.json
+    expected: reject
+    validationLayer: schema

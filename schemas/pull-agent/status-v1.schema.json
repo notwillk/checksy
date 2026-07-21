@@ -1,0 +1,590 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://checksy.dev/schemas/pull-agent/status-v1.schema.json",
+  "title": "Checksy status JSON v1",
+  "description": "Stable public JSON projection emitted by checksy status --json. Internal filesystem paths, canonical path bytes, HTTP validators, and private state metadata are intentionally excluded.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "result",
+    "mode",
+    "generatedAt",
+    "status",
+    "error"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "result": {
+      "enum": [
+        "status",
+        "error"
+      ]
+    },
+    "mode": {
+      "oneOf": [
+        {
+          "enum": [
+            "recorded",
+            "live"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "generatedAt": {
+      "$ref": "policy-v1.schema.json#/$defs/timestamp"
+    },
+    "status": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/statusPayload"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "error": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/statusError"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "result": {
+            "const": "status"
+          }
+        },
+        "required": [
+          "result"
+        ]
+      },
+      "then": {
+        "properties": {
+          "mode": {
+            "enum": [
+              "recorded",
+              "live"
+            ]
+          },
+          "status": {
+            "$ref": "#/$defs/statusPayload"
+          },
+          "error": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/statusError"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "result": {
+            "const": "error"
+          },
+          "mode": {
+            "const": "live"
+          }
+        },
+        "required": [
+          "result",
+          "mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "oneOf": [
+              {"type": "null"},
+              {
+                "allOf": [
+                  {"$ref": "#/$defs/statusPayload"},
+                  {"properties": {"observedCompliance": {"type": "null"}}}
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "else": {
+        "if": {
+          "properties": {
+            "result": {
+              "const": "error"
+            }
+          },
+          "required": [
+            "result"
+          ]
+        },
+        "then": {
+          "properties": {
+            "status": {
+              "type": "null"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "result": {
+            "const": "status"
+          },
+          "mode": {
+            "const": "recorded"
+          }
+        },
+        "required": [
+          "result",
+          "mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "properties": {
+              "observedCompliance": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "result": {
+            "const": "status"
+          },
+          "mode": {
+            "const": "live"
+          }
+        },
+        "required": [
+          "result",
+          "mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "properties": {
+              "observedCompliance": {
+                "$ref": "#/$defs/publicCompliance"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "statusPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "current",
+        "previous",
+        "lastAttempt",
+        "lastSuccess",
+        "lastError",
+        "recordedCompliance",
+        "observedCompliance"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/publicSource"
+        },
+        "current": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/publicGeneration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "previous": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/publicGeneration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lastAttempt": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/publicAttempt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lastSuccess": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/publicSuccess"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lastError": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/publicError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recordedCompliance": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/publicCompliance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observedCompliance": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/publicCompliance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "publicSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "display"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "kind": {
+          "enum": [
+            "local",
+            "git",
+            "https"
+          ]
+        },
+        "display": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      }
+    },
+    "publicGeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "providerGeneration",
+        "signer",
+        "verifiedAt"
+      ],
+      "properties": {
+        "revision": {
+          "$ref": "manifest-v1.schema.json#/$defs/revision"
+        },
+        "providerGeneration": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "signer": {
+          "$ref": "state-v1.schema.json#/$defs/signer"
+        },
+        "verifiedAt": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "publicAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attemptId",
+        "startedAt",
+        "finishedAt",
+        "outcome",
+        "exitCode",
+        "revision",
+        "offline",
+        "rollback",
+        "sourceChanged",
+        "promoted",
+        "error"
+      ],
+      "properties": {
+        "attemptId": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "startedAt": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        },
+        "finishedAt": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "degraded",
+            "noncompliant",
+            "error"
+          ]
+        },
+        "exitCode": {
+          "enum": [
+            0,
+            2,
+            3
+          ]
+        },
+        "revision": {
+          "oneOf": [
+            {
+              "$ref": "manifest-v1.schema.json#/$defs/revision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "offline": {
+          "type": "boolean"
+        },
+        "rollback": {
+          "type": "boolean"
+        },
+        "sourceChanged": {
+          "type": "boolean"
+        },
+        "promoted": {
+          "type": "boolean"
+        },
+        "error": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/publicError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"outcome": {"enum": ["success", "degraded"]}}, "required": ["outcome"]},
+          "then": {"properties": {"exitCode": {"const": 0}, "error": {"type": "null"}, "revision": {"$ref": "manifest-v1.schema.json#/$defs/revision"}}}
+        },
+        {
+          "if": {"properties": {"outcome": {"const": "noncompliant"}}, "required": ["outcome"]},
+          "then": {"properties": {"exitCode": {"const": 3}, "promoted": {"const": false}, "error": {"allOf": [{"$ref": "#/$defs/publicError"}, {"properties": {"code": {"const": "compliance-failed"}}}]}}}
+        },
+        {
+          "if": {"properties": {"outcome": {"const": "error"}}, "required": ["outcome"]},
+          "then": {"properties": {"exitCode": {"const": 2}, "promoted": {"const": false}, "error": {"$ref": "#/$defs/statusError"}}}
+        },
+        {
+          "if": {"properties": {"offline": {"const": true}}, "required": ["offline"]},
+          "then": {"properties": {"rollback": {"const": false}, "sourceChanged": {"const": false}, "promoted": {"const": false}}}
+        }
+      ]
+    },
+    "publicSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "revision",
+        "compliance",
+        "offline",
+        "promoted"
+      ],
+      "properties": {
+        "at": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        },
+        "revision": {
+          "$ref": "manifest-v1.schema.json#/$defs/revision"
+        },
+        "compliance": {
+          "enum": [
+            "compliant",
+            "degraded"
+          ]
+        },
+        "offline": {
+          "type": "boolean"
+        },
+        "promoted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "publicCompliance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "revision",
+        "checkedAt",
+        "offline",
+        "failSeverity",
+        "failingRules",
+        "degradedRules",
+        "counts"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "compliant",
+            "degraded",
+            "noncompliant"
+          ]
+        },
+        "revision": {
+          "$ref": "manifest-v1.schema.json#/$defs/revision"
+        },
+        "checkedAt": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        },
+        "offline": {
+          "type": "boolean"
+        },
+        "failSeverity": {
+          "$ref": "policy-v1.schema.json#/$defs/severity"
+        },
+        "failingRules": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "degradedRules": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "counts": {
+          "$ref": "state-v1.schema.json#/$defs/severityCounts"
+        }
+      },
+      "description": "failSeverity is the effective threshold. Absence of a known result is represented by a null containing field."
+    },
+    "publicError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "state-v1.schema.json#/$defs/errorCode"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 16384,
+          "description": "Non-stable human diagnostic; runtime serialization enforces the 16 KiB UTF-8 bound."
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "statusError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid-arguments",
+            "interactive-required",
+            "permission-denied",
+            "unsupported-platform",
+            "unsupported-schema-version",
+            "source-unavailable",
+            "offline-unavailable",
+            "authentication-failed",
+            "checksum-mismatch",
+            "rollback-rejected",
+            "equivocation",
+            "manifest-invalid",
+            "archive-invalid",
+            "definition-invalid",
+            "policy-denied",
+            "state-failed",
+            "operation-timeout",
+            "scheduler-failed"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 16384,
+          "description": "Non-stable human diagnostic; runtime serialization enforces the 16 KiB UTF-8 bound."
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

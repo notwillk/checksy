@@ -1,0 +1,358 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://checksy.dev/schemas/pull-agent/policy-v1.schema.json",
+  "title": "Checksy protected policy v1",
+  "description": "Strict locally protected policy embedded in a Checksy enrollment.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "privilegePolicy",
+    "allowedExternalRoots",
+    "failSeverityCeiling",
+    "offline",
+    "limits"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "privilegePolicy": {
+      "$ref": "#/$defs/privilegePolicy"
+    },
+    "allowedExternalRoots": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/path"
+      },
+      "description": "Canonical absolute roots allowed only for explicitly local sources. Runtime validation rejects this exception for Git and HTTPS content."
+    },
+    "failSeverityCeiling": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/severity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Nullable local ceiling. When set, apply uses the stricter of this value and the definition's failSeverity."
+    },
+    "offline": {
+      "$ref": "#/$defs/offlinePolicy"
+    },
+    "limits": {
+      "$ref": "#/$defs/limits"
+    }
+  },
+  "$defs": {
+    "duration": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*(ms|s|m|h|d)$",
+      "description": "Positive fixed duration. Runtime parsing rejects integer overflow and compares the normalized millisecond value with the field-specific maximum."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+      "description": "UTC RFC 3339 timestamp with exactly millisecond precision. Runtime validation also rejects impossible calendar values."
+    },
+    "lowerHex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bytesBase64Url",
+        "display"
+      ],
+      "properties": {
+        "bytesBase64Url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 5462,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "Unpadded base64url encoding of lossless platform path bytes. Runtime validation decodes at most 4096 bytes and rejects invalid base64url lengths."
+        },
+        "display": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "description": "Human-readable path rendering; never authoritative for filesystem access."
+        }
+      },
+      "description": "An absolute, physically canonicalized, non-symlink path. Ownership, mode, absoluteness, and byte-level canonicalization are runtime checks."
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ]
+    },
+    "runAsSelector": {
+      "oneOf": [
+        {
+          "enum": [
+            "current",
+            "root",
+            "console-user"
+          ]
+        },
+        {
+          "type": "string",
+          "pattern": "^user:[A-Za-z0-9._-]{1,255}$"
+        }
+      ],
+      "description": "Exact execution-identity selector. Runtime validation rejects console-user off macOS and verifies that named users exist."
+    },
+    "privilegePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "allowedRunAs",
+        "allowedActions"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "allowedRunAs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/runAsSelector"
+          }
+        },
+        "allowedActions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "check",
+              "fix"
+            ]
+          }
+        }
+      }
+    },
+    "offlinePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "maxAge"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "maxAge": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/duration"
+            },
+            {
+              "type": "null"
+            }
+          ],
+        "description": "Maximum age since authenticated online contact. Runtime validation requires the normalized value from 1 minute through 7 days inclusive; the standard enabled default is 24h."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          },
+          "then": {
+            "properties": {
+              "maxAge": {
+                "$ref": "#/$defs/duration"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "maxAge": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "httpConnectTimeout": {
+          "$ref": "#/$defs/duration",
+          "default": "10s",
+          "description": "HTTP connect timeout; runtime maximum 60s."
+        },
+        "httpReadIdleTimeout": {
+          "$ref": "#/$defs/duration",
+          "default": "30s",
+          "description": "HTTP read-idle timeout; runtime maximum 5m."
+        },
+        "httpManifestTimeout": {
+          "$ref": "#/$defs/duration",
+          "default": "2m",
+          "description": "Combined overall manifest and detached-signature request budget; runtime maximum 5m."
+        },
+        "httpArtifactTimeout": {
+          "$ref": "#/$defs/duration",
+          "default": "10m",
+          "description": "Overall artifact request timeout; runtime maximum 30m."
+        },
+      "gitResolveTimeout": {
+        "$ref": "#/$defs/duration",
+        "default": "1m",
+          "description": "Git resolution and signature-verification timeout; runtime maximum 5m."
+        },
+        "gitFetchTimeout": {
+          "$ref": "#/$defs/duration",
+          "default": "5m",
+          "description": "Git clone/fetch timeout; runtime maximum 30m."
+        },
+        "commandTimeout": {
+          "$ref": "#/$defs/duration",
+          "default": "15m",
+          "description": "Default check/fix timeout; runtime maximum 2h. Rule-level values may shorten or replace this value but cannot exceed the locally protected cap."
+        },
+        "killGracePeriod": {
+          "$ref": "#/$defs/duration",
+          "default": "5s",
+          "description": "Delay between graceful process-group termination and force-kill; runtime maximum 30s."
+        },
+      "maxRedirects": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5,
+        "default": 5
+        },
+        "maxManifestBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576,
+          "default": 1048576
+        },
+        "maxSignatureBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384,
+          "default": 16384
+        },
+      "maxTrustOrPolicyBytes": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65536,
+        "default": 65536,
+        "description": "Maximum bytes for each protected trust or policy input file."
+        },
+        "maxArtifactBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 268435456,
+          "default": 268435456
+        },
+        "maxArchiveEntries": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "default": 10000
+        },
+        "maxArchiveSingleFileBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 536870912,
+          "default": 536870912
+        },
+        "maxArchiveExpandedBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483648,
+          "default": 2147483648
+        },
+        "maxArchivePathBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096,
+          "default": 4096
+        },
+        "maxCapturedOutputBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576,
+          "default": 1048576,
+          "description": "Maximum captured bytes per stream for one child process."
+        },
+        "maxPersistedOutputBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536,
+          "default": 65536,
+          "description": "Maximum persisted bytes per stream for one failure record."
+        },
+        "maxErrorBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384,
+          "default": 16384
+        },
+        "maxFailureRecords": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 10
+        },
+        "failureRetention": {
+          "$ref": "#/$defs/duration",
+          "default": "30d",
+          "description": "Failure-record retention; runtime maximum 30d."
+        },
+        "maxAuditRecords": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 100
+        },
+      "auditRetention": {
+        "$ref": "#/$defs/duration",
+        "default": "90d",
+        "description": "Ordinary audit-record retention; runtime maximum 90d, with contractually protected selection/rollback records retained longer."
+      },
+      "maxSchedulerLogBytes": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10485760,
+        "default": 10485760,
+        "description": "Active scheduler-log bytes per stdout or stderr stream."
+      },
+      "maxSchedulerLogFiles": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5,
+        "default": 5,
+        "description": "Older rotated files retained independently per scheduler stream."
+      }
+      }
+    }
+  }
+}

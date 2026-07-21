@@ -1,0 +1,61 @@
+schemaVersion: 1
+status: descriptor-only
+description: >-
+  Declarative requirements for future executable test harnesses. This file
+  creates no archives, processes, listeners, schedules, or production tests.
+harnesses:
+  - id: generated-archive-corpus
+    kind: archive-generator
+    milestone: P4
+    capabilities:
+      - generate-exact-compressed-and-expanded-boundaries
+      - generate-entry-and-path-boundaries
+      - generate-one-and-two-gzip-member-inputs
+      - generate-trailing-gzip-data
+      - generate-ustar-and-local-pax-regular-files-and-directories
+      - generate-global-pax-gnu-sparse-links-and-special-types
+      - generate-duplicate-and-filesystem-colliding-paths
+    assertions:
+      writesExecutableStagingBeforePreflight: false
+      embedsGeneratedPayloadsInRepository: false
+
+  - id: process-tree-runner
+    kind: process-tree
+    milestone: P2
+    capabilities:
+      - spawn-child-and-descendant
+      - emit-bounded-and-over-boundary-stdout-stderr
+      - ignore-term-until-kill-grace-expires
+      - report-descendant-survival
+    assertions:
+      descendantsRemainAfterTimeout: false
+      drainsDiscardedOutputContinuously: true
+
+  - id: deterministic-http-provider
+    kind: http-server
+    milestone: P4
+    capabilities:
+      - delay-connect-read-and-completion
+      - serve-validator-bound-304
+      - redirect-across-hosts
+      - count-five-and-six-redirect-chains
+      - attempt-credential-and-cookie-forwarding
+      - serve-exact-and-over-limit-bodies
+      - serve-transient-and-prohibited-offline-statuses
+    assertions:
+      credentialsForwardedCrossHost: false
+      cookiesForwardedCrossHost: false
+
+  - id: scheduler-materializer
+    kind: scheduler
+    milestone: P7
+    capabilities:
+      - materialize-user-and-system-schedules
+      - inject-platform-and-clock
+      - exercise-five-minute-and-thirty-day-boundaries
+      - rotate-independent-stdout-and-stderr-streams
+      - simulate-publish-failure
+    assertions:
+      generatedApplyIsNonInteractive: true
+      activeBytesPerStreamAtRotation: 10485760
+      olderFilesPerStream: 5

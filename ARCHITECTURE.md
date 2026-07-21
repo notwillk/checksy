@@ -14,7 +14,9 @@ not containment. Current `check` and `install` behavior does not yet implement t
 authentication, atomic state, timeout, and privilege controls required for safe
 unattended remote execution. [THREAT_MODEL.md](THREAT_MODEL.md) is the normative
 target contract for security invariants and current gaps;
-[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) is the normative policy contract.
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) is the normative policy contract; and
+[PULL_AGENT_CONTRACT.md](PULL_AGENT_CONTRACT.md) freezes the public formats, CLI,
+state projection, and resource bounds.
 
 ## Component Responsibilities
 

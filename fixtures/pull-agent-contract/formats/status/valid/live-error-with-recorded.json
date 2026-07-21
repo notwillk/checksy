@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "result": "error",
+  "mode": "live",
+  "generatedAt": "2026-07-21T05:00:00.000Z",
+  "status": {
+    "source": {"id": "6161616161616161616161616161616161616161616161616161616161616161", "kind": "https", "display": "https://agent.example/manifest.json"},
+    "current": {"revision": "release-42", "providerGeneration": 42, "signer": {"kind": "minisign", "keyId": "d4c85dd87ebcbf65", "publicKeySha256": "6666666666666666666666666666666666666666666666666666666666666666"}, "verifiedAt": "2026-07-20T00:00:00.000Z"},
+    "previous": null,
+    "lastAttempt": {"attemptId": "6868686868686868686868686868686868686868686868686868686868686868", "startedAt": "2026-07-20T12:00:00.000Z", "finishedAt": "2026-07-20T12:00:01.000Z", "outcome": "success", "exitCode": 0, "revision": "release-42", "offline": true, "rollback": false, "sourceChanged": false, "promoted": false, "error": null},
+    "lastSuccess": {"at": "2026-07-20T12:00:01.000Z", "revision": "release-42", "compliance": "compliant", "offline": true, "promoted": false},
+    "lastError": null,
+    "recordedCompliance": {"state": "compliant", "revision": "release-42", "checkedAt": "2026-07-20T12:00:01.000Z", "offline": true, "failSeverity": "error", "failingRules": 0, "degradedRules": 0, "counts": {"debug": 0, "info": 0, "warn": 0, "error": 0}},
+    "observedCompliance": null
+  },
+  "error": {"code": "operation-timeout", "message": "live check exceeded its timeout", "retryable": true}
+}

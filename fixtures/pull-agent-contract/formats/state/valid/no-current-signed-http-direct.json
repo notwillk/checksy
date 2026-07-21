@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "snapshotSequence": 1,
+  "source": {
+    "id": "9090909090909090909090909090909090909090909090909090909090909090",
+    "kind": "https",
+    "display": "http://agent.example/manifest.json",
+    "canonical": {"kind": "https", "manifestUrl": "http://agent.example/manifest.json"}
+  },
+  "selection": {"current": null, "previous": null, "additional": []},
+  "freshness": {"kind": "https", "highWaterGeneration": null, "manifestSha256": null, "revision": null, "artifactSha256": null, "etag": null, "lastModified": null, "lastOnlineContact": null},
+  "lastAttempt": null,
+  "lastSuccess": null,
+  "lastError": null,
+  "recordedCompliance": null,
+  "updatedAt": "2026-07-21T00:00:00.000Z"
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "scope": "system",
+  "source": {"kind": "local", "root": {"bytesBase64Url": "L3Nydi9jaGVja3N5L3NvdXJjZQ", "display": "/srv/checksy/source"}, "configPath": ".checksy.yaml"},
+  "stateDir": {"bytesBase64Url": "L3Zhci9saWIvY2hlY2tzeQ", "display": "/var/lib/checksy"},
+  "expectedExecutor": {"uid": 1000, "gid": 1000, "username": "alice"},
+  "trust": {"kind": "local-operator"},
+  "policy": {"schemaVersion": 1, "privilegePolicy": {"schemaVersion": 1, "allowedRunAs": ["current"], "allowedActions": ["check"]}, "allowedExternalRoots": [], "failSeverityCeiling": null, "offline": {"enabled": true, "maxAge": "24h"}, "limits": {}},
+  "schedule": {"interval": "1h", "stdoutPath": {"bytesBase64Url": "L3Zhci9sb2cvY2hlY2tzeS9hcHBseS5zdGRvdXQubG9n", "display": "/var/log/checksy/apply.stdout.log"}, "stderrPath": {"bytesBase64Url": "L3Zhci9sb2cvY2hlY2tzeS9hcHBseS5zdGRlcnIubG9n", "display": "/var/log/checksy/apply.stderr.log"}},
+  "createdAt": "2026-07-21T00:00:00.000Z",
+  "updatedAt": "2026-07-21T00:00:00.000Z"
+}

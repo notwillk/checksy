@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "privilegePolicy": {"schemaVersion": 1, "allowedRunAs": ["current"], "allowedActions": ["check", "fix"]},
+  "allowedExternalRoots": [],
+  "failSeverityCeiling": null,
+  "offline": {"enabled": true, "maxAge": "30s"},
+  "limits": {}
+}

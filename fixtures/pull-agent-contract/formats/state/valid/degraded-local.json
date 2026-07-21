@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "snapshotSequence": 2,
+  "source": {
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "kind": "local",
+    "display": "/srv/checksy/source",
+    "canonical": {"kind": "local", "root": {"bytesBase64Url": "L3Nydi9jaGVja3N5L3NvdXJjZQ", "display": "/srv/checksy/source"}, "configPath": ".checksy.yaml"}
+  },
+  "selection": {
+    "current": {
+      "generationId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "revision": "local-bundle-1",
+      "configPath": ".checksy.yaml",
+      "providerGeneration": null,
+      "manifestSha256": null,
+      "artifactSha256": null,
+      "bundleSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "signer": {"kind": "local-operator"},
+      "verifiedAt": "2026-07-21T00:00:01.000Z",
+      "promotedAt": "2026-07-21T00:00:02.000Z"
+    },
+    "previous": null,
+    "additional": []
+  },
+  "freshness": {"kind": "local", "snapshotSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+  "lastAttempt": {
+    "attemptId": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "startedAt": "2026-07-21T00:00:01.000Z",
+    "finishedAt": "2026-07-21T00:00:02.000Z",
+    "outcome": "degraded",
+    "exitCode": 0,
+    "revision": "local-bundle-1",
+    "generationId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "offline": false,
+    "rollback": false,
+    "sourceChanged": true,
+    "promoted": true,
+    "error": null,
+    "capturedOutput": null
+  },
+  "lastSuccess": {"at": "2026-07-21T00:00:02.000Z", "revision": "local-bundle-1", "generationId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "compliance": "degraded", "offline": false, "promoted": true},
+  "lastError": null,
+  "recordedCompliance": {
+    "state": "degraded",
+    "revision": "local-bundle-1",
+    "generationId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "checkedAt": "2026-07-21T00:00:02.000Z",
+    "offline": false,
+    "failSeverity": "error",
+    "failingRules": 0,
+    "degradedRules": 1,
+    "counts": {"debug": 0, "info": 0, "warn": 1, "error": 0}
+  },
+  "updatedAt": "2026-07-21T00:00:02.000Z"
+}

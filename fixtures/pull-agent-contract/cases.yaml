@@ -1,5 +1,11 @@
 schemaVersion: 1
 status: contract-only
+indexes:
+  - formats/cases.yaml
+  - cli/cases.yaml
+  - limits/cases.yaml
+descriptors:
+  - descriptors/future-harnesses.yaml
 cases:
   - id: policy-user-current
     fixture: policy/valid-user.yaml

@@ -3,8 +3,10 @@
   "generation": 43,
   "revision": "pull-agent-contract-fixture-42",
   "artifact": {
+    "format": "tar.gz",
     "url": "bundle.tar.gz",
-    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sizeBytes": 1234
   },
   "configPath": ".checksy.yaml"
 }

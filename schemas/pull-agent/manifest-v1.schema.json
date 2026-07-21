@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://checksy.dev/schemas/pull-agent/manifest-v1.schema.json",
+  "title": "Checksy HTTPS manifest v1",
+  "description": "Strict signed-manifest payload for a Checksy HTTPS source. The signature covers the exact response bytes before this schema is applied.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generation",
+    "revision",
+    "artifact",
+    "configPath"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "description": "Manifest schema version."
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "description": "Monotonic, JavaScript-safe positive generation number."
+    },
+    "revision": {
+      "$ref": "#/$defs/revision"
+    },
+    "artifact": {
+      "$ref": "#/$defs/artifact"
+    },
+    "configPath": {
+      "$ref": "#/$defs/configPath"
+    }
+  },
+  "$defs": {
+    "revision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[!-~](?:[ -~]{0,254}[!-~])?$",
+      "description": "Printable ASCII publisher revision with no leading or trailing space. It is metadata and is never used directly as a filesystem name."
+    },
+    "lowerHex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "configPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "allOf": [
+        {
+          "pattern": "^[^/]"
+        },
+        {
+          "pattern": "[^/]$"
+        },
+        {
+          "not": {
+            "pattern": "(^|/)\\.\\.?(/|$)"
+          }
+        },
+        {
+          "not": {
+            "pattern": "//|\\\\|[\\u0000-\\u001f\\u007f]"
+          }
+        }
+      ],
+      "description": "Normalized relative bundle path. Runtime validation also enforces a 1024-byte UTF-8 limit, canonical component traversal, and containment beneath the verified bundle root."
+    },
+    "artifactUrl": {
+      "type": "string",
+      "format": "uri-reference",
+      "minLength": 1,
+      "maxLength": 8192,
+      "description": "Absolute HTTP(S) URL or relative URI-reference. Runtime validation rejects userinfo and fragments, resolves relative references against the final manifest response URL, and applies the interactive insecure-HTTP policy to every request and redirect."
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "url",
+        "sha256",
+        "sizeBytes"
+      ],
+      "properties": {
+        "format": {
+          "const": "tar.gz",
+          "description": "The only archive encoding supported by manifest v1."
+        },
+        "url": {
+          "$ref": "#/$defs/artifactUrl"
+        },
+        "sha256": {
+          "$ref": "#/$defs/lowerHex64"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 268435456,
+          "description": "Exact compressed artifact size in bytes; it is authenticated by the manifest and enforced while downloading."
+        }
+      }
+    }
+  }
+}

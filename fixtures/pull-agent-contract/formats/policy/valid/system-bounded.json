@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "privilegePolicy": {
+    "schemaVersion": 1,
+    "allowedRunAs": ["current", "root", "user:checksy-runner"],
+    "allowedActions": ["check", "fix"]
+  },
+  "allowedExternalRoots": [],
+  "failSeverityCeiling": "error",
+  "offline": {
+    "enabled": false,
+    "maxAge": null
+  },
+  "limits": {
+    "httpConnectTimeout": "30s",
+    "commandTimeout": "30m",
+    "maxRedirects": 5,
+    "maxArchiveEntries": 10000,
+    "maxSchedulerLogBytes": 10485760,
+    "maxSchedulerLogFiles": 5
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "generation": 1,
+  "revision": "size-zero",
+  "artifact": {
+    "format": "tar.gz",
+    "url": "bundle.tar.gz",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "sizeBytes": 0
+  },
+  "configPath": ".checksy.yaml"
+}

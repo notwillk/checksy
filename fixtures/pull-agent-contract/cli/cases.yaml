@@ -1,0 +1,1700 @@
+schemaVersion: 1
+status: contract-only
+
+parsing:
+  newCommandsAreStrict: true
+  valueForms:
+    - separate-token
+    - equals
+  rejectPositionals: true
+  rejectDoubleDash: true
+  booleanFlagsAreBareOnly: true
+  rejectLegacyConfigFlags: true
+  helpForms:
+    - short
+    - long
+    - help-subcommand
+
+exitCodes:
+  success: 0
+  missingLegacySubcommand: 1
+  usageOrOperational: 2
+  noncompliant: 3
+  lockHeld: 4
+
+interfaces:
+  apply:
+    directRequired:
+      - --source
+    enrolledRequired:
+      - --enrollment
+    directOnly:
+      - --scope
+      - --state-dir
+      - --config-path
+      - --trust-key
+      - --allowed-signers
+      - --policy
+      - --replace-trust
+      - --replace-policy
+      - --allow-insecure-http
+      - --allow-unsigned
+    common:
+      - --rollback-to
+      - --rollback-reason
+      - --non-interactive
+    defaults:
+      scopeForNonRoot: user
+      rootRequiresExplicitSystem: true
+      nonInteractive: false
+      rollback: false
+      allowInsecureHttp: false
+      allowUnsigned: false
+      replaceTrust: false
+      replacePolicy: false
+  status:
+    selectors:
+      - --enrollment
+      - --source
+      - --source-id
+    optional:
+      - --state-dir
+      - --config-path
+      - --live
+      - --json
+    defaults:
+      selector: user-enrollment
+      live: false
+      output: human
+  enroll:
+    required:
+      - --source
+      - --scope
+      - --interval
+    optional:
+      - --state-dir
+      - --config-path
+      - --trust-key
+      - --allowed-signers
+      - --policy
+      - --replace
+      - --apply-now
+      - --non-interactive
+    defaults:
+      replace: false
+      applyNow: false
+      nonInteractive: false
+      userPolicy: documented-user-default
+      systemPolicy: none
+  unenroll:
+    required:
+      - --scope
+    optional:
+      - --delete-state
+      - --non-interactive
+    defaults:
+      deleteState: false
+      nonInteractive: false
+
+nonInteractive:
+  readsStdinOrTty: false
+  impliesConsent: false
+  weakensValidation: false
+  disablesCredentialPrompts: true
+  incompatibleFlags:
+    - --allow-insecure-http
+    - --allow-unsigned
+  explicitMutationFlagsRemainSufficient:
+    - --replace-trust
+    - --replace-policy
+    - --rollback-to
+    - --replace
+    - --apply-now
+    - --delete-state
+
+interactiveExceptions:
+  requireStdinTty: true
+  requireStderrTty: true
+  environmentConsentAccepted: false
+
+sideEffectDefaults:
+  network: false
+  executeChecks: false
+  executeFixes: false
+  commandSideEffectsPossible: false
+  promote: false
+  replaceTrust: false
+  replacePolicy: false
+  writeReusableState: false
+  writeAudit: false
+  writeEnrollment: false
+  writeScheduler: false
+  removeEnrollment: false
+  removeScheduler: false
+  deleteEnrolledSourceState: false
+  deleteUnrelatedState: false
+  deleteLogs: false
+  prompt: false
+
+stdoutDefaults:
+  apply: human
+  status: human
+  enroll: human
+  unenroll: human
+  statusJson: single-json-document
+  help: help
+
+cases:
+  - id: cli-apply-direct-local-success
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+    context:
+      executor: non-root
+      sourceType: local-directory
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-apply-direct-https-success-equals-form
+    argv:
+      - checksy
+      - apply
+      - --source=https://agent.example/manifest.json
+      - --trust-key=/etc/checksy/minisign.pub
+      - --policy=/etc/checksy/policy.yaml
+      - --state-dir=/var/lib/checksy-direct
+    context:
+      sourceType: https
+      authentication: valid
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        network: true
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-apply-direct-system-scope
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - system
+      - --policy
+      - /etc/checksy/system-policy.yaml
+    context:
+      executor: root
+      sourceType: local-directory
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-apply-direct-system-requires-root
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - system
+      - --policy
+      - /etc/checksy/system-policy.yaml
+    context:
+      executor: non-root
+    expected:
+      exit: 2
+      errorCode: permission-denied
+      sideEffects: {}
+
+  - id: cli-apply-root-must-select-system
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+    context:
+      executor: root
+    expected:
+      exit: 2
+      errorCode: permission-denied
+      sideEffects: {}
+
+  - id: cli-apply-root-user-scope-rejected
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - user
+    context:
+      executor: root
+    expected:
+      exit: 2
+      errorCode: permission-denied
+      sideEffects: {}
+
+  - id: cli-apply-invalid-scope
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - organization
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-enrollment-success
+    argv:
+      - checksy
+      - apply
+      - --enrollment
+      - /home/alice/.config/checksy/enrollment.yaml
+      - --non-interactive
+    context:
+      enrollment: valid
+      executorBinding: valid
+      sourceAuthentication: valid
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        network: true
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        writeReusableState: true
+        writeAudit: true
+        prompt: false
+
+  - id: cli-apply-source-and-enrollment-conflict
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --enrollment
+      - /home/alice/.config/checksy/enrollment.yaml
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-missing-source-selection
+    argv:
+      - checksy
+      - apply
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-relative-enrollment-path
+    argv:
+      - checksy
+      - apply
+      - --enrollment
+      - enrollment.yaml
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-enrollment-with-direct-flag
+    argv:
+      - checksy
+      - apply
+      - --enrollment
+      - /home/alice/.config/checksy/enrollment.yaml
+      - --state-dir
+      - /tmp/checksy-state
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-relative-state-dir
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --state-dir
+      - relative/state
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-https-missing-trust
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+    context:
+      sourceType: https
+    expected:
+      exit: 2
+      errorCode: authentication-failed
+      sideEffects: {}
+
+  - id: cli-apply-git-wrong-trust-kind
+    argv:
+      - checksy
+      - apply
+      - --source
+      - git+https://git.example/ops/checksy.git#main:.checksy.yaml
+      - --trust-key
+      - /etc/checksy/minisign.pub
+    context:
+      sourceType: git-moving-ref
+    expected:
+      exit: 2
+      errorCode: authentication-failed
+      sideEffects: {}
+
+  - id: cli-apply-direct-git-oid-requires-signers
+    argv:
+      - checksy
+      - apply
+      - --source
+      - git+https://git.example/ops/checksy.git#1111111111111111111111111111111111111111:.checksy.yaml
+    context:
+      sourceType: git-full-object-id
+    expected:
+      exit: 2
+      errorCode: authentication-failed
+      sideEffects: {}
+
+  - id: cli-apply-local-config-path
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --config-path
+      - profiles/laptop.yaml
+    context:
+      sourceType: local-directory
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-apply-remote-config-path-rejected
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --trust-key
+      - /etc/checksy/minisign.pub
+      - --config-path
+      - alternate.yaml
+    context:
+      sourceType: https
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-rollback-reason-without-target
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --trust-key
+      - /etc/checksy/minisign.pub
+      - --rollback-reason
+      - operator-request
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-authenticated-rollback
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --trust-key
+      - /etc/checksy/minisign.pub
+      - --rollback-to
+      - generation:41
+      - --rollback-reason
+      - compatibility-regression
+    context:
+      currentGeneration: 42
+      requestedGeneration: 41
+      authentication: valid
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        network: true
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-apply-enrollment-authenticated-rollback
+    argv:
+      - checksy
+      - apply
+      - --enrollment
+      - /home/alice/.config/checksy/enrollment.yaml
+      - --rollback-to
+      - generation:41
+      - --rollback-reason
+      - compatibility-regression
+    context:
+      enrollment: valid-https
+      currentGeneration: 42
+      requestedGeneration: 41
+      authentication: valid
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        network: true
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-apply-git-rollback-target-kind
+    argv:
+      - checksy
+      - apply
+      - --source
+      - git+https://git.example/ops/checksy.git#main:.checksy.yaml
+      - --allowed-signers
+      - /etc/checksy/allowed_signers
+      - --rollback-to
+      - revision:1111111111111111111111111111111111111111
+    context:
+      sourceType: git
+      authentication: valid
+      rollback: valid
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        network: true
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-apply-rollback-target-kind-mismatch
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --trust-key
+      - /etc/checksy/minisign.pub
+      - --rollback-to
+      - revision:41
+    context:
+      sourceType: https
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-rollback-target-prefix-required
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --trust-key
+      - /etc/checksy/minisign.pub
+      - --rollback-to
+      - "41"
+    context:
+      sourceType: https
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-unsigned-interactive-check-only
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --allow-unsigned
+    context:
+      stdinTty: true
+      stderrTty: true
+      confirmation: accepted
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      result: checked-not-applied
+      sideEffects:
+        network: true
+        executeChecks: true
+        executeFixes: false
+        commandSideEffectsPossible: true
+        promote: false
+        writeReusableState: false
+        writeAudit: true
+        prompt: true
+
+  - id: cli-apply-http-unsigned-exceptions-incompatible
+    argv:
+      - checksy
+      - apply
+      - --source
+      - http://agent.example/manifest.json
+      - --allow-insecure-http
+      - --allow-unsigned
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-unsigned-trust-incompatible
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --allow-unsigned
+      - --trust-key
+      - /etc/checksy/minisign.pub
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-unsigned-rollback-incompatible
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --allow-unsigned
+      - --rollback-to
+      - generation:41
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-signed-http-interactive
+    argv:
+      - checksy
+      - apply
+      - --source
+      - http://agent.example/manifest.json
+      - --allow-insecure-http
+      - --trust-key
+      - /etc/checksy/minisign.pub
+    context:
+      stdinTty: true
+      stderrTty: true
+      confirmation: accepted
+      authentication: valid
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        network: true
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        writeReusableState: true
+        writeAudit: true
+        prompt: true
+
+  - id: cli-apply-exception-non-interactive-rejected
+    argv:
+      - checksy
+      - apply
+      - --source
+      - http://agent.example/manifest.json
+      - --allow-insecure-http
+      - --trust-key
+      - /etc/checksy/minisign.pub
+      - --non-interactive
+    context:
+      stdinTty: false
+      stderrTty: false
+    expected:
+      exit: 2
+      errorCode: interactive-required
+      sideEffects: {}
+
+  - id: cli-apply-exception-requires-both-ttys
+    argv:
+      - checksy
+      - apply
+      - --source
+      - http://agent.example/manifest.json
+      - --allow-insecure-http
+      - --trust-key
+      - /etc/checksy/minisign.pub
+    context:
+      stdinTty: true
+      stderrTty: false
+    expected:
+      exit: 2
+      errorCode: interactive-required
+      sideEffects: {}
+
+  - id: cli-apply-trust-change-requires-replace
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --trust-key
+      - /etc/checksy/minisign-next.pub
+    context:
+      storedTrustFingerprint: old
+      suppliedTrustFingerprint: new
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-replace-trust-requires-input
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --replace-trust
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-trust-change-atomic-success
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --trust-key
+      - /etc/checksy/minisign-next.pub
+      - --replace-trust
+    context:
+      storedTrustFingerprint: old
+      suppliedTrustFingerprint: new
+      authenticationWithNewTrust: valid
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        network: true
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        replaceTrust: true
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-apply-policy-change-requires-replace
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --policy
+      - /etc/checksy/policy-next.yaml
+    context:
+      storedPolicyFingerprint: old
+      suppliedPolicyFingerprint: new
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-policy-change-atomic-success
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --policy
+      - /etc/checksy/policy-next.yaml
+      - --replace-policy
+    context:
+      storedPolicyFingerprint: old
+      suppliedPolicyFingerprint: new
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        replacePolicy: true
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-apply-final-noncompliance
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+    context:
+      finalCompliance: noncompliant
+      currentRevision: retained
+    expected:
+      exit: 3
+      errorCode: compliance-failed
+      sideEffects:
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: false
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-apply-fix-timeout-operational
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+    context:
+      fixResult: timeout
+      currentRevision: retained
+    expected:
+      exit: 2
+      errorCode: operation-timeout
+      sideEffects:
+        executeChecks: true
+        executeFixes: true
+        commandSideEffectsPossible: true
+        promote: false
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-apply-lock-held
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+    context:
+      stateLock: held
+    expected:
+      exit: 4
+      errorCode: lock-held
+      attemptStarted: false
+      sideEffects: {}
+
+  - id: cli-apply-legacy-config-flag-rejected
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --config
+      - /srv/checksy/source/.checksy.yaml
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-unknown-flag-rejected
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --unknown
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-duplicate-value-flag-rejected
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --source=/srv/checksy/other
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-positional-rejected
+    argv:
+      - checksy
+      - apply
+      - /srv/checksy/source
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-double-dash-rejected
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-boolean-value-rejected
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --non-interactive=true
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-apply-offline-flag-not-exposed
+    argv:
+      - checksy
+      - apply
+      - --source
+      - /srv/checksy/source
+      - --offline
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-status-default-recorded-pass
+    argv:
+      - checksy
+      - status
+    context:
+      userEnrollment: valid
+      recordedCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      output: human
+      sideEffects: {}
+
+  - id: cli-status-default-enrollment-missing
+    argv:
+      - checksy
+      - status
+    context:
+      userEnrollment: absent
+    expected:
+      exit: 2
+      errorCode: source-unavailable
+      output: human
+      sideEffects: {}
+
+  - id: cli-status-source-and-enrollment-conflict
+    argv:
+      - checksy
+      - status
+      - --source-id
+      - 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - --enrollment
+      - /home/alice/.config/checksy/enrollment.yaml
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      output: human
+      sideEffects: {}
+
+  - id: cli-status-recorded-failure
+    argv:
+      - checksy
+      - status
+      - --enrollment
+      - /home/alice/.config/checksy/enrollment.yaml
+    context:
+      recordedCompliance: noncompliant
+    expected:
+      exit: 3
+      errorCode: compliance-failed
+      output: human
+      sideEffects: {}
+
+  - id: cli-status-live-pass
+    argv:
+      - checksy
+      - status
+      - --enrollment
+      - /home/alice/.config/checksy/enrollment.yaml
+      - --live
+    context:
+      currentGenerationPin: available
+      liveCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      output: human
+      sideEffects:
+        executeChecks: true
+        executeFixes: false
+        commandSideEffectsPossible: true
+
+  - id: cli-status-json-operational-error
+    argv:
+      - checksy
+      - status
+      - --enrollment
+      - /home/alice/.config/checksy/missing.yaml
+      - --json
+    context:
+      enrollment: absent
+    expected:
+      exit: 2
+      errorCode: source-unavailable
+      output: single-json-document
+      humanStdout: false
+      sideEffects: {}
+
+  - id: cli-status-json-success
+    argv:
+      - checksy
+      - status
+      - --enrollment
+      - /home/alice/.config/checksy/enrollment.yaml
+      - --json
+    context:
+      recordedCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      output: single-json-document
+      humanStdout: false
+      sideEffects: {}
+
+  - id: cli-status-json-noncompliant
+    argv:
+      - checksy
+      - status
+      - --enrollment
+      - /home/alice/.config/checksy/enrollment.yaml
+      - --json
+    context:
+      recordedCompliance: noncompliant
+    expected:
+      exit: 3
+      errorCode: compliance-failed
+      output: single-json-document
+      humanStdout: false
+      sideEffects: {}
+
+  - id: cli-status-json-invalid-arguments
+    argv:
+      - checksy
+      - status
+      - --json
+      - --unknown
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      output: single-json-document
+      humanStdout: false
+      sideEffects: {}
+
+  - id: cli-status-direct-source-id-never-fetches
+    argv:
+      - checksy
+      - status
+      - --source-id
+      - 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - --state-dir
+      - /var/lib/checksy-direct
+    context:
+      existingSourceState: valid
+      recordedCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      output: human
+      sideEffects: {}
+
+  - id: cli-status-invalid-source-id
+    argv:
+      - checksy
+      - status
+      - --source-id
+      - not-a-source-id
+      - --state-dir
+      - /var/lib/checksy-direct
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      output: human
+      sideEffects: {}
+
+  - id: cli-status-source-locator-never-fetches
+    argv:
+      - checksy
+      - status
+      - --source
+      - https://agent.example/manifest.json
+      - --state-dir
+      - /home/alice/.local/state/checksy
+    context:
+      existingSourceState: valid
+      recordedCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      output: human
+      sideEffects: {}
+
+  - id: cli-status-local-source-with-config-path
+    argv:
+      - checksy
+      - status
+      - --source
+      - /srv/checksy/source
+      - --config-path
+      - profiles/laptop.yaml
+    context:
+      existingSourceState: valid
+      recordedCompliance: degraded
+    expected:
+      exit: 0
+      errorCode: null
+      output: human
+      sideEffects: {}
+
+  - id: cli-status-non-interactive-flag-rejected
+    argv:
+      - checksy
+      - status
+      - --non-interactive
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      output: human
+      sideEffects: {}
+
+  - id: cli-enroll-user-default-policy
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - user
+      - --interval
+      - 15m
+    context:
+      enrollment: absent
+      executor: enrolled-user
+    expected:
+      exit: 0
+      errorCode: null
+      applied: false
+      sideEffects:
+        writeEnrollment: true
+        writeScheduler: true
+
+  - id: cli-enroll-https-with-trust
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - https://agent.example/manifest.json
+      - --scope
+      - user
+      - --interval
+      - 1h
+      - --trust-key
+      - /home/alice/minisign.pub
+      - --policy
+      - /home/alice/checksy-policy.yaml
+    context:
+      enrollment: absent
+      trustMaterial: valid
+      network: unavailable
+    expected:
+      exit: 0
+      errorCode: null
+      applied: false
+      remoteFetched: false
+      sideEffects:
+        writeEnrollment: true
+        writeScheduler: true
+
+  - id: cli-enroll-system-policy-required
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - system
+      - --interval
+      - 1h
+    context:
+      executor: root
+    expected:
+      exit: 2
+      errorCode: policy-denied
+      sideEffects: {}
+
+  - id: cli-enroll-system-requires-root
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - system
+      - --interval
+      - 1h
+      - --policy
+      - /etc/checksy/system-policy.yaml
+    context:
+      executor: non-root
+    expected:
+      exit: 2
+      errorCode: permission-denied
+      sideEffects: {}
+
+  - id: cli-enroll-unsupported-platform
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - user
+      - --interval
+      - 15m
+    context:
+      platform: windows
+      executorEuid: 1000
+    expected:
+      exit: 2
+      errorCode: unsupported-platform
+      sideEffects: {}
+
+  - id: cli-enroll-identical-idempotent
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - user
+      - --interval
+      - 15m
+    context:
+      enrollment: identical
+    expected:
+      exit: 0
+      errorCode: null
+      changed: false
+      sideEffects: {}
+
+  - id: cli-enroll-interval-only-change
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - user
+      - --interval
+      - 1h
+    context:
+      enrollment: same-source-state-trust-policy
+      storedInterval: 15m
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        writeEnrollment: true
+        writeScheduler: true
+
+  - id: cli-enroll-change-requires-replace
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source-next
+      - --scope
+      - user
+      - --interval
+      - 15m
+    context:
+      enrollment: different
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-enroll-replace-atomic-success
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source-next
+      - --scope
+      - user
+      - --interval
+      - 15m
+      - --replace
+    context:
+      enrollment: different
+      schedulerUpdate: available
+    expected:
+      exit: 0
+      errorCode: null
+      oldEnrollmentRetainedOnFailure: true
+      sideEffects:
+        writeEnrollment: true
+        writeScheduler: true
+
+  - id: cli-enroll-apply-now-success
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - user
+      - --interval
+      - 15m
+      - --apply-now
+    context:
+      enrollment: absent
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      enrollmentPublishedAfterApply: true
+      sideEffects:
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        writeReusableState: true
+        writeAudit: true
+        writeEnrollment: true
+        writeScheduler: true
+
+  - id: cli-enroll-apply-now-noncompliant
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - user
+      - --interval
+      - 15m
+      - --apply-now
+    context:
+      enrollment: absent
+      finalCompliance: noncompliant
+    expected:
+      exit: 3
+      errorCode: compliance-failed
+      enrollmentPublished: false
+      sideEffects:
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: false
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-enroll-replace-apply-now-failure-keeps-old
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source-next
+      - --scope
+      - user
+      - --interval
+      - 15m
+      - --replace
+      - --apply-now
+    context:
+      enrollment: different
+      finalCompliance: noncompliant
+    expected:
+      exit: 3
+      errorCode: compliance-failed
+      oldEnrollmentRetained: true
+      sideEffects:
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: false
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-enroll-non-interactive-does-not-imply-consent
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source-next
+      - --scope
+      - user
+      - --interval
+      - 15m
+      - --non-interactive
+    context:
+      enrollment: different
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-enroll-missing-interval
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - user
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-enroll-exception-flag-rejected
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - http://agent.example/manifest.json
+      - --scope
+      - user
+      - --interval
+      - 15m
+      - --allow-insecure-http
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-enroll-offline-age-flag-not-exposed
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - user
+      - --interval
+      - 15m
+      - --offline-max-age
+      - 2d
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-enroll-lock-held
+    argv:
+      - checksy
+      - enroll
+      - --source
+      - /srv/checksy/source
+      - --scope
+      - user
+      - --interval
+      - 15m
+    context:
+      stateLock: held
+    expected:
+      exit: 4
+      errorCode: lock-held
+      attemptStarted: false
+      sideEffects: {}
+
+  - id: cli-unenroll-preserves-state
+    argv:
+      - checksy
+      - unenroll
+      - --scope
+      - user
+    context:
+      enrollment: present
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        removeEnrollment: true
+        removeScheduler: true
+        deleteEnrolledSourceState: false
+        deleteUnrelatedState: false
+        deleteLogs: false
+
+  - id: cli-unenroll-absent-idempotent
+    argv:
+      - checksy
+      - unenroll
+      - --scope
+      - user
+    context:
+      enrollment: absent
+    expected:
+      exit: 0
+      errorCode: null
+      changed: false
+      sideEffects: {}
+
+  - id: cli-unenroll-delete-enrolled-source-only
+    argv:
+      - checksy
+      - unenroll
+      - --scope
+      - user
+      - --delete-state
+      - --non-interactive
+    context:
+      enrollment: present
+      unrelatedSources: present
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        removeEnrollment: true
+        removeScheduler: true
+        deleteEnrolledSourceState: true
+        deleteUnrelatedState: false
+        deleteLogs: true
+        prompt: false
+
+  - id: cli-unenroll-system-requires-root
+    argv:
+      - checksy
+      - unenroll
+      - --scope
+      - system
+    context:
+      executor: non-root
+      enrollment: present
+    expected:
+      exit: 2
+      errorCode: permission-denied
+      sideEffects: {}
+
+  - id: cli-unenroll-scheduler-failure-is-atomic
+    argv:
+      - checksy
+      - unenroll
+      - --scope
+      - user
+    context:
+      enrollment: present
+      schedulerRemoval: failed-before-commit
+    expected:
+      exit: 2
+      errorCode: scheduler-failed
+      oldEnrollmentRetained: true
+      sideEffects: {}
+
+  - id: cli-unenroll-lock-held
+    argv:
+      - checksy
+      - unenroll
+      - --scope
+      - user
+    context:
+      enrollment: present
+      stateLock: held
+    expected:
+      exit: 4
+      errorCode: lock-held
+      sideEffects: {}
+
+  - id: cli-unenroll-missing-scope
+    argv:
+      - checksy
+      - unenroll
+    context: {}
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}
+
+  - id: cli-help-short
+    argv:
+      - checksy
+      - apply
+      - -h
+    context: {}
+    expected:
+      exit: 0
+      errorCode: null
+      output: help
+      sideEffects: {}
+
+  - id: cli-help-long
+    argv:
+      - checksy
+      - status
+      - --help
+    context: {}
+    expected:
+      exit: 0
+      errorCode: null
+      output: help
+      sideEffects: {}
+
+  - id: cli-help-subcommand
+    argv:
+      - checksy
+      - help
+      - enroll
+    context: {}
+    expected:
+      exit: 0
+      errorCode: null
+      output: help
+      sideEffects: {}
+
+  - id: cli-apply-rollback-reason-at-limit
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --trust-key
+      - /etc/checksy/minisign.pub
+      - --rollback-to
+      - generation:41
+      - --rollback-reason
+      - rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+    context:
+      rollbackReasonBytes: 512
+      authentication: valid
+      finalCompliance: compliant
+    expected:
+      exit: 0
+      errorCode: null
+      sideEffects:
+        network: true
+        executeChecks: true
+        executeFixes: as-needed
+        commandSideEffectsPossible: true
+        promote: true
+        writeReusableState: true
+        writeAudit: true
+
+  - id: cli-apply-rollback-reason-over-limit
+    argv:
+      - checksy
+      - apply
+      - --source
+      - https://agent.example/manifest.json
+      - --trust-key
+      - /etc/checksy/minisign.pub
+      - --rollback-to
+      - generation:41
+      - --rollback-reason
+      - rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+    context:
+      rollbackReasonBytes: 513
+    expected:
+      exit: 2
+      errorCode: invalid-arguments
+      sideEffects: {}

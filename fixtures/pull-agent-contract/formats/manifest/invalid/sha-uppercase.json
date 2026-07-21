@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "generation": 1,
+  "revision": "sha-uppercase",
+  "artifact": {
+    "format": "tar.gz",
+    "url": "bundle.tar.gz",
+    "sha256": "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
+    "sizeBytes": 1
+  },
+  "configPath": ".checksy.yaml"
+}

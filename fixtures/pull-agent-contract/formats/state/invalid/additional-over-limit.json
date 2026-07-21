@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "snapshotSequence": 1,
+  "source": {"id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "kind": "local", "display": "/srv/checksy/source", "canonical": {"kind": "local", "root": {"bytesBase64Url": "L3Nydi9jaGVja3N5L3NvdXJjZQ", "display": "/srv/checksy/source"}, "configPath": ".checksy.yaml"}},
+  "selection": {"current": null, "previous": null, "additional": [{"generationId": "1111111111111111111111111111111111111111111111111111111111111111", "revision": "one", "configPath": ".checksy.yaml", "providerGeneration": null, "manifestSha256": null, "artifactSha256": null, "bundleSha256": "2222222222222222222222222222222222222222222222222222222222222222", "signer": {"kind": "local-operator"}, "verifiedAt": "2026-07-21T00:00:00.000Z", "promotedAt": "2026-07-21T00:00:00.000Z"}, {"generationId": "3333333333333333333333333333333333333333333333333333333333333333", "revision": "two", "configPath": ".checksy.yaml", "providerGeneration": null, "manifestSha256": null, "artifactSha256": null, "bundleSha256": "4444444444444444444444444444444444444444444444444444444444444444", "signer": {"kind": "local-operator"}, "verifiedAt": "2026-07-21T00:00:00.000Z", "promotedAt": "2026-07-21T00:00:00.000Z"}]},
+  "freshness": {"kind": "local", "snapshotSha256": null},
+  "lastAttempt": null,
+  "lastSuccess": null,
+  "lastError": null,
+  "recordedCompliance": null,
+  "updatedAt": "2026-07-21T00:00:00.000Z"
+}

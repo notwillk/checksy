@@ -1,0 +1,11 @@
+{
+  "auditId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "at": "2026-07-21T04:00:01.000Z",
+  "actor": "uid:1000",
+  "action": "rollback",
+  "sourceId": "6161616161616161616161616161616161616161616161616161616161616161",
+  "fromRevision": "release-42",
+  "toRevision": "release-41",
+  "reason": "compatibility regression",
+  "outcome": "success"
+}

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "scope": "user",
+  "source": {
+    "kind": "git",
+    "repository": "https://git.example/ops/checksy.git",
+    "selector": "oid:1111111111111111111111111111111111111111",
+    "configPath": "profiles/laptop.yaml"
+  },
+  "stateDir": {"bytesBase64Url": "L2hvbWUvYWxpY2UvLmxvY2FsL3N0YXRlL2NoZWNrc3k", "display": "/home/alice/.local/state/checksy"},
+  "expectedExecutor": {"uid": 1000, "gid": 1000, "username": "alice"},
+  "trust": {"kind": "git-content-pin", "objectId": "1111111111111111111111111111111111111111"},
+  "policy": {
+    "schemaVersion": 1,
+    "privilegePolicy": {"schemaVersion": 1, "allowedRunAs": ["current"], "allowedActions": ["check", "fix"]},
+    "allowedExternalRoots": [],
+    "failSeverityCeiling": null,
+    "offline": {"enabled": true, "maxAge": "24h"},
+    "limits": {}
+  },
+  "schedule": {
+    "interval": "1d",
+    "stdoutPath": {"bytesBase64Url": "L2hvbWUvYWxpY2UvLmxvY2FsL3N0YXRlL2NoZWNrc3kvbG9ncy9hcHBseS5zdGRvdXQubG9n", "display": "/home/alice/.local/state/checksy/logs/apply.stdout.log"},
+    "stderrPath": {"bytesBase64Url": "L2hvbWUvYWxpY2UvLmxvY2FsL3N0YXRlL2NoZWNrc3kvbG9ncy9hcHBseS5zdGRlcnIubG9n", "display": "/home/alice/.local/state/checksy/logs/apply.stderr.log"}
+  },
+  "createdAt": "2026-07-21T00:00:00.000Z",
+  "updatedAt": "2026-07-21T00:00:00.000Z"
+}

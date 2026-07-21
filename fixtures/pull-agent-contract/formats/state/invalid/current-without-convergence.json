@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "snapshotSequence": 3,
+  "source": {"id": "1212121212121212121212121212121212121212121212121212121212121212", "kind": "git", "display": "pinned checksy definition", "canonical": {"kind": "git", "repository": "https://git.example/ops/checksy.git", "selector": "oid:1111111111111111111111111111111111111111", "configPath": ".checksy.yaml"}},
+  "selection": {
+    "current": {"generationId": "2323232323232323232323232323232323232323232323232323232323232323", "revision": "1111111111111111111111111111111111111111", "configPath": ".checksy.yaml", "providerGeneration": null, "manifestSha256": null, "artifactSha256": null, "bundleSha256": "3434343434343434343434343434343434343434343434343434343434343434", "signer": {"kind": "git-content-pin", "objectId": "1111111111111111111111111111111111111111"}, "verifiedAt": "2026-07-21T02:00:00.000Z", "promotedAt": "2026-07-21T02:00:01.000Z"},
+    "previous": null,
+    "additional": []
+  },
+  "freshness": {"kind": "git", "selector": "oid:1111111111111111111111111111111111111111", "acceptedCommit": "1111111111111111111111111111111111111111", "acceptedTagObject": null, "acceptedAt": "2026-07-21T02:00:00.000Z"},
+  "lastAttempt": null,
+  "lastSuccess": null,
+  "lastError": null,
+  "recordedCompliance": null,
+  "updatedAt": "2026-07-21T02:00:01.000Z"
+}

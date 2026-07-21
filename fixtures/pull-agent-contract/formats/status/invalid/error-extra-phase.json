@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "result": "error",
+  "mode": null,
+  "generatedAt": "2026-07-21T05:00:00.000Z",
+  "status": null,
+  "error": {"code": "state-failed", "message": "corrupt state", "retryable": false, "phase": "state"}
+}

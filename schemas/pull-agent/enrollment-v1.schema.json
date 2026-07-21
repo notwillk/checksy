@@ -1,0 +1,463 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://checksy.dev/schemas/pull-agent/enrollment-v1.schema.json",
+  "title": "Checksy enrollment v1",
+  "description": "Strict protected bootstrap document used by scheduled apply and status commands.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "scope",
+    "source",
+    "stateDir",
+    "expectedExecutor",
+    "trust",
+    "policy",
+    "schedule",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "user",
+        "system"
+      ]
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "stateDir": {
+      "$ref": "policy-v1.schema.json#/$defs/path"
+    },
+    "expectedExecutor": {
+      "$ref": "#/$defs/expectedExecutor"
+    },
+    "trust": {
+      "$ref": "#/$defs/trust"
+    },
+    "policy": {
+      "$ref": "policy-v1.schema.json"
+    },
+    "schedule": {
+      "$ref": "#/$defs/schedule"
+    },
+    "createdAt": {
+      "$ref": "policy-v1.schema.json#/$defs/timestamp"
+    },
+    "updatedAt": {
+      "$ref": "policy-v1.schema.json#/$defs/timestamp"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "const": "system"
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "then": {
+        "properties": {
+          "expectedExecutor": {
+            "properties": {
+              "uid": {
+                "const": 0
+              },
+              "gid": {
+                "const": 0
+              },
+              "username": {
+                "const": "root"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "expectedExecutor": {
+            "properties": {
+              "uid": {
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "properties": {
+              "kind": {
+                "const": "local"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "trust": {
+            "$ref": "#/$defs/localOperatorTrust"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "properties": {
+              "kind": {
+                "const": "https"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "trust": {
+            "$ref": "#/$defs/minisignTrust"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "properties": {
+              "selector": {
+                "pattern": "^oid:"
+              }
+            },
+            "required": [
+              "selector"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "trust": {
+            "$ref": "#/$defs/gitContentPinTrust"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "properties": {
+              "selector": {
+                "pattern": "^refs/"
+              }
+            },
+            "required": [
+              "selector"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "trust": {
+            "$ref": "#/$defs/sshTrust"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "git",
+                  "https"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "policy": {
+            "properties": {
+              "allowedExternalRoots": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "source": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/localSource"
+        },
+        {
+          "$ref": "#/$defs/gitSource"
+        },
+        {
+          "$ref": "#/$defs/httpsSource"
+        }
+      ]
+    },
+    "localSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "root",
+        "configPath"
+      ],
+      "properties": {
+        "kind": {
+          "const": "local"
+        },
+        "root": {
+          "$ref": "policy-v1.schema.json#/$defs/path"
+        },
+        "configPath": {
+          "$ref": "manifest-v1.schema.json#/$defs/configPath"
+        }
+      }
+    },
+    "gitSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "repository",
+        "selector",
+        "configPath"
+      ],
+      "properties": {
+        "kind": {
+          "const": "git"
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192,
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          },
+          "description": "Canonical Git endpoint. Runtime validation applies the documented URI/scp normalization and rejects credentials, query strings, and fragments."
+        },
+        "selector": {
+          "type": "string",
+          "maxLength": 1024,
+          "oneOf": [
+            {
+              "pattern": "^refs/(heads|tags)/[^\\u0000-\\u001f\\u007f ]+$"
+            },
+            {
+              "pattern": "^oid:[0-9a-f]{40}([0-9a-f]{24})?$"
+            }
+          ],
+          "description": "Resolved full ref namespace or protected full object-ID selector."
+        },
+        "configPath": {
+          "$ref": "manifest-v1.schema.json#/$defs/configPath"
+        }
+      }
+    },
+    "httpsSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "manifestUrl"
+      ],
+      "properties": {
+        "kind": {
+          "const": "https"
+        },
+        "manifestUrl": {
+          "type": "string",
+          "format": "uri",
+          "minLength": 9,
+          "maxLength": 8192,
+          "pattern": "^https://",
+          "description": "Canonical original HTTPS manifest URL. Runtime validation rejects userinfo and fragments and preserves the normalized query exactly."
+        }
+      }
+    },
+    "expectedExecutor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uid",
+        "gid",
+        "username"
+      ],
+      "properties": {
+        "uid": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "gid": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        }
+      },
+      "description": "Executor identity bound at enrollment. Runtime validation compares effective uid/gid before loading any rule."
+    },
+    "trust": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/localOperatorTrust"
+        },
+        {
+          "$ref": "#/$defs/minisignTrust"
+        },
+        {
+          "$ref": "#/$defs/sshTrust"
+        },
+        {
+          "$ref": "#/$defs/gitContentPinTrust"
+        }
+      ]
+    },
+    "localOperatorTrust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "local-operator"
+        }
+      }
+    },
+    "minisignTrust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "keyPath",
+        "keyId",
+        "publicKeySha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "minisign"
+        },
+        "keyPath": {
+          "$ref": "policy-v1.schema.json#/$defs/path"
+        },
+        "keyId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$",
+          "description": "Canonical lowercase Minisign key ID decoded from the public-key payload."
+        },
+        "publicKeySha256": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        }
+      }
+    },
+    "sshTrust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "allowedSignersPath",
+        "fileSha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "ssh"
+        },
+        "allowedSignersPath": {
+          "$ref": "policy-v1.schema.json#/$defs/path"
+        },
+        "fileSha256": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        }
+      }
+    },
+    "gitContentPinTrust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "objectId"
+      ],
+      "properties": {
+        "kind": {
+          "const": "git-content-pin"
+        },
+        "objectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        }
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "interval",
+        "stdoutPath",
+        "stderrPath"
+      ],
+      "properties": {
+      "interval": {
+        "$ref": "#/$defs/schedulerDuration",
+        "description": "Fixed scheduler interval. Runtime validation accepts only m/h/d units and values from 5m through 30d inclusive."
+        },
+        "stdoutPath": {
+          "$ref": "policy-v1.schema.json#/$defs/path"
+        },
+        "stderrPath": {
+          "$ref": "policy-v1.schema.json#/$defs/path"
+        }
+      }
+    },
+    "schedulerDuration": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*(m|h|d)$",
+      "description": "Scheduler duration token. Runtime validation normalizes and enforces 5m through 30d inclusive."
+    }
+  }
+}

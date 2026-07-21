@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "scope": "system",
+  "source": {
+    "kind": "git",
+    "repository": "https://git.example/ops/checksy.git",
+    "selector": "refs/heads/main",
+    "configPath": ".checksy.yaml"
+  },
+  "stateDir": {"bytesBase64Url": "L3Zhci9saWIvY2hlY2tzeQ", "display": "/var/lib/checksy"},
+  "expectedExecutor": {"uid": 0, "gid": 0, "username": "root"},
+  "trust": {
+    "kind": "ssh",
+    "allowedSignersPath": {"bytesBase64Url": "L2V0Yy9jaGVja3N5L2FsbG93ZWRfc2lnbmVycw", "display": "/etc/checksy/allowed_signers"},
+    "fileSha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "policy": {
+    "schemaVersion": 1,
+    "privilegePolicy": {"schemaVersion": 1, "allowedRunAs": ["current", "root"], "allowedActions": ["check", "fix"]},
+    "allowedExternalRoots": [],
+    "failSeverityCeiling": "error",
+    "offline": {"enabled": true, "maxAge": "24h"},
+    "limits": {}
+  },
+  "schedule": {
+    "interval": "1h",
+    "stdoutPath": {"bytesBase64Url": "L3Zhci9sb2cvY2hlY2tzeS9hcHBseS5zdGRvdXQubG9n", "display": "/var/log/checksy/apply.stdout.log"},
+    "stderrPath": {"bytesBase64Url": "L3Zhci9sb2cvY2hlY2tzeS9hcHBseS5zdGRlcnIubG9n", "display": "/var/log/checksy/apply.stderr.log"}
+  },
+  "createdAt": "2026-07-21T00:00:00.000Z",
+  "updatedAt": "2026-07-21T00:00:00.000Z"
+}

@@ -9,7 +9,8 @@ process's permissions; they are not sandboxed. Current Git remote caching does
 not verify an authorized publisher and is not suitable for unattended privileged
 execution. Run only definitions you trust. The planned fail-closed security
 contract and current implementation gaps are documented in the
-[threat model](THREAT_MODEL.md).
+[threat model](THREAT_MODEL.md). The frozen target formats, CLI, and resource
+bounds are specified in the [pull-agent contract](PULL_AGENT_CONTRACT.md).
 
 ## Installation
 
@@ -72,9 +73,9 @@ checksy schema > dist/config.schema.json
 checksy check --check-severity=warn --fail-severity=error
 ```
 
-The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command reflects over the configuration struct and outputs a machine-readable JSON Schema definition that downstream tooling can validate against.
+The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The current `schema` command prints a hand-maintained JSON Schema for downstream tooling; strict runtime/schema parity is planned but is not implemented yet.
 
-Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. When omitted, checks default to running for warn+ rules and the command only fails for error-level rules. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but no longer abort the run.
+Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. The current implementation defaults to `debug` check severity and `error` fail severity, so all rules run and only error-level failures make the command fail. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but no longer abort the run.
 
 ### Git-based Remote Configs
 
@@ -123,7 +124,7 @@ rules:
 
 ## Configuration
 
-`checksy --config=path/to/workspace.yaml check` loads the provided YAML, validates it against the same JSON Schema emitted by the `schema` command, and aborts if validation fails. When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable.
+`checksy --config=path/to/workspace.yaml check` deserializes the provided YAML and applies the validation currently implemented by the Rust types. It does not yet reject every unknown field or enforce the emitted JSON Schema at runtime. When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable.
 
 ### Inline rules, preconditions, and patterns
 

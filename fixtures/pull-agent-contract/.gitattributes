@@ -2,3 +2,6 @@ authentication/https/manifest.json text eol=lf
 authentication/https/manifest.tampered.json text eol=lf
 authentication/https/manifest.json.minisig text eol=lf
 authentication/https/minisign.pub text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+formats/**/*.json text eol=lf

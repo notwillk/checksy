@@ -5,9 +5,9 @@
 > and does not yet provide these guarantees. See
 > [THREAT_MODEL.md](THREAT_MODEL.md) for the security rationale.
 
-This document resolves the second P0 roadmap item. The next P0 item still owns
-complete manifest/state schemas, full CLI grammar, numeric timeout and scheduler
-bounds, redirect/archive/output limits, and the process kill grace period.
+This document resolves the second P0 roadmap item. The resulting manifest/state
+schemas, full CLI grammar, numeric bounds, and process limits are frozen in the
+[pull-agent public contract](PULL_AGENT_CONTRACT.md).
 
 Static examples live in the
 [pull-agent contract fixtures](fixtures/pull-agent-contract/README.md). They are
@@ -116,7 +116,8 @@ the root-relative path is derived; a symlink cannot create a second identity.
 - Retain the newest 100 audit attempts and no ordinary attempt older than 90
   days, while preserving records for current, previous, and the latest rollback.
 - Reacquiring pruned rollback content requires normal authentication. Exact
-  output byte limits remain P0-3.
+  output byte limits are specified in
+  [PULL_AGENT_CONTRACT.md](PULL_AGENT_CONTRACT.md#resource-limits).
 
 ## Trust material storage
 
@@ -141,8 +142,9 @@ allowed_signers files:
 - Ordinary and unattended HTTPS requires a standard Minisign signature. Append
   .minisig to the path component of the final redirected manifest URL, before
   any query. The original URL remains source identity.
-- Send Accept-Encoding: identity and reject other content encoding. Verify exact
-  body octets, including BOM and line endings, before parsing or normalization.
+- Send Accept-Encoding: identity and reject other content encoding. Reject a
+  UTF-8 BOM, and verify exact body octets including line endings before parsing
+  or normalization.
 - Accept one standard ASCII signature and one standard public-key file. Reject
   malformed/trailing records. Verify the complete Minisign structure; neither
   trusted nor untrusted comments authorize content.
@@ -186,11 +188,13 @@ Git v1 supports SSH signatures only:
 
 ## Offline policy
 
-Offline eligibility lasts 24 hours from successful online source contact:
+Offline eligibility lasts for the protected policy's configured `maxAge`, which
+defaults to 24 hours and may be set from 1 minute through 7 days, from successful
+online source contact:
 
 - An authenticated 200 starts the window. A validator-bound 304 refreshes contact
   time without representing new signer freshness.
-- Content is eligible when age is no greater than 24 hours.
+- Content is eligible when age is no greater than the configured `maxAge`.
 - Offline convergence uses only integrity-checked completed current content,
   still checks/fixes/rechecks, records offline use, and never fetches/promotes.
 - Fallback is allowed for DNS/connect/read failures and HTTP 408, 429, or 5xx.
@@ -240,7 +244,8 @@ Lock open/I/O failure is exit 2, not contention.
   fixed 86,400-second days; they are never calendar durations.
 - Every unattended network/process operation has finite defaults and local hard
   maximums, which per-rule and per-source values cannot exceed. Exact values and
-  interval bounds remain P0-3.
+  interval bounds are specified in
+  [PULL_AGENT_CONTRACT.md](PULL_AGENT_CONTRACT.md#resource-limits).
 - Enrollment resolves absolute log paths; generated schedulers contain no shell
   or environment expressions.
 
@@ -254,13 +259,16 @@ Lock open/I/O failure is exit 2, not contention.
 The Linux user paths use the resolved state root and every scheduler receives its
 materialized absolute path. User log dirs/files are 0700/0600. System log
 dirs/files are 0750/0640 and owned by root:root on Linux or root:wheel on macOS.
-Rotation remains P0-3/P7.
+Rotation limits are fixed in
+[PULL_AGENT_CONTRACT.md](PULL_AGENT_CONTRACT.md#resource-limits); scheduler
+implementation remains P7.
 
 ## Privilege policy
 
 Privilege policy is a strict versioned YAML object embedded in protected
 bootstrap policy. This snippet is the object itself; the containing bootstrap
-schema remains P0-3:
+schema is specified in
+[PULL_AGENT_CONTRACT.md](PULL_AGENT_CONTRACT.md#protected-policy-and-enrollment):
 
 ~~~yaml
 schemaVersion: 1
@@ -298,13 +306,14 @@ allowedActions:
 - Interactive unsigned input is check-only: no fixes, promotion, reusable cache,
   offline eligibility, or unattended eligibility.
 - Unsigned checks remain arbitrary code and may mutate or exfiltrate. Check-only
-  is not a sandbox. HTTP plus unsigned requires both acknowledgements and remains
-  non-promotable.
+  is not a sandbox. Unsigned mode is incompatible with trust and rollback;
+  insecure HTTP still requires valid authentication, so the two exceptions
+  cannot be combined.
 
-## Deferred public contracts
+## Public contract
 
-P0-3 will define complete manifest/state/status schemas, exact CLI grammar,
-network/process timeout values, redirect/archive/output limits, kill grace
-periods, and scheduler interval bounds. Existing check, check --fix, install,
-local discovery, cachePath, and Git locator behavior remains unchanged until its
-scheduled implementation work.
+[PULL_AGENT_CONTRACT.md](PULL_AGENT_CONTRACT.md) defines the complete v1
+manifest, policy, enrollment, state, and status formats; exact new-command CLI
+grammar; and network, process, archive, output, and scheduler bounds. Existing
+check, check --fix, install, local discovery, cachePath, and Git locator behavior
+remains unchanged until its scheduled implementation work.

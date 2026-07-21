@@ -4,17 +4,26 @@ These files describe accepted and rejected behavior for the planned pull-based
 agent. They are a contract for future tests; current production code does not
 parse this corpus or implement the outcomes.
 
-[cases.yaml](cases.yaml) is the machine-readable index. Each entry has a stable
-ID, relative path, accept/reject result, first wiring milestone, and reason.
-Behavioral assertions live in [scenarios.yaml](scenarios.yaml).
+[cases.yaml](cases.yaml) is the root machine-readable index. Its `indexes`
+entries lead to the public-format, CLI, and resource-limit matrices; its
+`cases` entries retain the earlier policy, source, authentication, and behavior
+fixtures. Every file in this corpus remains static input for future tests.
 
 Expected accept/reject describes whether the requested transition, fallback, or
 promotion is permitted; it does not merely describe whether YAML parses.
 
 ## Layout
 
-- policy contains privilege-policy examples and abstract prohibited enrollment
-  exception cases. They are fragments, not the deferred enrollment schema.
+- [schemas/pull-agent](../../schemas/pull-agent) contains the five normative
+  JSON Schema 2020-12 contracts. `formats` contains positive and negative
+  instances, including raw-byte JSON failures that require checks outside JSON
+  Schema.
+- `cli/cases.yaml` is an argv/context/result matrix for the new command surface.
+- `limits` contains the normative numeric table and exact-boundary scenarios.
+- `descriptors/future-harnesses.yaml` specifies future archive, process-tree,
+  HTTP-server, and scheduler harnesses without implementing them.
+- `policy` contains the earlier privilege-policy examples and abstract
+  prohibited enrollment exception cases.
 - local covers defaults, ambiguity, confinement, and protected external roots.
 - authentication/https contains a real Minisign verification vector.
 - authentication/git contains accepted and rejected allowed-signers examples.
@@ -55,6 +64,8 @@ Minisign or SSH key is committed.
   pattern/config resolution and do not claim shell sandboxing.
 - Expand the http-5xx scenario token to every integer status from 500 through
   599.
-- Apply the general duration acceptance list to syntax only; numeric limits from
-  P0-3 may reject otherwise well-formed values such as 999h.
-- Verify every path in cases.yaml before executing a case.
+- Apply the general duration acceptance list to syntax only; the P0-3 limits
+  matrix may reject otherwise well-formed values such as 999h.
+- Reject duplicate object keys, a UTF-8 BOM, and trailing JSON values before
+  invoking JSON Schema validation.
+- Verify every path in every index before executing a case.

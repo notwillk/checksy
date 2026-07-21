@@ -32,7 +32,7 @@ Repository snapshot: current HEAD `1714389` differs from the reviewed baseline `
   - Timeout and schedule interval syntax, scheduler log locations, and privilege-policy format.
   - Whether enrollment is ever allowed to persist insecure or unsigned exceptions.
 
-- [ ] Specify the public formats and CLI contract.
+- [x] Specify the public formats and CLI contract.
   - Define the versioned HTTPS manifest schema and its strict validation rules.
   - Define state metadata and version the `status --json` output.
   - Define `apply`, `status`, `enroll`, and `unenroll` flags, errors, and exit codes.

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "generation": 9007199254740991,
+  "revision": "release-maximum-generation",
+  "artifact": {
+    "format": "tar.gz",
+    "url": "https://objects.example.test/releases/checksy-42.tar.gz",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "sizeBytes": 268435456
+  },
+  "configPath": "configs/.checksy.yaml"
+}

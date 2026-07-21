@@ -1,0 +1,16 @@
+{
+  "failureId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "attemptId": "6767676767676767676767676767676767676767676767676767676767676767",
+  "at": "2026-07-21T03:00:01.000Z",
+  "error": {
+    "code": "authentication-failed",
+    "phase": "authentication",
+    "message": "signature did not match",
+    "retryable": false,
+    "partialMutationPossible": false
+  },
+  "capturedOutput": {
+    "stdout": {"headBase64Url": "", "tailBase64Url": "", "originalBytes": 0, "truncated": false},
+    "stderr": {"headBase64Url": "c2lnbmF0dXJlIGRpZCBub3QgbWF0Y2g", "tailBase64Url": "", "originalBytes": 23, "truncated": false}
+  }
+}

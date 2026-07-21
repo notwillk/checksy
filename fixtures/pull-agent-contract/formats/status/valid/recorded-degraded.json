@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "result": "status",
+  "mode": "recorded",
+  "generatedAt": "2026-07-21T05:00:00.000Z",
+  "status": {
+    "source": {"id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "kind": "local", "display": "/srv/checksy/source"},
+    "current": {"revision": "local-bundle-1", "providerGeneration": null, "signer": {"kind": "local-operator"}, "verifiedAt": "2026-07-21T00:00:01.000Z"},
+    "previous": null,
+    "lastAttempt": {"attemptId": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "startedAt": "2026-07-21T00:00:01.000Z", "finishedAt": "2026-07-21T00:00:02.000Z", "outcome": "degraded", "exitCode": 0, "revision": "local-bundle-1", "offline": false, "rollback": false, "sourceChanged": true, "promoted": true, "error": null},
+    "lastSuccess": {"at": "2026-07-21T00:00:02.000Z", "revision": "local-bundle-1", "compliance": "degraded", "offline": false, "promoted": true},
+    "lastError": null,
+    "recordedCompliance": {"state": "degraded", "revision": "local-bundle-1", "checkedAt": "2026-07-21T00:00:02.000Z", "offline": false, "failSeverity": "error", "failingRules": 0, "degradedRules": 1, "counts": {"debug": 0, "info": 0, "warn": 1, "error": 0}},
+    "observedCompliance": null
+  },
+  "error": null
+}

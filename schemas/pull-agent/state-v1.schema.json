@@ -1,0 +1,1265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://checksy.dev/schemas/pull-agent/state-v1.schema.json",
+  "title": "Checksy source-state snapshot v1",
+  "description": "Authoritative atomically published state snapshot for one canonical source. Separate audit and failure files may be validated through the corresponding $defs in this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "snapshotSequence",
+    "source",
+    "selection",
+    "freshness",
+    "lastAttempt",
+    "lastSuccess",
+    "lastError",
+    "recordedCompliance",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "snapshotSequence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "description": "Strictly increasing source-local state snapshot sequence."
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "selection": {
+      "$ref": "#/$defs/selection"
+    },
+    "freshness": {
+      "$ref": "#/$defs/freshness"
+    },
+    "lastAttempt": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/attempt"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "lastSuccess": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/success"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "lastError": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/error"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "recordedCompliance": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/compliance"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "updatedAt": {
+      "$ref": "policy-v1.schema.json#/$defs/timestamp"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "properties": {
+              "kind": {
+                "const": "local"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "freshness": {
+            "$ref": "#/$defs/localFreshness"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "properties": {
+              "kind": {
+                "const": "git"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "freshness": {
+            "$ref": "#/$defs/gitFreshness"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "properties": {
+              "kind": {
+                "const": "https"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "freshness": {
+            "$ref": "#/$defs/httpsFreshness"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lastError": {"not": {"type": "null"}}
+        },
+        "required": ["lastError"]
+      },
+      "then": {
+        "properties": {
+          "lastAttempt": {
+            "allOf": [
+              {"$ref": "#/$defs/attempt"},
+              {"properties": {"outcome": {"enum": ["noncompliant", "error"]}}}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lastAttempt": {
+            "allOf": [
+              {"type": "object"},
+              {"properties": {"outcome": {"enum": ["success", "degraded"]}}, "required": ["outcome"]}
+            ]
+          }
+        },
+        "required": ["lastAttempt"]
+      },
+      "then": {
+        "properties": {
+          "lastError": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lastAttempt": {
+            "allOf": [
+              {"type": "object"},
+              {"properties": {"outcome": {"enum": ["noncompliant", "error"]}}, "required": ["outcome"]}
+            ]
+          }
+        },
+        "required": ["lastAttempt"]
+      },
+      "then": {
+        "properties": {
+          "lastError": {"$ref": "#/$defs/error"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "selection": {
+            "properties": {
+              "current": {"not": {"type": "null"}}
+            },
+            "required": ["current"]
+          }
+        },
+        "required": ["selection"]
+      },
+      "then": {
+        "properties": {
+          "lastSuccess": {"$ref": "#/$defs/success"},
+          "recordedCompliance": {"$ref": "#/$defs/compliance"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "display",
+        "canonical"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "kind": {
+          "enum": [
+            "local",
+            "git",
+            "https"
+          ]
+        },
+        "display": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        },
+        "canonical": {
+          "$ref": "#/$defs/stateSource"
+        }
+      },
+      "description": "Canonical source record. Runtime validation requires kind to equal canonical.kind and recomputes id from the versioned canonical identity encoding. State alone may record an interactively approved, authenticated HTTP manifest source; enrollment remains HTTPS-only."
+    },
+    "stateSource": {
+      "oneOf": [
+        {
+          "$ref": "enrollment-v1.schema.json#/$defs/localSource"
+        },
+        {
+          "$ref": "enrollment-v1.schema.json#/$defs/gitSource"
+        },
+        {
+          "$ref": "#/$defs/manifestSource"
+        }
+      ]
+    },
+    "manifestSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "manifestUrl"
+      ],
+      "properties": {
+        "kind": {
+          "const": "https"
+        },
+        "manifestUrl": {
+          "type": "string",
+          "format": "uri",
+          "minLength": 8,
+          "maxLength": 8192,
+          "pattern": "^https?://",
+          "description": "Canonical original manifest URL. The http form is recordable only after direct interactive allow-insecure-http approval and valid authentication; enrollment cannot contain it."
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "current",
+        "previous",
+        "additional"
+      ],
+      "properties": {
+        "current": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/generation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "previous": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/generation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "additional": {
+          "type": "array",
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/$defs/generation"
+          }
+        }
+      },
+      "description": "The state snapshot is authoritative for current and previous. Runtime validation rejects duplicate generation IDs, references to incomplete payloads, and previous/additional values when current is null."
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generationId",
+        "revision",
+        "configPath",
+        "providerGeneration",
+        "manifestSha256",
+        "artifactSha256",
+        "bundleSha256",
+        "signer",
+        "verifiedAt",
+        "promotedAt"
+      ],
+      "properties": {
+        "generationId": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "revision": {
+          "$ref": "manifest-v1.schema.json#/$defs/revision"
+        },
+        "providerGeneration": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "configPath": {
+          "$ref": "manifest-v1.schema.json#/$defs/configPath"
+        },
+        "manifestSha256": {
+          "oneOf": [
+            {
+              "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "artifactSha256": {
+          "oneOf": [
+            {
+              "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bundleSha256": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64",
+          "description": "SHA-256 of the canonical verified bundle bytes or deterministic bundle digest representation."
+        },
+        "signer": {
+          "$ref": "#/$defs/signer"
+        },
+        "verifiedAt": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        },
+        "promotedAt": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        }
+      },
+      "description": "Immutable promoted generation summary. generationId is the domain-separated SHA-256 over sourceId, provider kind, immutable provider material, and configPath; it is intentionally distinct from bundleSha256. Runtime validation requires providerGeneration and manifest/artifact hashes for HTTPS, explicit nulls where fields do not apply, and a completed on-disk generation matching every digest."
+    },
+    "signer": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/localOperatorSigner"
+        },
+        {
+          "$ref": "#/$defs/minisignSigner"
+        },
+        {
+          "$ref": "#/$defs/sshSigner"
+        },
+        {
+          "$ref": "#/$defs/gitContentPinSigner"
+        }
+      ]
+    },
+    "localOperatorSigner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "local-operator"
+        }
+      }
+    },
+    "minisignSigner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "keyId",
+        "publicKeySha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "minisign"
+        },
+        "keyId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        },
+        "publicKeySha256": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        }
+      }
+    },
+    "sshSigner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "principal",
+        "keySha256",
+        "signedObject"
+      ],
+      "properties": {
+        "kind": {
+          "const": "ssh"
+        },
+        "principal": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        },
+        "keySha256": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "signedObject": {
+          "enum": [
+            "commit",
+            "tag"
+          ],
+          "description": "The Git object whose SSH signature established authorization."
+        }
+      }
+    },
+    "gitContentPinSigner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "objectId"
+      ],
+      "properties": {
+        "kind": {
+          "const": "git-content-pin"
+        },
+        "objectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        }
+      }
+    },
+    "freshness": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/localFreshness"
+        },
+        {
+          "$ref": "#/$defs/gitFreshness"
+        },
+        {
+          "$ref": "#/$defs/httpsFreshness"
+        }
+      ]
+    },
+    "localFreshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "snapshotSha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "local"
+        },
+        "snapshotSha256": {
+          "oneOf": [
+            {
+              "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "gitFreshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "selector",
+        "acceptedCommit",
+        "acceptedTagObject",
+        "acceptedAt"
+      ],
+      "properties": {
+        "kind": {
+          "const": "git"
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "acceptedCommit": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acceptedTagObject": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acceptedAt": {
+          "oneOf": [
+            {
+              "$ref": "policy-v1.schema.json#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "httpsFreshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "highWaterGeneration",
+        "manifestSha256",
+        "revision",
+        "artifactSha256",
+        "etag",
+        "lastModified",
+        "lastOnlineContact"
+      ],
+      "properties": {
+        "kind": {
+          "const": "https"
+        },
+        "highWaterGeneration": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "manifestSha256": {
+          "oneOf": [
+            {
+              "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "oneOf": [
+            {
+              "$ref": "manifest-v1.schema.json#/$defs/revision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "artifactSha256": {
+          "oneOf": [
+            {
+              "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "etag": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8192,
+              "not": {
+                "pattern": "[\\u0000-\\u001f\\u007f]"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lastModified": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "not": {
+                "pattern": "[\\u0000-\\u001f\\u007f]"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Exact HTTP Last-Modified validator text, not a status timestamp."
+        },
+        "lastOnlineContact": {
+          "oneOf": [
+            {
+              "$ref": "policy-v1.schema.json#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attemptId",
+        "startedAt",
+        "finishedAt",
+        "outcome",
+        "exitCode",
+        "revision",
+        "generationId",
+        "offline",
+        "rollback",
+        "sourceChanged",
+        "promoted",
+        "error",
+        "capturedOutput"
+      ],
+      "properties": {
+        "attemptId": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "startedAt": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        },
+        "finishedAt": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "degraded",
+            "noncompliant",
+            "error"
+          ]
+        },
+        "exitCode": {
+          "enum": [
+            0,
+            2,
+            3
+          ],
+          "description": "Lock contention is exit 4 but creates no attempt record."
+        },
+        "revision": {
+          "oneOf": [
+            {
+              "$ref": "manifest-v1.schema.json#/$defs/revision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generationId": {
+          "oneOf": [
+            {
+              "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "offline": {
+          "type": "boolean"
+        },
+        "rollback": {
+          "type": "boolean"
+        },
+        "sourceChanged": {
+          "type": "boolean"
+        },
+        "promoted": {
+          "type": "boolean"
+        },
+        "error": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/error"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "capturedOutput": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/capturedOutput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {"enum": ["success", "degraded"]}
+            },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "exitCode": {"const": 0},
+              "error": {"type": "null"},
+              "revision": {"$ref": "manifest-v1.schema.json#/$defs/revision"},
+              "generationId": {"$ref": "policy-v1.schema.json#/$defs/lowerHex64"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"outcome": {"const": "noncompliant"}},
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "exitCode": {"const": 3},
+              "promoted": {"const": false},
+              "error": {
+                "allOf": [
+                  {"$ref": "#/$defs/error"},
+                  {"properties": {"code": {"const": "compliance-failed"}}}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"outcome": {"const": "error"}},
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "exitCode": {"const": 2},
+              "promoted": {"const": false},
+              "error": {
+                "allOf": [
+                  {"$ref": "#/$defs/error"},
+                  {"properties": {"code": {"not": {"enum": ["compliance-failed", "lock-held"]}}}}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"offline": {"const": true}},
+            "required": ["offline"]
+          },
+          "then": {
+            "properties": {
+              "rollback": {"const": false},
+              "sourceChanged": {"const": false},
+              "promoted": {"const": false}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"promoted": {"const": true}},
+            "required": ["promoted"]
+          },
+          "then": {
+            "properties": {
+              "offline": {"const": false},
+              "outcome": {"enum": ["success", "degraded"]},
+              "revision": {"$ref": "manifest-v1.schema.json#/$defs/revision"},
+              "generationId": {"$ref": "policy-v1.schema.json#/$defs/lowerHex64"}
+            }
+          }
+        }
+      ]
+    },
+    "success": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "revision",
+        "generationId",
+        "compliance",
+        "offline",
+        "promoted"
+      ],
+      "properties": {
+        "at": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        },
+        "revision": {
+          "$ref": "manifest-v1.schema.json#/$defs/revision"
+        },
+        "generationId": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "compliance": {
+          "enum": [
+            "compliant",
+            "degraded"
+          ]
+        },
+        "offline": {
+          "type": "boolean"
+        },
+        "promoted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "phase",
+        "message",
+        "retryable",
+        "partialMutationPossible"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/errorCode"
+        },
+        "phase": {
+          "enum": [
+            "invocation",
+            "lock",
+            "source",
+            "authentication",
+            "extraction",
+            "validation",
+            "policy",
+            "check",
+            "fix",
+            "state",
+            "status",
+            "scheduling"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 16384,
+          "description": "Human diagnostic. Runtime persistence truncates this value to 16384 UTF-8 bytes."
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "partialMutationPossible": {
+          "type": "boolean"
+        }
+      }
+    },
+    "errorCode": {
+      "enum": [
+        "invalid-arguments",
+        "interactive-required",
+        "permission-denied",
+        "unsupported-platform",
+        "unsupported-schema-version",
+        "source-unavailable",
+        "offline-unavailable",
+        "authentication-failed",
+        "checksum-mismatch",
+        "rollback-rejected",
+        "equivocation",
+        "manifest-invalid",
+        "archive-invalid",
+        "definition-invalid",
+        "policy-denied",
+        "state-failed",
+        "operation-timeout",
+        "scheduler-failed",
+        "compliance-failed"
+      ]
+    },
+    "compliance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "revision",
+        "generationId",
+        "checkedAt",
+        "offline",
+        "failSeverity",
+        "failingRules",
+        "degradedRules",
+        "counts"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "compliant",
+            "degraded",
+            "noncompliant"
+          ]
+        },
+        "revision": {
+          "$ref": "manifest-v1.schema.json#/$defs/revision"
+        },
+        "generationId": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "checkedAt": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        },
+        "offline": {
+          "type": "boolean"
+        },
+        "failSeverity": {
+          "$ref": "policy-v1.schema.json#/$defs/severity"
+        },
+        "failingRules": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "degradedRules": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "counts": {
+          "$ref": "#/$defs/severityCounts"
+        }
+      },
+      "description": "Recorded or observed compliance summary. failSeverity is the effective threshold after applying the local ceiling; absence of a known result is represented by a null containing field. Runtime validation checks the aggregate counts."
+    },
+    "severityCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ],
+      "properties": {
+        "debug": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "info": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "warn": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "error": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "description": "Exact failed-rule counts by severity."
+    },
+    "capturedOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stdout",
+        "stderr"
+      ],
+      "properties": {
+        "stdout": {
+          "$ref": "#/$defs/capturedStream"
+        },
+        "stderr": {
+          "$ref": "#/$defs/capturedStream"
+        }
+      }
+    },
+    "capturedStream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headBase64Url",
+        "tailBase64Url",
+        "originalBytes",
+        "truncated"
+      ],
+      "properties": {
+        "headBase64Url": {
+          "type": "string",
+          "maxLength": 699051,
+          "pattern": "^[A-Za-z0-9_-]*$"
+        },
+        "tailBase64Url": {
+          "type": "string",
+          "maxLength": 699051,
+          "pattern": "^[A-Za-z0-9_-]*$"
+        },
+        "originalBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "description": "Exact output bytes encoded as unpadded base64url head/tail segments. Runtime validation decodes at most 1 MiB total, requires equal 512 KiB halves when truncated, and validates the original byte count."
+    },
+    "persistedCapturedOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stdout",
+        "stderr"
+      ],
+      "properties": {
+        "stdout": {
+          "$ref": "#/$defs/persistedCapturedStream"
+        },
+        "stderr": {
+          "$ref": "#/$defs/persistedCapturedStream"
+        }
+      }
+    },
+    "persistedCapturedStream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headBase64Url",
+        "tailBase64Url",
+        "originalBytes",
+        "truncated"
+      ],
+      "properties": {
+        "headBase64Url": {
+          "type": "string",
+          "maxLength": 43691,
+          "pattern": "^[A-Za-z0-9_-]*$"
+        },
+        "tailBase64Url": {
+          "type": "string",
+          "maxLength": 43691,
+          "pattern": "^[A-Za-z0-9_-]*$"
+        },
+        "originalBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "description": "Exact persisted failure output bytes encoded as unpadded base64url. Runtime validation decodes at most 64 KiB total and requires equal 32 KiB head/tail halves when truncated."
+    },
+    "auditRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "auditId",
+        "at",
+        "actor",
+        "action",
+        "sourceId",
+        "fromRevision",
+        "toRevision",
+        "reason",
+        "outcome"
+      ],
+      "properties": {
+        "auditId": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "at": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        },
+        "actor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "action": {
+          "enum": [
+            "apply",
+            "rollback",
+            "enroll",
+            "unenroll"
+          ]
+        },
+        "sourceId": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "fromRevision": {
+          "oneOf": [
+            {
+              "$ref": "manifest-v1.schema.json#/$defs/revision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "toRevision": {
+          "oneOf": [
+            {
+              "$ref": "manifest-v1.schema.json#/$defs/revision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 512,
+          "description": "Optional rollback reason; runtime validation enforces a 512-byte UTF-8 limit."
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "rejected",
+            "failed"
+          ]
+        }
+      }
+    },
+    "failureRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failureId",
+        "attemptId",
+        "at",
+        "error",
+        "capturedOutput"
+      ],
+      "properties": {
+        "failureId": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "attemptId": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "at": {
+          "$ref": "policy-v1.schema.json#/$defs/timestamp"
+        },
+        "error": {
+          "$ref": "#/$defs/error"
+        },
+        "capturedOutput": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/persistedCapturedOutput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

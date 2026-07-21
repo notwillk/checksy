@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "snapshotSequence": 3,
+  "source": {"id": "1212121212121212121212121212121212121212121212121212121212121212", "kind": "git", "display": "pinned checksy definition", "canonical": {"kind": "git", "repository": "https://git.example/ops/checksy.git", "selector": "oid:1111111111111111111111111111111111111111", "configPath": ".checksy.yaml"}},
+  "selection": {
+    "current": {"generationId": "2323232323232323232323232323232323232323232323232323232323232323", "revision": "1111111111111111111111111111111111111111", "configPath": ".checksy.yaml", "providerGeneration": null, "manifestSha256": null, "artifactSha256": null, "bundleSha256": "3434343434343434343434343434343434343434343434343434343434343434", "signer": {"kind": "git-content-pin", "objectId": "1111111111111111111111111111111111111111"}, "verifiedAt": "2026-07-21T02:00:00.000Z", "promotedAt": "2026-07-21T02:00:01.000Z"},
+    "previous": null,
+    "additional": []
+  },
+  "freshness": {"kind": "git", "selector": "oid:1111111111111111111111111111111111111111", "acceptedCommit": "1111111111111111111111111111111111111111", "acceptedTagObject": null, "acceptedAt": "2026-07-21T02:00:00.000Z"},
+  "lastAttempt": {
+    "attemptId": "4545454545454545454545454545454545454545454545454545454545454545",
+    "startedAt": "2026-07-21T02:00:00.000Z",
+    "finishedAt": "2026-07-21T02:00:01.000Z",
+    "outcome": "success",
+    "exitCode": 0,
+    "revision": "1111111111111111111111111111111111111111",
+    "generationId": "2323232323232323232323232323232323232323232323232323232323232323",
+    "offline": false,
+    "rollback": false,
+    "sourceChanged": true,
+    "promoted": true,
+    "error": null,
+    "capturedOutput": null
+  },
+  "lastSuccess": {
+    "at": "2026-07-21T02:00:01.000Z",
+    "revision": "1111111111111111111111111111111111111111",
+    "generationId": "2323232323232323232323232323232323232323232323232323232323232323",
+    "compliance": "compliant",
+    "offline": false,
+    "promoted": true
+  },
+  "lastError": null,
+  "recordedCompliance": {
+    "state": "compliant",
+    "revision": "1111111111111111111111111111111111111111",
+    "generationId": "2323232323232323232323232323232323232323232323232323232323232323",
+    "checkedAt": "2026-07-21T02:00:01.000Z",
+    "offline": false,
+    "failSeverity": "error",
+    "failingRules": 0,
+    "degradedRules": 0,
+    "counts": {"debug": 0, "info": 0, "warn": 0, "error": 0}
+  },
+  "updatedAt": "2026-07-21T02:00:01.000Z"
+}

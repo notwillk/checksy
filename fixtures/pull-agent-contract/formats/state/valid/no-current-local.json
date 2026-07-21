@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "snapshotSequence": 1,
+  "source": {
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "kind": "local",
+    "display": "/srv/checksy/source",
+    "canonical": {"kind": "local", "root": {"bytesBase64Url": "L3Nydi9jaGVja3N5L3NvdXJjZQ", "display": "/srv/checksy/source"}, "configPath": ".checksy.yaml"}
+  },
+  "selection": {"current": null, "previous": null, "additional": []},
+  "freshness": {"kind": "local", "snapshotSha256": null},
+  "lastAttempt": null,
+  "lastSuccess": null,
+  "lastError": null,
+  "recordedCompliance": null,
+  "updatedAt": "2026-07-21T00:00:00.000Z"
+}

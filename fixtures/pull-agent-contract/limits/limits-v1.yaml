@@ -1,0 +1,139 @@
+schemaVersion: 1
+status: contract-only
+units:
+  duration: milliseconds
+  size: bytes
+  age: fixed-seconds
+
+timeouts:
+  httpConnect:
+    default: 10s
+    defaultMs: 10000
+    maximum: 60s
+    maximumMs: 60000
+  httpReadIdle:
+    default: 30s
+    defaultMs: 30000
+    maximum: 5m
+    maximumMs: 300000
+  httpManifestAndSignatureOverall:
+    default: 2m
+    defaultMs: 120000
+    maximum: 5m
+    maximumMs: 300000
+    budget: combined
+  httpArtifactOverall:
+    default: 10m
+    defaultMs: 600000
+    maximum: 30m
+    maximumMs: 1800000
+  gitResolveAndVerify:
+    default: 1m
+    defaultMs: 60000
+    maximum: 5m
+    maximumMs: 300000
+  gitCloneAndFetch:
+    default: 5m
+    defaultMs: 300000
+    maximum: 30m
+    maximumMs: 1800000
+  command:
+    default: 15m
+    defaultMs: 900000
+    maximum: 2h
+    maximumMs: 7200000
+  termToKillGrace:
+    default: 5s
+    defaultMs: 5000
+    maximum: 30s
+    maximumMs: 30000
+
+network:
+  redirects:
+    maximum: 5
+    boundary: inclusive
+
+inputFiles:
+  manifest:
+    maximumBytes: 1048576
+  signature:
+    maximumBytes: 16384
+  trustOrPolicy:
+    maximumBytes: 65536
+
+archive:
+  compressedArtifact:
+    maximumBytes: 268435456
+  entries:
+    maximum: 10000
+  expandedFile:
+    maximumBytes: 536870912
+  expandedTotal:
+    maximumBytes: 2147483648
+  normalizedPath:
+    maximumBytes: 4096
+  boundary: inclusive
+
+output:
+  capturedPerStream:
+    maximumBytes: 1048576
+    streams:
+      - stdout
+      - stderr
+  persistedFailurePerStream:
+    maximumBytes: 65536
+    streams:
+      - stdout
+      - stderr
+  errorMessage:
+    maximumBytes: 16384
+  boundary: inclusive
+
+scheduler:
+  interval:
+    default: null
+    required: true
+    minimum: 5m
+    minimumMs: 300000
+    maximum: 30d
+    maximumMs: 2592000000
+    boundary: inclusive
+
+offline:
+  enabledByDefault: true
+  defaultMaximumAge: 24h
+  defaultMaximumAgeMs: 86400000
+  configurableMaximumAge: 7d
+  configurableMaximumAgeMs: 604800000
+  boundary: inclusive
+
+retention:
+  verifiedGenerations:
+    maximum: 3
+    protectedRoles:
+      - current
+      - previous
+    additionalPolicy: newest-remaining
+  failures:
+    maximumCount: 10
+    maximumAge: 30d
+    maximumAgeSeconds: 2592000
+    boundary: inclusive
+  auditAttempts:
+    maximumCount: 100
+    maximumAge: 90d
+    maximumAgeSeconds: 7776000
+    boundary: inclusive
+    protectedRecords:
+      - current
+      - previous
+      - latest-rollback
+
+logRotation:
+  independentlyRotatedStreams:
+    - stdout
+    - stderr
+  activeMaximumBytes: 10485760
+  olderFilesRetainedPerStream: 5
+  totalFilesRetainedPerStream: 6
+  rotateBeforeAppendWouldExceedMaximum: true

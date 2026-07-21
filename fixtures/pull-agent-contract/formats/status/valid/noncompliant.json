@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "result": "status",
+  "mode": "recorded",
+  "generatedAt": "2026-07-21T05:00:00.000Z",
+  "status": {
+    "source": {"id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "kind": "local", "display": "/srv/checksy/source"},
+    "current": {"revision": "local-bundle-1", "providerGeneration": null, "signer": {"kind": "local-operator"}, "verifiedAt": "2026-07-21T00:00:01.000Z"},
+    "previous": null,
+    "lastAttempt": {"attemptId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "startedAt": "2026-07-21T04:59:00.000Z", "finishedAt": "2026-07-21T04:59:01.000Z", "outcome": "noncompliant", "exitCode": 3, "revision": "local-bundle-1", "offline": false, "rollback": false, "sourceChanged": false, "promoted": false, "error": {"code": "compliance-failed", "message": "one error-severity rule failed", "retryable": false}},
+    "lastSuccess": {"at": "2026-07-21T00:00:02.000Z", "revision": "local-bundle-1", "compliance": "compliant", "offline": false, "promoted": true},
+    "lastError": {"code": "compliance-failed", "message": "one error-severity rule failed", "retryable": false},
+    "recordedCompliance": {"state": "noncompliant", "revision": "local-bundle-1", "checkedAt": "2026-07-21T04:59:01.000Z", "offline": false, "failSeverity": "error", "failingRules": 1, "degradedRules": 0, "counts": {"debug": 0, "info": 0, "warn": 0, "error": 1}},
+    "observedCompliance": null
+  },
+  "error": null
+}
