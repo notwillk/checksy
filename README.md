@@ -124,7 +124,7 @@ rules:
 
 ## Configuration
 
-`checksy --config=path/to/workspace.yaml check` deserializes the provided YAML and applies the validation currently implemented by the Rust types. It does not yet reject every unknown field or enforce the emitted JSON Schema at runtime. When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable.
+`checksy --config=path/to/workspace.yaml check` strictly deserializes the provided YAML using the Rust configuration types. Unknown and duplicate fields, incorrectly typed or null values, malformed rule forms, empty commands, and invalid patterns are rejected before remote expansion or execution. The separately emitted JSON Schema is still hand-maintained; runtime/schema parity is the next hardening milestone. When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable. The accepted and rejected examples live in the [strict configuration fixture corpus](fixtures/strict-config/README.md).
 
 ### Inline rules, preconditions, and patterns
 

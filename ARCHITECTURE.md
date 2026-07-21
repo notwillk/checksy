@@ -64,9 +64,10 @@ state projection, and resource bounds.
 - **Reporting**: `Report` aggregates results, calculates failures
 
 ### schema.rs (Data Definitions)
-- **Domain types**: `Config`, `Rule`, `Severity` with serde derives
+- **Domain types**: `Config`, `Rule`, `Severity` with strict serde decoding
 - **Custom serialization**: `Severity` maps to strings ("warn", "error", etc.)
-- **Validation**: `Rule::validate_remote_only()` enforces remote-only constraint
+- **Validation**: Rejects unknown/duplicate fields, invalid scalar types,
+  malformed rule forms, empty commands/remotes, and invalid glob patterns
 - **CamelCase mapping**: Config fields use camelCase in YAML
 
 ### version.rs

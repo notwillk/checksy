@@ -1,0 +1,82 @@
+schemaVersion: 1
+cases:
+  - id: complete-config
+    fixture: valid/complete.yaml
+    expected: accept
+  - id: nested-config
+    fixture: valid/nested.yaml
+    expected: accept
+  - id: warning-alias
+    fixture: valid/warning-alias.yaml
+    expected: accept
+  - id: pattern-only
+    fixture: valid/pattern-only.yaml
+    expected: accept
+  - id: unknown-top-level
+    fixture: invalid/unknown-top-level.yaml
+    expected: reject
+    errorContains: unknown field
+  - id: unknown-rule-field
+    fixture: invalid/unknown-rule-field.yaml
+    expected: reject
+    errorContains: unknown field
+  - id: empty-rule
+    fixture: invalid/empty-rule.yaml
+    expected: reject
+    errorContains: exactly one of `remote` or a non-empty `check`
+  - id: fix-without-check
+    fixture: invalid/fix-without-check.yaml
+    expected: reject
+    errorContains: cannot define `fix` without `check`
+  - id: remote-with-command
+    fixture: invalid/remote-with-command.yaml
+    expected: reject
+    errorContains: remote rule cannot have properties
+  - id: empty-remote
+    fixture: invalid/empty-remote.yaml
+    expected: reject
+    errorContains: non-empty `remote`
+  - id: empty-check
+    fixture: invalid/empty-check.yaml
+    expected: reject
+    errorContains: non-empty `check`
+  - id: explicit-null
+    fixture: invalid/explicit-null.yaml
+    expected: reject
+    errorContains: invalid type
+  - id: scalar-coercion
+    fixture: invalid/scalar-coercion.yaml
+    expected: reject
+    errorContains: invalid type
+  - id: invalid-pattern
+    fixture: invalid/invalid-pattern.yaml
+    expected: reject
+    errorContains: patterns[0] is invalid
+  - id: empty-pattern
+    fixture: invalid/empty-pattern.yaml
+    expected: reject
+    errorContains: patterns[0] must not be empty
+  - id: unsupported-run-as
+    fixture: invalid/unsupported-run-as.yaml
+    expected: reject
+    errorContains: unknown field
+  - id: unsupported-timeout
+    fixture: invalid/unsupported-timeout.yaml
+    expected: reject
+    errorContains: unknown field
+  - id: duplicate-top-level-key
+    fixture: invalid/duplicate-top-level-key.yaml
+    expected: reject
+    errorContains: duplicate
+  - id: duplicate-rule-key
+    fixture: invalid/duplicate-rule-key.yaml
+    expected: reject
+    errorContains: duplicate
+  - id: invalid-severity
+    fixture: invalid/invalid-severity.yaml
+    expected: reject
+    errorContains: unknown variant
+  - id: wrong-rules-type
+    fixture: invalid/wrong-rules-type.yaml
+    expected: reject
+    errorContains: invalid type

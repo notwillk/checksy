@@ -42,7 +42,7 @@ Exit gate: the trust model, state model, manifest/signature format, CLI behavior
 
 ## P1 — Make configuration strict and origin-aware
 
-- [ ] Replace permissive YAML loading with strict typed validation.
+- [x] Replace permissive YAML loading with strict typed validation.
   - Reject unknown fields by default.
   - Require each rule to be exactly one valid form: a remote reference or an executable check.
   - Reject empty rules, `fix` without `check`, remote rules with command fields, invalid paths/URLs/hashes/generations, non-positive timeouts, and unsupported `runAs` values.

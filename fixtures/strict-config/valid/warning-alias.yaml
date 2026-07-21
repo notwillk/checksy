@@ -1,0 +1,4 @@
+rules:
+  - name: Long warning spelling remains compatible
+    check: echo warning
+    severity: warning

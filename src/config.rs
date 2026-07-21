@@ -311,7 +311,32 @@ fn apply_rule_defaults(cfg: &mut Config) {
 mod tests {
     use super::*;
     use crate::schema::Rule;
+    use serde::Deserialize;
     use tempfile::TempDir;
+
+    fn repository_fixture(path: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures")
+            .join(path)
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct StrictConfigCorpus {
+        schema_version: u8,
+        cases: Vec<StrictConfigCase>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct StrictConfigCase {
+        id: String,
+        fixture: String,
+        expected: String,
+        #[serde(default)]
+        error_contains: Option<String>,
+    }
 
     #[test]
     fn test_resolve_path_explicit() {
@@ -410,6 +435,102 @@ mod tests {
         let cfg = cfg.unwrap();
         assert_eq!(cfg.patterns.len(), 2);
         assert_eq!(cfg.patterns[0], "tests/*.sh");
+    }
+
+    #[test]
+    fn test_strict_config_contract_fixtures() {
+        let root = repository_fixture("strict-config");
+        let index_data = fs::read_to_string(root.join("cases.yaml")).unwrap();
+        let corpus: StrictConfigCorpus = serde_yaml::from_str(&index_data).unwrap();
+        assert_eq!(corpus.schema_version, 1);
+
+        let mut ids = HashSet::new();
+        for case in corpus.cases {
+            assert!(
+                ids.insert(case.id.clone()),
+                "duplicate case id: {}",
+                case.id
+            );
+            let fixture = root.join(&case.fixture);
+            assert!(fixture.is_file(), "missing fixture for {}", case.id);
+
+            let fixture_data = fs::read_to_string(&fixture).unwrap();
+            let typed_result = serde_yaml::from_str::<Config>(&fixture_data);
+            let load_result = load(fixture.to_str().unwrap());
+            match case.expected.as_str() {
+                "accept" => {
+                    assert!(
+                        typed_result.is_ok(),
+                        "{} should deserialize, got: {:?}",
+                        case.id,
+                        typed_result.err()
+                    );
+                    assert!(
+                        load_result.is_ok(),
+                        "{} should load, got: {:?}",
+                        case.id,
+                        load_result.err()
+                    );
+                }
+                "reject" => {
+                    let typed_error = match typed_result {
+                        Ok(_) => panic!("{} should fail typed deserialization", case.id),
+                        Err(error) => error.to_string(),
+                    };
+                    let load_error = match load_result {
+                        Ok(_) => panic!("{} should be rejected by load", case.id),
+                        Err(error) => error,
+                    };
+                    if let Some(expected) = case.error_contains {
+                        assert!(
+                            typed_error.contains(&expected),
+                            "{} typed error {:?} did not contain {:?}",
+                            case.id,
+                            typed_error,
+                            expected
+                        );
+                        assert!(
+                            load_error.contains(&expected),
+                            "{} load error {:?} did not contain {:?}",
+                            case.id,
+                            load_error,
+                            expected
+                        );
+                    }
+                }
+                other => panic!("{} has unknown expectation {:?}", case.id, other),
+            }
+        }
+    }
+
+    #[test]
+    fn test_existing_valid_config_fixtures_remain_loadable() {
+        let fixtures = [
+            "check-logs/.checksy.yaml",
+            "default-severity/.checksy.yaml",
+            "fix-behavior/.checksy.yaml",
+            "happy-path/.checksy.yaml",
+            "hint-test/.checksy.yaml",
+            "inline-check/.checksy.yaml",
+            "preconditions/.checksy.yaml",
+            "remote-config/.checksy.yaml",
+            "remote-config/circular/a.yaml",
+            "remote-config/inherit-parent.yaml",
+            "remote-config/nested/top.yaml",
+            "remote-config/with-preconditions.yaml",
+            "rule-files/.checksy.yaml",
+        ];
+
+        for fixture in fixtures {
+            let path = repository_fixture(fixture);
+            let result = load(path.to_str().unwrap());
+            assert!(
+                result.is_ok(),
+                "existing fixture {} should remain valid, got: {:?}",
+                fixture,
+                result.err()
+            );
+        }
     }
 
     #[test]
