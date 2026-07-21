@@ -2,6 +2,15 @@
 
 checksy is a Rust-based command line utility intended to run lightweight health checks against a development workspace.
 
+## Security
+
+Checksy rules and fixes are arbitrary shell code executed with the invoking
+process's permissions; they are not sandboxed. Current Git remote caching does
+not verify an authorized publisher and is not suitable for unattended privileged
+execution. Run only definitions you trust. The planned fail-closed security
+contract and current implementation gaps are documented in the
+[threat model](THREAT_MODEL.md).
+
 ## Installation
 
 ```bash

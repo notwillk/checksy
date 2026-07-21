@@ -3,8 +3,17 @@
 ## System Overview
 checksy is a layered CLI application with clear separation between command handling, configuration management, and execution. The architecture prioritizes:
 - **Determinism**: Configs loaded and expanded before execution begins
-- **Isolation**: Shell commands run in config file's directory, not CWD
+- **Working directory context**: Commands currently run in the top-level config's directory; origin-aware execution for nested definitions is planned
 - **Composability**: Remote configs allow modular, reusable check libraries
+
+## Security Boundary
+
+Checksy definitions contain arbitrary shell commands and are not process
+sandboxes. The working-directory behavior described above provides path context,
+not containment. Current `check` and `install` behavior does not yet implement the
+authentication, atomic state, timeout, and privilege controls required for safe
+unattended remote execution. [THREAT_MODEL.md](THREAT_MODEL.md) is the normative
+target security contract and identifies the current gaps.
 
 ## Component Responsibilities
 

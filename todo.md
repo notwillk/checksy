@@ -15,7 +15,7 @@ Repository snapshot: current HEAD `1714389` differs from the reviewed baseline `
 
 ## P0 — Set the security and compatibility contracts
 
-- [ ] Write the threat model before exposing unattended execution.
+- [x] Write the threat model before exposing unattended execution.
   - Identify trust boundaries for local, Git, and HTTPS sources.
   - Document manifest authenticity, signer pinning, replay/rollback behavior, privilege limits, and offline behavior.
   - State explicitly that arbitrary fixes are not transactional and cannot be rolled back by Checksy.
