@@ -96,21 +96,26 @@ explicit residuals.
 
 ## P3 — Add a recoverable state store and source abstraction
 
-- [ ] Implement the generation-based state layout.
+- [x] Implement the generation-based state layout.
 
   ```text
   <state-dir>/
     lock
     sources/<source-id>/
-      generations/<revision>/
-      current
-      previous
       state.json
+      trust/
+      policy.json
+      generations/<generation-id>/
+        bundle/
+        generation.json
+        lease
+      staging/
       failures/
+      audit/
   ```
 
   - Derive collision-resistant source IDs from canonical identities.
-  - Write metadata atomically and include a completed/verified marker.
+  - Write metadata atomically and include a completed content marker.
   - Treat a cache entry as valid only when its metadata, config, and referenced assets validate—not merely when `.git` exists.
   - Keep failure diagnostics and generation history within documented bounds.
 

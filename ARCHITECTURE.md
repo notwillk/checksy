@@ -25,10 +25,12 @@ output capture, and timeout escalation from `TERM` to `KILL`. It does not impose
 CPU, memory, disk, or network quotas. Background children that close their
 capture descriptors before the leader exits, deliberately detached children,
 and work not reached when Checksy itself receives a signal may outlive the
-invocation. Current `check` and `install` behavior still does not
-implement authentication, a protected generation state store, atomic promotion,
-HTTP acquisition bounds, or privilege controls required for safe unattended
-remote execution.
+invocation. A private generation-state substrate now implements protected root
+opening, collision-resistant identities, strict immutable payloads, atomic JSON
+snapshots, leases, and retention, but no public command uses it. Current
+`check` and `install` behavior still does not implement authentication, staged
+acquisition, atomic promotion, HTTP acquisition bounds, or privilege controls
+required for safe unattended remote execution.
 [THREAT_MODEL.md](THREAT_MODEL.md) is the normative target contract for security
 invariants and current gaps;
 [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) is the normative policy contract; and
@@ -113,10 +115,33 @@ state projection, and resource bounds.
   `lock` entry relative to the directory descriptor without following that
   leaf, and requires a single-link regular file with mode `0600` and the
   effective uid/gid
-- **Scope**: Current callers serialize canonical legacy cache roots; the future
-  protected state directory will reuse the same primitive
+- **Scope**: Current CLI callers serialize canonical legacy cache roots; the
+  private state store also locks an already opened and validated protected root
 - **Limit**: Advisory locks coordinate Checksy processes only and are not an
   integrity or authentication mechanism
+
+### state/ (Generation State Substrate)
+
+- **Persistent identities**: Domain-separated, length-prefixed SHA-256 source
+  and generation IDs use canonical provider fields rather than legacy cache
+  names
+- **Strict records**: Closed state-v1 snapshots, completion markers, audit, and
+  failure records reject unknown versions/fields and inconsistent variants
+- **Protected filesystem**: Linux/macOS roots and descendants are opened
+  descriptor-relatively without following symlinks and enforce scope-specific
+  ownership and modes
+- **Immutable payloads**: Completed generations use `bundle/`,
+  `generation.json`, and `lease`; opening recomputes the whole-tree bundle
+  digest and validates the strict, confined definition before use
+- **Atomic metadata**: Same-directory exclusive temporary files are synced,
+  published by atomic replace or no-replace operations, and followed by a
+  parent-directory sync; `state.json` remains the only current/previous
+  selection authority
+- **Recovery bounds**: Shared generation leases exclude nonblocking garbage
+  collection; generation, failure, and audit retention is deterministic and
+  bounded
+- **Integration boundary**: The module is crate-private and not yet connected
+  to providers, `apply`, `status`, enrollment, scheduling, or legacy commands
 
 ### git.rs (Git Operations)
 - **Shallow clones**: `git clone --depth 1 --branch <ref>`
@@ -232,6 +257,9 @@ nonconforming helper can still access `/dev/tty` until the source timeout.
 - **serde_yaml**: YAML config parsing
 - **serde_json**: JSON schema serialization
 - **schemars**: Draft 7 schema generation from configuration types
+- **sha2**: Domain-separated source, generation, and canonical bundle SHA-256
+- **base64**: Lossless native-path and persisted exact-output encoding helpers
+- **time**: Strict millisecond UTC state timestamps and retention comparisons
 - **glob**: Pattern matching for rule files
 - **rustix**: Linux/macOS descriptor-relative lock-file operations, ownership
   inspection, advisory locking, and process-group signaling
@@ -244,6 +272,9 @@ nonconforming helper can still access `/dev/tty` until the source timeout.
   definitions cannot choose another cache anchor
 - **Lock file**: File-backed mutation scopes use a persistent advisory-lock file
   beneath the canonical legacy cache root
+- **Protected state**: The private state module manages one atomic `state.json`
+  and immutable `generations/<generation-id>/` payloads per source under the
+  platform-specific state root; no current command reads or writes them
 - **Work directory**: Resolved CLI commands use the defining config's directory
 - **Subprocess capture**: Bash and Git stdout/stderr are continuously drained and
   retained with a 1 MiB-per-stream head/tail cap
@@ -271,6 +302,14 @@ draining. Readiness handshakes and per-process death sentinels avoid public
 network access and timing-only survival guesses. This proves cleanup only for
 the process group Checksy created; deliberate process-group/session detachment
 and forwarding signals received by the Checksy parent remain explicit residuals.
+
+### Generation State Coverage
+
+The executable [state-store contract](fixtures/pull-agent-contract/state-store/README.md)
+provides fixed source/generation hash and bundle-digest vectors plus strict
+marker, integrity-open, atomic-publication, lease, and deterministic-retention
+scenarios. Runtime tests materialize unsafe inode types and injected publication
+failures without using the legacy cache or public network.
 
 ## Entry Points
 
@@ -323,6 +362,11 @@ cache.rs
 
 state_lock.rs
   └── rustix (Linux/macOS file locking and filesystem metadata)
+
+state/
+  ├── state_lock.rs (opened-root mutation guard)
+  ├── config.rs and schema.rs (strict completed-definition validation)
+  └── sha2, base64, time, rustix (identity, records, retention, filesystem)
 
 git.rs
   ├── cache.rs (CacheManager)

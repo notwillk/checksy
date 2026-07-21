@@ -1,10 +1,12 @@
 # Checksy Pull-Agent Public Contract
 
-> **Status: target contract; not implemented.** This document specifies the
-> public formats and command behavior of Checksy's planned pull-based
-> convergence agent. The current `check` and `install` commands do not implement
-> these guarantees, and the current repository must not be deployed as an
-> unattended remote-execution agent. The security rationale is in
+> **Status: target contract; public workflow not implemented.** This document
+> specifies the public formats and command behavior of Checksy's planned
+> pull-based convergence agent. A private generation-state substrate implements
+> part of the storage contract, but the current `check` and `install` commands do
+> not use it or implement these guarantees, and the current repository must not
+> be deployed as an unattended remote-execution agent. The security rationale
+> is in
 > [THREAT_MODEL.md](THREAT_MODEL.md), and the governing policy choices are in
 > [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
 
@@ -102,10 +104,12 @@ format but never authorize a key, source, generation, or revision.
 
 ### Canonical bundle digest
 
-Checksy computes `bundleSha256` over the validated staged definition and every
-recognized staged asset, excluding transport metadata, `.git`, state metadata,
-and temporary files. All archive links and special files are rejected before
-digesting. The digest input is:
+Checksy computes `bundleSha256` over every directory and regular file in the
+materialized `bundle/` payload. Providers do not copy transport metadata,
+`.git`, state metadata, or temporary files into that payload. This whole-tree
+rule protects opaque auxiliary files used by shell commands without claiming
+that Checksy can parse shell text to discover or confine those references. All
+links and special files are rejected before digesting. The digest input is:
 
 1. ASCII `checksy-bundle-v1` followed by a zero byte.
 2. Each directory and regular file, ordered by the raw UTF-8 bytes of its
@@ -325,6 +329,27 @@ creates no attempt. Captured stdout and stderr retain exact-byte, unpadded
 base64url head/tail segments, original byte counts, and truncation markers;
 failure persistence is bounded independently from live capture.
 
+Audit records identify both sides of a selection change with required,
+explicit-null `fromGenerationId` and `toGenerationId` fields in addition to
+their diagnostic revisions. Generation IDs, rather than revisions, determine
+which current, previous, and latest-rollback audit records retention protects.
+
+Each completed payload has a strict content marker defined by
+`state-v1.schema.json#/$defs/generationMarker`. It contains exactly
+`schemaVersion`, `completed`, `sourceId`, `generationId`, `configPath`,
+`bundleSha256`, and a tagged local, Git, or HTTPS provider
+identity. Git records object format and peeled commit; HTTPS records provider
+`generation`, signed `revision`, and manifest/artifact hashes. Checksy
+recomputes the source, generation, and bundle identities before accepting it.
+
+The immutable marker deliberately excludes signer, `verifiedAt`, and
+`promotedAt`. Those fields describe authentication and selection events in the
+atomic state snapshot. This permits the same immutable manifest or Git commit
+to be authenticated again after a local trust rotation. A successful trust
+replacement publishes the new signer, verification time, and promotion time;
+an ordinary unchanged online contact leaves the selected generation summary
+unchanged and updates freshness only.
+
 ### State layout and atomicity
 
 The logical layout is:
@@ -337,24 +362,42 @@ The logical layout is:
     trust/
     policy.json
     generations/<generation-id>/
+      bundle/
+      generation.json
+      lease
     staging/
     failures/
     audit/
 ```
 
-All mutation takes the OS advisory lock. Staging is a private sibling on the same
-filesystem. A generation becomes eligible only after authentication, complete
-validation, bundle digest, durable metadata, convergence, and a successful final
-check. Promotion atomically publishes one new snapshot; `current` is never a
-partially updated symlink or path. A failed or interrupted operation may
-atomically publish diagnostic metadata, but it leaves the prior current
-selection and its recorded compliance authoritative.
+There are no competing `current` or `previous` pointer files; `state.json` is
+the sole selection authority. All mutation takes the OS advisory lock. Staging
+is a private sibling on the same filesystem. A valid `generation.json` marks an
+immutable payload as locally content-complete, but does not claim convergence,
+promotion, or current selection. A generation becomes selection-eligible only
+after authentication, complete validation, bundle digest, durable metadata,
+convergence, and a successful final check. Promotion atomically publishes one
+new snapshot; `current` is never a partially updated symlink or path. A failed
+or interrupted operation may atomically publish diagnostic metadata, but it
+leaves the prior current selection and its recorded compliance authoritative.
+
+`generation.json` is written only after the bundle is durable and is never
+rewritten. `state.json` uses atomic replacement; immutable generation, failure,
+and audit records use atomic no-replace publication. Each path uses a
+same-directory exclusive temporary file, deterministic JSON plus one newline,
+file sync, and parent-directory sync. A selected generation must match its
+marker's source, directory and recomputed generation IDs, config path, provider
+identity, and bundle digest. The snapshot revision must equal the Git marker's
+peeled commit or HTTPS marker's signed revision; local revision remains
+snapshot metadata. The snapshot separately enforces a provider-compatible
+signer and `promotedAt >= verifiedAt`.
 
 Plain status reads one atomically published snapshot. Live status resolves one
 immutable completed current generation from that snapshot and holds a
-non-mutating operating-system reference for the whole check. Garbage collection
-MUST NOT remove a generation while such a reference is active. Status takes no
-mutation lock and writes no state.
+shared advisory lock on that generation's persistent `lease` file for the whole
+check. Garbage collection takes an exclusive nonblocking lease and MUST skip a
+generation while any reader holds it, retrying during a later locked cleanup.
+Status takes no mutation lock and writes no state.
 
 ## Status JSON
 

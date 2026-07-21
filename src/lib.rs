@@ -6,6 +6,7 @@ pub mod git;
 mod process_runner;
 mod resolved;
 pub mod schema;
+mod state;
 mod state_lock;
 pub mod version;
 

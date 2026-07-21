@@ -1,0 +1,182 @@
+schemaVersion: 1
+status: executable-contract
+hashEncoding:
+  lengthPrefix: unsigned-64-bit-big-endian
+  sourceDomainBase64Url: Y2hlY2tzeS1zb3VyY2UtdjEA
+  generationDomainBase64Url: Y2hlY2tzeS1nZW5lcmF0aW9uLXYxAA
+  bundleDomainBase64Url: Y2hlY2tzeS1idW5kbGUtdjEA
+sourceIdVectors:
+  - id: source-local-utf8
+    fields:
+      - text: local
+      - bytesBase64Url: L29wdC9jaGVja3N5L3NvdXJjZQ
+      - text: .checksy.yaml
+    expected: 7fcb3646319b76245a80ee21cd680b3b1c61ef5866fbd4038a5ef6e1b0b33e2d
+  - id: source-local-non-utf8-native-path
+    fields:
+      - text: local
+      - bytesBase64Url: L29wdC9jaGVja3N5L_9zb3VyY2U
+      - text: .checksy.yaml
+    expected: ba2ecd11b215f3a394598b9807581cde6bae2aaeac9b8e2dba0844feffc50cce
+    platforms:
+      - linux
+      - macos
+  - id: source-git-canonical-input
+    fields:
+      - text: git
+      - text: https://example.com/Checks.git
+      - text: refs/heads/main
+      - text: config/checksy.yaml
+    expected: 15108db35db75551acb26e5e739cda98d6023f33d62e3b3fe88fccad20dad892
+  - id: source-https-canonical-input
+    fields:
+      - text: https
+      - text: https://example.com/checksy/manifest.json?channel=stable
+    expected: 1bc53e89ed2c75f0dcda5d59460f1afc0f0922b4ff963c39e937dbf3bf2dc117
+framingVectors:
+  - id: framing-ab-c
+    fields:
+      - text: ab
+      - text: c
+    expected: 60bd2f21a7b527eb4f65da83777d2260f74f99ccc556c54e49ca7d6747baab7a
+  - id: framing-a-bc
+    fields:
+      - text: a
+      - text: bc
+    expected: ae6724b88625f7c156a22fa0c5839c29e548e26ea2d02c353fff4e9a453ee6fe
+    assertion: differs-from-framing-ab-c
+generationIdVectors:
+  - id: generation-local
+    fields:
+      - text: 7fcb3646319b76245a80ee21cd680b3b1c61ef5866fbd4038a5ef6e1b0b33e2d
+      - text: local
+      - text: 1c0c213c52b5c9f70348fd498134102a870bb938c084b7da140771af7a36ef8d
+      - text: .checksy.yaml
+    expected: c2bf59ee3d5f5b6b4c11c9d1ebb9742339f412f806be2d64222225be7c2cfb49
+  - id: generation-git-sha1
+    fields:
+      - text: 15108db35db75551acb26e5e739cda98d6023f33d62e3b3fe88fccad20dad892
+      - text: git
+      - text: sha1
+      - text: '1111111111111111111111111111111111111111'
+      - text: config/checksy.yaml
+    expected: c3d4c3d60dbeb30b8ed592005006716aa2cc62dcb447ed210a634afdafad7212
+  - id: generation-git-sha256
+    fields:
+      - text: 15108db35db75551acb26e5e739cda98d6023f33d62e3b3fe88fccad20dad892
+      - text: git
+      - text: sha256
+      - text: '2222222222222222222222222222222222222222222222222222222222222222'
+      - text: config/checksy.yaml
+    expected: 6e0b2d1ee0ece70ab2bd6a1721c3a823090d653db75a381f9fdf1098eb9ba7d9
+  - id: generation-https
+    fields:
+      - text: 1bc53e89ed2c75f0dcda5d59460f1afc0f0922b4ff963c39e937dbf3bf2dc117
+      - text: https
+      - text: '3333333333333333333333333333333333333333333333333333333333333333'
+      - text: .checksy.yaml
+    expected: 9f8020dd0aeaefef8b0f567d604b9265361ffd7d070c605c31ae4fad0dadab8e
+bundleDigestVectors:
+  - id: bundle-basic-tree
+    root: state-store/bundle/basic
+    expected: 1c0c213c52b5c9f70348fd498134102a870bb938c084b7da140771af7a36ef8d
+    entries:
+      - {kind: file, path: .checksy.yaml, executable: false}
+      - {kind: directory, path: assets, executable: false}
+      - {kind: file, path: assets/message.txt, executable: false}
+      - {kind: directory, path: scripts, executable: false}
+      - {kind: file, path: scripts/pass.sh, executable: true}
+    invariants:
+      - ownership-and-timestamps-do-not-change-digest
+      - non-executable-permission-bits-do-not-change-digest
+      - content-executable-bit-and-empty-directories-change-digest
+markerCases:
+  - id: marker-local-valid
+    fixture: state-store/markers/valid/local.json
+    expected: accept
+  - id: marker-git-sha1-valid
+    fixture: state-store/markers/valid/git-sha1.json
+    expected: accept
+  - id: marker-git-sha256-valid
+    fixture: state-store/markers/valid/git-sha256.json
+    expected: accept
+  - id: marker-https-valid
+    fixture: state-store/markers/valid/https.json
+    expected: accept
+  - id: marker-incomplete
+    fixture: state-store/markers/invalid/completed-false.json
+    expected: reject
+  - id: marker-authentication-event-field
+    fixture: state-store/markers/invalid/signer-in-marker.json
+    expected: reject
+  - id: marker-git-object-length
+    fixture: state-store/markers/invalid/git-format-length.json
+    expected: reject
+integrityScenarios:
+  - id: open-complete-local
+    marker: state-store/markers/valid/local.json
+    bundle: state-store/bundle/basic
+    expected: accept
+  - id: reject-marker-directory-id-mismatch
+    mutation: change-directory-generation-id
+    expected: reject
+  - id: reject-recomputed-generation-id-mismatch
+    mutation: change-marker-provider-identity
+    expected: reject
+  - id: reject-bundle-content-tamper
+    mutation: change-assets-message-byte
+    expected: reject
+  - id: reject-config-or-pattern-escape
+    mutations:
+      - nested-file-parent-traversal
+      - absolute-pattern
+    expected: reject-before-command
+  - id: reject-unsafe-entry-types
+    runtimeMaterialization:
+      - symlink
+      - hardlink
+      - fifo
+      - socket
+    expected: reject
+atomicSnapshotScenarios:
+  - id: snapshot-old-or-new
+    injectAt:
+      - before-temp-write
+      - during-temp-write
+      - before-file-sync
+      - before-rename
+      - before-parent-sync
+    assertion: lock-free-reader-observes-complete-old-or-complete-new-json
+  - id: snapshot-sequence-monotonic
+    initialSequence: 1
+    publications: 3
+    expectedFinalSequence: 4
+leaseScenarios:
+  - id: shared-reader-blocks-gc
+    readerLease: shared
+    garbageCollectionLease: exclusive-nonblocking
+    expected: retain-and-retry-later
+  - id: released-reader-allows-gc
+    readerLease: released
+    garbageCollectionLease: exclusive-nonblocking
+    expected: prune
+retentionScenarios:
+  - id: generations-three
+    preserve:
+      - current
+      - previous
+      - newest-additional
+    expectedMaximum: 3
+  - id: failures-count-age
+    expectedMaximum: 10
+    maximumAge: 30d
+  - id: audit-count-age-and-protection
+    expectedMaximumOrdinary: 100
+    maximumOrdinaryAge: 90d
+    preserve:
+      - current-generation-record
+      - previous-generation-record
+      - latest-rollback-record
+    tieOrder:
+      - timestamp-descending
+      - record-id-ascending

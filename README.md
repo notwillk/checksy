@@ -26,6 +26,16 @@ implementation gaps are documented in the [threat model](THREAT_MODEL.md). The
 frozen target formats, CLI, and resource bounds are specified in the
 [pull-agent contract](PULL_AGENT_CONTRACT.md).
 
+A private Linux/macOS generation-state substrate now provides protected
+descriptor-relative roots, collision-resistant source/generation identities,
+whole-bundle integrity checks, strict completion markers, atomic JSON snapshots,
+live-generation leases, and bounded retention. The executable
+[state-store contract](fixtures/pull-agent-contract/state-store/README.md)
+contains its fixed vectors and failure scenarios. No public command uses this
+substrate yet: `apply`, `status`, provider authentication, provider acquisition
+into staging, and atomic candidate promotion remain future work, while `check`
+and `install` continue to use the legacy cache described below.
+
 ## Installation
 
 ```bash
@@ -51,6 +61,7 @@ src/
   process_runner.rs    # Bounded Bash/Git subprocess supervision
   git.rs               # Git operations for caching remotes
   resolved.rs          # Internal source/origin-aware definition model
+  state/               # Private generation identities, models, integrity, store
   state_lock.rs        # Advisory state/cache-directory lock
   schema.rs            # Configuration schema definitions
   version.rs           # Centralized version string
@@ -243,11 +254,11 @@ path checks constrain structured references only. Before clone, refresh, or
 prune, the CLI rejects cache symlink components already present below the
 operator-selected root. The advisory cache-root lock serializes cooperating
 file-backed `install` and `check --fix` processes, but ordinary checks and
-uncooperative local actors do not participate. Descriptor-relative ancestor
-opening and a protected generation state store are not implemented, so an actor
-that can modify the legacy cache can still race these path-based checks. Checks
-and fixes remain arbitrary shell and can deliberately access paths outside the
-checkout.
+uncooperative local actors do not participate. The legacy command path does not
+use descriptor-relative protected-state opening or the private generation
+store, so an actor that can modify the legacy cache can still race these
+path-based checks. Checks and fixes remain arbitrary shell and can deliberately
+access paths outside the checkout.
 
 Example with preconditions:
 

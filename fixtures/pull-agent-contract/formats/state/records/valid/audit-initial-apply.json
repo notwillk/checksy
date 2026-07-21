@@ -1,0 +1,13 @@
+{
+  "auditId": "abababababababababababababababababababababababababababababababab",
+  "at": "2026-07-21T01:00:01.000Z",
+  "actor": "uid:1000",
+  "action": "apply",
+  "sourceId": "6161616161616161616161616161616161616161616161616161616161616161",
+  "fromGenerationId": null,
+  "toGenerationId": "6262626262626262626262626262626262626262626262626262626262626262",
+  "fromRevision": null,
+  "toRevision": "release-42",
+  "reason": null,
+  "outcome": "success"
+}

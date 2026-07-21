@@ -1,8 +1,9 @@
 # Checksy Pull-Agent Design Decisions
 
-> **Status: target policy contract.** Future pull-agent implementation must
-> preserve these decisions. Current check and install behavior remains unchanged
-> and does not yet provide these guarantees. See
+> **Status: target policy contract with a private state substrate.** Future
+> pull-agent implementation must preserve these decisions. The generation-state
+> module implements the P3 storage primitives, but current `check` and `install`
+> behavior remains unchanged and does not yet provide pull-agent guarantees. See
 > [THREAT_MODEL.md](THREAT_MODEL.md) for the security rationale.
 
 This document resolves the second P0 roadmap item. The resulting manifest/state
@@ -35,6 +36,15 @@ future test inputs, not evidence that this behavior is implemented today.
   This avoids a dedicated group/ACL design.
 - Operators MUST NOT put secrets in bundles. Checksy does not detect secrets;
   bundle readability is an operator-visible policy, not a secrecy control.
+
+The private state substrate uses one authoritative `state.json` per source and
+immutable `generations/<generation-id>/{bundle,generation.json,lease}` payloads.
+It never creates `current` or `previous` pointer files. A strict
+`generation.json` is a content-completion marker, not a convergence or promotion
+receipt. Signer, verification time, and promotion time remain atomic snapshot
+events so identical content can be reauthenticated after trust rotation without
+rewriting its marker. The substrate is not yet connected to acquisition,
+`apply`, `status`, enrollment, or scheduling.
 
 ## Canonical source identity
 
@@ -103,18 +113,25 @@ the root-relative path is derived; a symlink cannot create a second identity.
 - Git and HTTPS content cannot add, inherit, or use external-root exceptions.
 - Confinement applies to recognized paths, not arbitrary shell access. Authorized
   commands retain all filesystem access granted by their OS identity.
+- Every directory and regular file copied into the materialized `bundle/` is
+  included in its canonical digest. This protects opaque auxiliary files from
+  later modification but does not make shell references structured or confined.
 
 ## Retention
 
 - Keep three verified payloads per source: current, previous, and the newest
   remaining historical generation. Never prune current or previous.
+- A live reader holds a shared advisory lease on its generation. Cleanup uses an
+  exclusive nonblocking lease, skips a referenced generation, and retries on a
+  later locked cleanup.
 - Cleanup runs under the state-directory lock after durable promotion metadata.
 - Delete staging payloads after handled failures. Locked startup deletes orphan
   staging from interrupted runs; staging content is never reused.
 - Failure records contain bounded metadata/output, never executable source.
   Retain the newest 10 and no record older than 30 days.
 - Retain the newest 100 audit attempts and no ordinary attempt older than 90
-  days, while preserving records for current, previous, and the latest rollback.
+  days, while preserving records whose exact generation IDs identify current,
+  previous, and the latest rollback.
 - Reacquiring pruned rollback content requires normal authentication. Exact
   output byte limits are specified in
   [PULL_AGENT_CONTRACT.md](PULL_AGENT_CONTRACT.md#resource-limits).

@@ -377,11 +377,65 @@ cases:
     fixture: formats/state/invalid/corrupt.json
     expected: reject
     validationLayer: strict-json-parser
+  - id: state-generation-marker-local
+    schema: state-v1.schema.json
+    schemaPointer: /$defs/generationMarker
+    fixture: state-store/markers/valid/local.json
+    expected: accept
+    validationLayer: schema-definition-and-runtime-integrity
+  - id: state-generation-marker-git-sha1
+    schema: state-v1.schema.json
+    schemaPointer: /$defs/generationMarker
+    fixture: state-store/markers/valid/git-sha1.json
+    expected: accept
+    validationLayer: schema-definition
+  - id: state-generation-marker-git-sha256
+    schema: state-v1.schema.json
+    schemaPointer: /$defs/generationMarker
+    fixture: state-store/markers/valid/git-sha256.json
+    expected: accept
+    validationLayer: schema-definition
+  - id: state-generation-marker-https
+    schema: state-v1.schema.json
+    schemaPointer: /$defs/generationMarker
+    fixture: state-store/markers/valid/https.json
+    expected: accept
+    validationLayer: schema-definition
+  - id: state-generation-marker-incomplete
+    schema: state-v1.schema.json
+    schemaPointer: /$defs/generationMarker
+    fixture: state-store/markers/invalid/completed-false.json
+    expected: reject
+    validationLayer: schema-definition
+  - id: state-generation-marker-authentication-field
+    schema: state-v1.schema.json
+    schemaPointer: /$defs/generationMarker
+    fixture: state-store/markers/invalid/signer-in-marker.json
+    expected: reject
+    validationLayer: schema-definition
+  - id: state-generation-marker-git-format-length
+    schema: state-v1.schema.json
+    schemaPointer: /$defs/generationMarker
+    fixture: state-store/markers/invalid/git-format-length.json
+    expected: reject
+    validationLayer: schema-definition
   - id: state-audit-rollback-record
     schema: state-v1.schema.json
     schemaPointer: /$defs/auditRecord
     fixture: formats/state/records/valid/audit-rollback.json
     expected: accept
+    validationLayer: schema-definition
+  - id: state-audit-initial-apply-record
+    schema: state-v1.schema.json
+    schemaPointer: /$defs/auditRecord
+    fixture: formats/state/records/valid/audit-initial-apply.json
+    expected: accept
+    validationLayer: schema-definition
+  - id: state-audit-missing-generation-id
+    schema: state-v1.schema.json
+    schemaPointer: /$defs/auditRecord
+    fixture: formats/state/records/invalid/audit-missing-generation-id.json
+    expected: reject
     validationLayer: schema-definition
   - id: state-failure-output-record
     schema: state-v1.schema.json

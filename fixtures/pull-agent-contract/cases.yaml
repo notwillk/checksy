@@ -5,6 +5,7 @@ indexes:
   - cli/cases.yaml
   - limits/cases.yaml
   - process/cases.yaml
+  - state-store/cases.yaml
 descriptors:
   - descriptors/future-harnesses.yaml
 cases:

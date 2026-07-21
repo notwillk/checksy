@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://checksy.dev/schemas/pull-agent/state-v1.schema.json",
   "title": "Checksy source-state snapshot v1",
-  "description": "Authoritative atomically published state snapshot for one canonical source. Separate audit and failure files may be validated through the corresponding $defs in this schema.",
+  "description": "Authoritative atomically published state snapshot for one canonical source. Separate immutable generation markers, audit records, and failure records are validated through the corresponding $defs in this schema.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -401,6 +401,148 @@
         }
       },
       "description": "Immutable promoted generation summary. generationId is the domain-separated SHA-256 over sourceId, provider kind, immutable provider material, and configPath; it is intentionally distinct from bundleSha256. Runtime validation requires providerGeneration and manifest/artifact hashes for HTTPS, explicit nulls where fields do not apply, and a completed on-disk generation matching every digest."
+    },
+    "generationMarker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "completed",
+        "sourceId",
+        "generationId",
+        "configPath",
+        "bundleSha256",
+        "provider"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "completed": {
+          "const": true
+        },
+        "sourceId": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "generationId": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "configPath": {
+          "$ref": "manifest-v1.schema.json#/$defs/configPath"
+        },
+        "bundleSha256": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "provider": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/localGenerationProvider"
+            },
+            {
+              "$ref": "#/$defs/gitGenerationProvider"
+            },
+            {
+              "$ref": "#/$defs/httpsGenerationProvider"
+            }
+          ]
+        }
+      },
+      "description": "Immutable content-completion marker stored beside one bundle. It binds source, provider identity, config path, and bundle digest, but deliberately excludes signer, verifiedAt, and promotedAt: those are authentication and selection events in the atomic state snapshot. Runtime validation recomputes both hashes and validates the complete bundle before accepting this marker."
+    },
+    "localGenerationProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "local"
+        }
+      }
+    },
+    "gitGenerationProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "objectFormat",
+        "peeledCommit"
+      ],
+      "properties": {
+        "kind": {
+          "const": "git"
+        },
+        "objectFormat": {
+          "enum": [
+            "sha1",
+            "sha256"
+          ]
+        },
+        "peeledCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "objectFormat": {
+                "const": "sha1"
+              }
+            },
+            "required": [
+              "objectFormat"
+            ]
+          },
+          "then": {
+            "properties": {
+              "peeledCommit": {
+                "pattern": "^[0-9a-f]{40}$"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "peeledCommit": {
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Selected-state runtime validation requires the state revision to equal peeledCommit."
+    },
+    "httpsGenerationProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "generation",
+        "revision",
+        "manifestSha256",
+        "artifactSha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "https"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "revision": {
+          "$ref": "manifest-v1.schema.json#/$defs/revision"
+        },
+        "manifestSha256": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "artifactSha256": {
+          "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        }
+      }
     },
     "signer": {
       "oneOf": [
@@ -1161,6 +1303,8 @@
         "actor",
         "action",
         "sourceId",
+        "fromGenerationId",
+        "toGenerationId",
         "fromRevision",
         "toRevision",
         "reason",
@@ -1188,6 +1332,26 @@
         },
         "sourceId": {
           "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+        },
+        "fromGenerationId": {
+          "oneOf": [
+            {
+              "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "toGenerationId": {
+          "oneOf": [
+            {
+              "$ref": "policy-v1.schema.json#/$defs/lowerHex64"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "fromRevision": {
           "oneOf": [

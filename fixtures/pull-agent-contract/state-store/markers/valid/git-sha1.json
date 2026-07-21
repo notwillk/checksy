@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "completed": true,
+  "sourceId": "15108db35db75551acb26e5e739cda98d6023f33d62e3b3fe88fccad20dad892",
+  "generationId": "c3d4c3d60dbeb30b8ed592005006716aa2cc62dcb447ed210a634afdafad7212",
+  "configPath": "config/checksy.yaml",
+  "bundleSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "provider": {
+    "kind": "git",
+    "objectFormat": "sha1",
+    "peeledCommit": "1111111111111111111111111111111111111111"
+  }
+}

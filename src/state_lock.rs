@@ -58,6 +58,23 @@ impl StateDirectoryLock {
         Err(LockError::UnsupportedPlatform)
     }
 
+    /// Acquire the persistent lock beneath an already opened and validated
+    /// state root.
+    ///
+    /// The hardened state store uses this entry point so path validation and
+    /// locking refer to the same directory inode. The legacy path-based entry
+    /// point intentionally keeps its existing symlink-compatible behavior.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    pub(crate) fn acquire_opened(
+        root_fd: &impl rustix::fd::AsFd,
+        display_path: &Path,
+    ) -> Result<Self, LockError> {
+        supported::acquire_opened(root_fd, display_path).map(|lock_fd| Self {
+            _lock_fd: lock_fd,
+            canonical_root: display_path.to_path_buf(),
+        })
+    }
+
     /// The canonical directory selected before the lock entry was opened.
     ///
     /// Mutation callers reuse this path after acquisition so a trusted legacy
@@ -111,8 +128,16 @@ mod supported {
         )
         .map_err(|error| state_io_error("open", &canonical_root, error))?;
 
-        let lock_path = canonical_root.join(LOCK_FILE_NAME);
-        let lock_fd = open_lock_file(&root_fd, &lock_path)?;
+        let lock_fd = acquire_opened(&root_fd, &canonical_root)?;
+        Ok((lock_fd, canonical_root))
+    }
+
+    pub(super) fn acquire_opened(
+        root_fd: &impl rustix::fd::AsFd,
+        display_path: &Path,
+    ) -> Result<OwnedFd, LockError> {
+        let lock_path = display_path.join(LOCK_FILE_NAME);
+        let lock_fd = open_lock_file(root_fd, &lock_path)?;
         validate_lock_file(&lock_fd, &lock_path)?;
 
         match retry_on_intr(|| fs::flock(&lock_fd, FlockOperation::NonBlockingLockExclusive)) {
@@ -123,13 +148,14 @@ mod supported {
             Err(error) => return Err(state_io_error("lock", &lock_path, error)),
         }
 
-        // Validate the same locked descriptor once more so later callers may
-        // rely on the guard representing an eligible coordination inode.
         validate_lock_file(&lock_fd, &lock_path)?;
-        Ok((lock_fd, canonical_root))
+        Ok(lock_fd)
     }
 
-    fn open_lock_file(root_fd: &OwnedFd, lock_path: &Path) -> Result<OwnedFd, LockError> {
+    fn open_lock_file(
+        root_fd: &impl rustix::fd::AsFd,
+        lock_path: &Path,
+    ) -> Result<OwnedFd, LockError> {
         let open_flags = OFlags::RDWR | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
         let lock_mode = Mode::RUSR | Mode::WUSR;
 

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "completed": true,
+  "sourceId": "1bc53e89ed2c75f0dcda5d59460f1afc0f0922b4ff963c39e937dbf3bf2dc117",
+  "generationId": "9f8020dd0aeaefef8b0f567d604b9265361ffd7d070c605c31ae4fad0dadab8e",
+  "configPath": ".checksy.yaml",
+  "bundleSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+  "provider": {
+    "kind": "https",
+    "generation": 42,
+    "revision": "release-42",
+    "manifestSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "artifactSha256": "5555555555555555555555555555555555555555555555555555555555555555"
+  }
+}

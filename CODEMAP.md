@@ -14,6 +14,7 @@
 │   ├── cache.rs                 # Legacy Git cache layout
 │   ├── git.rs                   # Git CLI operations
 │   ├── state_lock.rs            # Advisory mutation lock
+│   ├── state/                   # Private generation state substrate
 │   ├── schema.rs                # Config types and generated Draft 7 schema
 │   ├── version.rs               # Version constant
 │   ├── lib.rs                   # Modules and public compatibility exports
@@ -21,7 +22,7 @@
 │   └── Cargo.lock
 ├── fixtures/
 │   ├── strict-config/           # Runtime/schema parity corpus
-│   ├── pull-agent-contract/     # Agent contracts plus executable process matrix
+│   ├── pull-agent-contract/     # Agent contracts plus process/state matrices
 │   ├── origin-regression/       # Defining-config asset/command regression
 │   ├── remote-config/           # File/Git inclusion examples
 │   └── rule-files/              # Pattern-script examples
@@ -93,6 +94,24 @@ last-known-good state. Git revision operations have a 1-minute timeout and
 clone/fetch work has a 5-minute timeout; child stdin and standard Git/OpenSSH
 prompts are disabled, and credential helpers are requested to be noninteractive.
 
+### Private generation-state substrate
+
+```text
+state::StateStore
+  → descriptor-relative protected root open
+  → opened-root advisory mutation lock
+  → sources/<source-id> layout and strict state-v1 records
+  → generations/<generation-id>/{bundle,generation.json,lease}
+      → whole-tree digest and confined definition validation
+      → shared reader / exclusive garbage-collection lease
+  → same-directory temp write, fsync, atomic publish, parent fsync
+  → deterministic generation/failure/audit retention
+```
+
+This path is crate-private and has no CLI edge yet. It neither imports
+`.checksy-cache` nor changes `check`/`install`; acquisition, authentication,
+staging, convergence, and atomic promotion remain later milestones.
+
 ## Source Responsibilities
 
 ### `cli.rs`
@@ -138,8 +157,9 @@ prompts are disabled, and credential helpers are requested to be noninteractive.
 - Defines `DefinitionKey` for active-cycle and completed-include tracking.
 - Defines origin-bearing rules, pattern groups, complete definitions, resolver
   modes, and Git dependency descriptors.
-- Does not create persistent 64-character source IDs; that belongs to the future
-  state/source-provider layer.
+- Does not create persistent 64-character source IDs; the private state layer
+  now owns their encoding, while complete provider normalization remains future
+  source-provider work.
 
 ### `check.rs`
 
@@ -197,9 +217,26 @@ prompts are disabled, and credential helpers are requested to be noninteractive.
   mode `0600`; contention remains distinct from lock-file integrity failure.
 - Relies on the operating system to release ownership on descriptor close or
   process death instead of treating recorded PID text as the lock.
+- Provides a separate opened-root entry point so the protected store locks the
+  same validated directory inode; legacy callers retain their path-based,
+  symlink-compatible behavior.
 - Serializes cooperating processes only. It does not prevent direct mutation by
-  another local actor, authenticate cached content, provide descriptor-relative
-  ancestor traversal, or implement atomic promotion.
+  another local actor, authenticate cached content, or implement atomic
+  promotion.
+
+### `state/`
+
+- `identity` owns strict SHA-256 IDs and the versioned, domain-separated,
+  length-prefixed source/generation encodings.
+- `model` owns strict state-v1 snapshots, generation markers, provider/signer
+  unions, attempts, compliance, audit, and failure records.
+- `integrity` computes the canonical whole-bundle digest and validates completed
+  payload metadata, strict definitions, nested file remotes, and patterns.
+- `store` owns protected descriptor-relative layout, atomic JSON publication,
+  generation leases, and bounded deterministic cleanup.
+- Signer and verification/promotion timestamps stay in the atomic snapshot;
+  immutable `generation.json` records content/provider identity only.
+- The module is private and unwired to providers and commands.
 
 ### `schema.rs`
 
@@ -237,11 +274,17 @@ prompts are disabled, and credential helpers are requested to be noninteractive.
   output draining.
 - `state_lock.rs`: owner/mode/type validation, contention, release, stale-process
   recovery, and descriptor-inheritance behavior.
+- `state/`: fixed identity/digest vectors, strict state/marker decoding,
+  protected layout and permissions, completed-payload integrity, atomic
+  old-or-new snapshots, leases, and bounded deterministic retention.
 - `fixtures/strict-config/`: indexed structural, YAML-parser, and runtime-only
   cases.
 - `fixtures/pull-agent-contract/process/`: executable case-to-test mapping for
   the completed P2 process scenarios; its boundary is the runner-managed
   process group, not deliberately detached work or parent-signal forwarding.
+- `fixtures/pull-agent-contract/state-store/`: executable hash, digest, marker,
+  integrity, atomicity, lease, and retention contract for the private P3
+  substrate.
 - `fixtures/origin-regression/`: network-free CLI regression proving root and
   nested rules, assets, and pattern scripts use their defining config's
   directory and that origin-scoped exclusions never execute.
@@ -261,6 +304,9 @@ prompts are disabled, and credential helpers are requested to be noninteractive.
   contract index.
 - Mutation serialization or lock-file safety: update `state_lock.rs` and the
   complete mutation scopes in `cli.rs`.
+- Protected state identities, records, integrity, atomic writes, leases, or
+  cleanup: update `state/`, `state-v1.schema.json`, and the state-store fixture
+  index together.
 - New command: update dispatch, parser/help text, exit behavior, and CLI tests in
   `cli.rs`.
 - Pull-agent public formats or policy: update the normative contract, its

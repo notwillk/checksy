@@ -1,0 +1,5 @@
+rules:
+  - name: fixture asset
+    check: test -f assets/message.txt
+patterns:
+  - scripts/*.sh

@@ -2,14 +2,14 @@
 
 These files describe accepted and rejected behavior for the planned pull-based
 agent. Most remain a contract for future tests; the current deterministic
-process-runner cases are explicitly mapped to executable Rust tests. Production
-code does not parse this corpus.
+process-runner and generation-state categories have executable Rust coverage.
+Production code does not parse this corpus.
 
 [cases.yaml](cases.yaml) is the root machine-readable index. Its `indexes`
-entries lead to the public-format, CLI, resource-limit, and process matrices; its
-`cases` entries retain the earlier policy, source, authentication, and behavior
-fixtures. Every file in this corpus remains static fixture data even where a
-current test consumes or maps to it.
+entries lead to the public-format, CLI, resource-limit, process, and state-store
+matrices; its `cases` entries retain the earlier policy, source, authentication,
+and behavior fixtures. Every file in this corpus remains static fixture data
+even where a current test consumes or maps to it.
 
 Expected accept/reject describes whether the requested transition, fallback, or
 promotion is permitted; it does not merely describe whether YAML parses.
@@ -24,6 +24,9 @@ promotion is permitted; it does not merely describe whether YAML parses.
 - `limits` contains the normative numeric table and exact-boundary scenarios.
 - [`process`](process/README.md) maps the executable Linux/macOS process-runner
   scenarios to deterministic Rust tests.
+- [`state-store`](state-store/README.md) contains fixed source/generation hash
+  vectors, a whole-tree bundle digest, strict completion markers, and
+  integrity/atomicity/lease/retention scenarios for the private P3 substrate.
 - `descriptors/future-harnesses.yaml` specifies future archive, HTTP-server, and
   scheduler harnesses without implementing them.
 - `policy` contains the earlier privilege-policy examples and abstract

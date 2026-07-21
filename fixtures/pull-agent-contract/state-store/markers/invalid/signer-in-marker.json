@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "completed": true,
+  "sourceId": "7fcb3646319b76245a80ee21cd680b3b1c61ef5866fbd4038a5ef6e1b0b33e2d",
+  "generationId": "c2bf59ee3d5f5b6b4c11c9d1ebb9742339f412f806be2d64222225be7c2cfb49",
+  "configPath": ".checksy.yaml",
+  "bundleSha256": "1c0c213c52b5c9f70348fd498134102a870bb938c084b7da140771af7a36ef8d",
+  "provider": {
+    "kind": "local"
+  },
+  "signer": {
+    "kind": "local-operator"
+  }
+}

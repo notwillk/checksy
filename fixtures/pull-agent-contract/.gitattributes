@@ -5,3 +5,5 @@ authentication/https/minisign.pub text eol=lf
 *.yaml text eol=lf
 *.yml text eol=lf
 formats/**/*.json text eol=lf
+state-store/**/*.json text eol=lf
+state-store/bundle/**/* text eol=lf
