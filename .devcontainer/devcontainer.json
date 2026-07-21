@@ -8,8 +8,7 @@
 		},
 		"ghcr.io/notwillk/devcontainer-features/devcontainer-cli": {},
 		"ghcr.io/notwillk/devcontainer-features/rustup": {},
-		"ghcr.io/notwillk/devcontainer-features/just": {},
-		"ghcr.io/notwillk/devcontainer-features/skills": {}
+		"ghcr.io/notwillk/devcontainer-features/just": {}
 	},
 	"containerEnv": {
 		"DEVCONTAINER": "true"
