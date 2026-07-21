@@ -73,9 +73,9 @@ checksy schema > dist/config.schema.json
 checksy check --check-severity=warn --fail-severity=error
 ```
 
-The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The current `schema` command prints a hand-maintained JSON Schema for downstream tooling; strict runtime/schema parity is planned but is not implemented yet.
+The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command prints a deterministic Draft 7 JSON Schema generated from the strict Rust configuration model for downstream tooling.
 
-Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. The current implementation defaults to `debug` check severity and `error` fail severity, so all rules run and only error-level failures make the command fail. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but no longer abort the run.
+Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. The current implementation defaults to `debug` check severity and `error` fail severity, so all rules run and only error-level failures make the command fail. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but no longer abort the run. Configuration severity values are case-insensitive for compatibility, but `debug`, `info`, `warn`, `warning`, and `error` are the canonical spellings; successful CLI loads warn when a recognized non-lowercase spelling is used.
 
 ### Git-based Remote Configs
 
@@ -124,7 +124,7 @@ rules:
 
 ## Configuration
 
-`checksy --config=path/to/workspace.yaml check` strictly deserializes the provided YAML using the Rust configuration types. Unknown and duplicate fields, incorrectly typed or null values, malformed rule forms, empty commands, and invalid patterns are rejected before remote expansion or execution. The separately emitted JSON Schema is still hand-maintained; runtime/schema parity is the next hardening milestone. When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable. The accepted and rejected examples live in the [strict configuration fixture corpus](fixtures/strict-config/README.md).
+`checksy --config=path/to/workspace.yaml check` strictly deserializes the provided YAML using the Rust configuration types. Unknown and duplicate fields, incorrectly typed or null values, malformed rule forms, empty commands, NUL bytes in command/path/pattern fields, and invalid patterns are rejected before remote expansion or execution. The generated Draft 7 schema has fixture-tested parity for structural validation. Duplicate YAML keys remain a parser-layer check, and the complete Rust glob grammar remains a runtime-layer check; these narrow exceptions are documented in the [strict configuration fixture corpus](fixtures/strict-config/README.md). When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable.
 
 ### Inline rules, preconditions, and patterns
 

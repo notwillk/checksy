@@ -49,7 +49,7 @@ Exit gate: the trust model, state model, manifest/signature format, CLI behavior
   - Preserve all currently valid configuration behavior.
   - If a compatibility `--lenient` mode is necessary, prohibit it for unattended `apply`.
 
-- [ ] Generate JSON Schema from the runtime Rust types where practical.
+- [x] Generate JSON Schema from the runtime Rust types where practical.
   - Keep `additionalProperties: false`.
   - Add tests proving that runtime validation and emitted schema accept and reject the same fixtures.
   - Remove the hand-maintained schema once parity is established.

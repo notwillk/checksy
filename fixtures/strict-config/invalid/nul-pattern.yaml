@@ -1,0 +1,3 @@
+rules: []
+patterns:
+  - "scripts/\0*.sh"

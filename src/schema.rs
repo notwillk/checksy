@@ -1,10 +1,79 @@
 pub mod schema {
+    use schemars::{generate::SchemaSettings, JsonSchema, Schema, SchemaGenerator};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::borrow::Cow;
+
+    const JSON_SCHEMA_WHITESPACE_CLASS: &str = concat!(
+        r"\u0009-\u000D",
+        r"\u0020",
+        r"\u0085",
+        r"\u00A0",
+        r"\u1680",
+        r"\u2000-\u200A",
+        r"\u2028-\u2029",
+        r"\u202F",
+        r"\u205F",
+        r"\u3000"
+    );
+
+    const NO_NUL_PATTERN: &str = r"^[^\u0000]*$";
+
+    fn no_nul_string_schema(_generator: &mut SchemaGenerator) -> Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "pattern": NO_NUL_PATTERN
+        })
+    }
+
+    fn non_blank_no_nul_string_schema(_generator: &mut SchemaGenerator) -> Schema {
+        let has_non_whitespace = format!("[^{}]", JSON_SCHEMA_WHITESPACE_CLASS);
+        schemars::json_schema!({
+            "type": "string",
+            "allOf": [
+                { "pattern": NO_NUL_PATTERN },
+                { "pattern": has_non_whitespace }
+            ]
+        })
+    }
+
+    fn pattern_string_schema(_generator: &mut SchemaGenerator) -> Schema {
+        let ordinary = format!("^[{0}]*[^!{0}]", JSON_SCHEMA_WHITESPACE_CLASS);
+        let negated = format!("^[{0}]*![{0}]*[^{0}]", JSON_SCHEMA_WHITESPACE_CLASS);
+        schemars::json_schema!({
+            "type": "string",
+            "allOf": [{ "pattern": NO_NUL_PATTERN }],
+            "anyOf": [
+                { "pattern": ordinary },
+                { "pattern": negated }
+            ]
+        })
+    }
 
     /// Optional fields in configuration remain optional, but an explicitly
     /// present YAML value must have the declared type. In particular, `null`
     /// is not treated as if the field had been omitted.
     struct StrictOptional<T>(Option<T>);
+
+    impl<T> JsonSchema for StrictOptional<T>
+    where
+        T: JsonSchema,
+    {
+        fn inline_schema() -> bool {
+            T::inline_schema()
+        }
+
+        fn schema_name() -> Cow<'static, str> {
+            T::schema_name()
+        }
+
+        fn schema_id() -> Cow<'static, str> {
+            T::schema_id()
+        }
+
+        fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+            T::json_schema(generator)
+        }
+    }
 
     impl<T> Default for StrictOptional<T> {
         fn default() -> Self {
@@ -31,6 +100,24 @@ pub mod schema {
     }
 
     struct StrictString(String);
+
+    impl JsonSchema for StrictString {
+        fn inline_schema() -> bool {
+            <String as JsonSchema>::inline_schema()
+        }
+
+        fn schema_name() -> Cow<'static, str> {
+            <String as JsonSchema>::schema_name()
+        }
+
+        fn schema_id() -> Cow<'static, str> {
+            <String as JsonSchema>::schema_id()
+        }
+
+        fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+            <String as JsonSchema>::json_schema(generator)
+        }
+    }
 
     impl StrictString {
         fn into_string(self) -> String {
@@ -95,6 +182,39 @@ pub mod schema {
         }
     }
 
+    impl JsonSchema for Severity {
+        fn schema_name() -> Cow<'static, str> {
+            "Severity".into()
+        }
+
+        fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
+            const CANONICAL: [&str; 5] = ["debug", "info", "warn", "warning", "error"];
+            const ASCII_CASE_INSENSITIVE: &str = concat!(
+                r"^(",
+                r"[dD][eE][bB][uU][gG]|",
+                r"[iI][nN][fF][oO]|",
+                r"[wW][aA][rR][nN]([iI][nN][gG])?|",
+                r"[eE][rR][rR][oO][rR]",
+                r")$"
+            );
+
+            schemars::json_schema!({
+                "type": "string",
+                "anyOf": [
+                    { "enum": CANONICAL },
+                    {
+                        "description": "Non-lowercase severity spellings are deprecated; use lowercase.",
+                        "allOf": [
+                            { "pattern": ASCII_CASE_INSENSITIVE },
+                            { "not": { "pattern": "[^A-Za-z]" } },
+                            { "not": { "enum": CANONICAL } }
+                        ]
+                    }
+                ]
+            })
+        }
+    }
+
     impl Severity {
         pub fn normalize(&self) -> Self {
             *self
@@ -136,6 +256,46 @@ pub mod schema {
         pub hint: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub remote: Option<String>,
+    }
+
+    #[allow(dead_code)]
+    #[derive(JsonSchema)]
+    #[schemars(deny_unknown_fields)]
+    struct RemoteRuleSchema {
+        #[schemars(schema_with = "non_blank_no_nul_string_schema")]
+        remote: StrictString,
+    }
+
+    #[allow(dead_code)]
+    #[derive(JsonSchema)]
+    #[schemars(deny_unknown_fields)]
+    struct ExecutableRuleSchema {
+        #[serde(default)]
+        name: StrictOptional<StrictString>,
+        #[schemars(schema_with = "non_blank_no_nul_string_schema")]
+        check: StrictString,
+        #[serde(default)]
+        severity: StrictOptional<Severity>,
+        #[serde(default)]
+        #[schemars(schema_with = "no_nul_string_schema")]
+        fix: StrictOptional<StrictString>,
+        #[serde(default)]
+        hint: StrictOptional<StrictString>,
+    }
+
+    impl JsonSchema for Rule {
+        fn schema_name() -> Cow<'static, str> {
+            "Rule".into()
+        }
+
+        fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+            let remote = RemoteRuleSchema::json_schema(generator);
+            let executable = ExecutableRuleSchema::json_schema(generator);
+
+            schemars::json_schema!({
+                "oneOf": [remote, executable]
+            })
+        }
     }
 
     #[derive(Deserialize)]
@@ -279,10 +439,11 @@ pub mod schema {
         pub patterns: Vec<String>,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, JsonSchema)]
     #[serde(rename_all = "camelCase", deny_unknown_fields)]
     struct RawConfig {
         #[serde(default)]
+        #[schemars(schema_with = "no_nul_string_schema")]
         cache_path: StrictOptional<StrictString>,
         #[serde(default)]
         check_severity: StrictOptional<Severity>,
@@ -293,7 +454,32 @@ pub mod schema {
         #[serde(default)]
         rules: Vec<Rule>,
         #[serde(default)]
+        #[schemars(schema_with = "patterns_schema")]
         patterns: Vec<StrictString>,
+    }
+
+    fn patterns_schema(generator: &mut SchemaGenerator) -> Schema {
+        let items = pattern_string_schema(generator);
+        schemars::json_schema!({
+            "type": "array",
+            "items": items
+        })
+    }
+
+    impl JsonSchema for Config {
+        fn schema_name() -> Cow<'static, str> {
+            "checksy configuration".into()
+        }
+
+        fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+            RawConfig::json_schema(generator)
+        }
+    }
+
+    pub(crate) fn configuration_schema() -> Schema {
+        SchemaSettings::draft07()
+            .into_generator()
+            .into_root_schema_for::<Config>()
     }
 
     impl<'de> Deserialize<'de> for Config {
@@ -338,6 +524,9 @@ pub mod schema {
                     .map_err(|error| format!("rules[{}]: {}", index, error))?;
             }
             for (index, pattern) in self.patterns.iter().enumerate() {
+                if pattern.contains('\0') {
+                    return Err(format!("patterns[{}] cannot contain a NUL byte", index));
+                }
                 let pattern = pattern.trim();
                 let pattern = pattern.strip_prefix('!').unwrap_or(pattern).trim();
                 if pattern.is_empty() {
@@ -357,6 +546,109 @@ pub mod schema {
             Severity::Info => 1,
             Severity::Warning => 2,
             Severity::Error => 3,
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use serde_json::json;
+
+        fn configuration_validator() -> jsonschema::Validator {
+            let schema = serde_json::to_value(configuration_schema()).unwrap();
+            jsonschema::draft7::meta::validate(&schema).unwrap();
+            jsonschema::draft7::new(&schema).unwrap()
+        }
+
+        #[test]
+        fn generated_schema_is_closed_optional_and_uses_the_exact_rule_union() {
+            let schema = serde_json::to_value(configuration_schema()).unwrap();
+
+            assert_eq!(schema["$schema"], "http://json-schema.org/draft-07/schema#");
+            assert_eq!(schema["additionalProperties"], false);
+            assert!(schema.get("required").is_none());
+
+            let branches = schema["definitions"]["Rule"]["oneOf"]
+                .as_array()
+                .expect("Rule must be represented by oneOf");
+            assert_eq!(branches.len(), 2);
+            assert_eq!(branches[0]["additionalProperties"], false);
+            assert_eq!(branches[0]["required"], json!(["remote"]));
+            assert_eq!(branches[1]["additionalProperties"], false);
+            assert_eq!(branches[1]["required"], json!(["check"]));
+            assert!(branches[1]["properties"].get("remote").is_none());
+
+            let severity = &schema["definitions"]["Severity"];
+            assert!(severity.get("default").is_none());
+            assert_eq!(
+                severity["anyOf"][0]["enum"],
+                json!(["debug", "info", "warn", "warning", "error"])
+            );
+        }
+
+        #[test]
+        fn generated_schema_enforces_runtime_structural_constraints() {
+            let validator = configuration_validator();
+            let accepted = [
+                json!({}),
+                json!({"cachePath": ""}),
+                json!({"rules": [{"remote": "nested.yaml"}]}),
+                json!({
+                    "rules": [{
+                        "name": "",
+                        "check": "echo ok",
+                        "severity": "warning",
+                        "fix": "",
+                        "hint": ""
+                    }]
+                }),
+                json!({"rules": [{"check": "echo ok", "severity": "WaRnInG"}]}),
+                json!({"patterns": ["[unterminated"]}),
+            ];
+            for instance in accepted {
+                assert!(
+                    validator.is_valid(&instance),
+                    "schema unexpectedly rejected {instance}"
+                );
+            }
+
+            let rejected = [
+                json!({"cachePath": null}),
+                json!({"checkSeverity": null}),
+                json!({"rules": [{}]}),
+                json!({"rules": [{"fix": "echo fixed"}]}),
+                json!({"rules": [{"remote": "nested.yaml", "check": "echo mixed"}]}),
+                json!({"rules": [{"remote": " \t\n"}]}),
+                json!({"rules": [{"check": " \t\n"}]}),
+                json!({"rules": [{"check": "\u{3000}"}]}),
+                json!({"rules": [{"check": "echo ok", "name": null}]}),
+                json!({"rules": [{"check": "echo ok", "severity": "critical"}]}),
+                json!({"rules": [{"check": "echo ok", "severity": "ERROR\n"}]}),
+                json!({"rules": [], "unknown": true}),
+                json!({"patterns": [" ! \t"]}),
+                json!({"patterns": ["!\u{3000}"]}),
+                json!({"cachePath": "cache\0path"}),
+                json!({"rules": [{"check": "echo\0ok"}]}),
+                json!({"rules": [{"check": "false", "fix": "fix\0it"}]}),
+                json!({"rules": [{"remote": "nested\0.yaml"}]}),
+                json!({"patterns": ["scripts/\0*.sh"]}),
+            ];
+            for instance in rejected {
+                assert!(
+                    !validator.is_valid(&instance),
+                    "schema unexpectedly accepted {instance}"
+                );
+            }
+        }
+
+        #[test]
+        fn complete_glob_grammar_remains_a_runtime_validation_layer() {
+            let validator = configuration_validator();
+            assert!(validator.is_valid(&json!({"patterns": ["[unterminated"]})));
+            assert!(
+                serde_yaml::from_str::<Config>("rules: []\npatterns:\n  - '[unterminated'\n")
+                    .is_err()
+            );
         }
     }
 }

@@ -1,8 +1,11 @@
 use crate::cache::CacheManager;
 use crate::check::{self, Options, Report, RuleResult};
-use crate::config::{load, parse_git_remote, resolve_path};
+use crate::config::{
+    decode_with_diagnostics, load_with_diagnostics, parse_git_remote, resolve_path,
+    ConfigDiagnostic, LoadedConfig,
+};
 use crate::git::GitCache;
-use crate::schema::{Config, Rule, Severity};
+use crate::schema::{configuration_schema, Config, Rule, Severity};
 use crate::version::VERSION;
 use std::collections::HashSet;
 use std::io::Write;
@@ -201,13 +204,15 @@ fn run_check(
         }
     };
 
-    let cfg = match load_with_fix(&abs_config_path, apply_fixes, stdout, stderr) {
-        Ok(c) => c,
+    let loaded = match load_with_fix(&abs_config_path, apply_fixes, stdout, stderr) {
+        Ok(loaded) => loaded,
         Err(e) => {
             writeln!(stderr, "failed to load config '{}': {}", abs_config_path, e).ok();
             return 2;
         }
     };
+    print_config_diagnostics(&loaded.diagnostics, stderr);
+    let cfg = loaded.config;
 
     let check_severity = if let Some(ref s) = check_severity {
         match parse_severity(s) {
@@ -282,8 +287,8 @@ fn load_with_fix(
     apply_fixes: bool,
     stdout: &mut dyn Write,
     _stderr: &mut dyn Write,
-) -> Result<Config, String> {
-    match load(abs_config_path) {
+) -> Result<LoadedConfig, String> {
+    match load_with_diagnostics(abs_config_path) {
         Ok(c) => Ok(c),
         Err(e) => {
             // Check if this is a "not cached" error and --fix is enabled
@@ -304,21 +309,28 @@ fn load_with_fix(
             };
 
             // Load config without expanding to collect git remotes
-            let cfg = match load_without_remote_expansion(std::path::Path::new(abs_config_path)) {
-                Ok(c) => c,
+            let loaded = match load_without_remote_expansion(std::path::Path::new(abs_config_path))
+            {
+                Ok(loaded) => loaded,
                 Err(e2) => {
                     return Err(format!("{} (and failed to parse for fix: {})", e, e2));
                 }
             };
+            let cfg = loaded.config;
 
             // Collect all git remotes
-            let git_remotes =
-                match collect_git_remotes_recursive(&cfg, &config_dir, &cfg.cache_path) {
-                    Ok(remotes) => remotes,
-                    Err(e2) => {
-                        return Err(format!("{} (and failed to collect remotes: {})", e, e2));
-                    }
-                };
+            let mut ignored_diagnostics = Vec::new();
+            let git_remotes = match collect_git_remotes_recursive(
+                &cfg,
+                &config_dir,
+                &cfg.cache_path,
+                &mut ignored_diagnostics,
+            ) {
+                Ok(remotes) => remotes,
+                Err(e2) => {
+                    return Err(format!("{} (and failed to collect remotes: {})", e, e2));
+                }
+            };
 
             if git_remotes.is_empty() {
                 return Err(e); // No git remotes to fix, return original error
@@ -356,8 +368,14 @@ fn load_with_fix(
             writeln!(stdout, "✅ Git remotes cached, retrying...").ok();
 
             // Retry loading the config
-            load(abs_config_path)
+            load_with_diagnostics(abs_config_path)
         }
+    }
+}
+
+fn print_config_diagnostics(diagnostics: &[ConfigDiagnostic], stderr: &mut dyn Write) {
+    for diagnostic in diagnostics {
+        let _ = writeln!(stderr, "{}", diagnostic);
     }
 }
 
@@ -477,8 +495,8 @@ fn run_install(
         .unwrap_or_else(|| std::path::PathBuf::from("."));
 
     // Load config (without expanding remotes - we just need to find git remotes)
-    let cfg = match load_without_remote_expansion(&abs_config_path) {
-        Ok(c) => c,
+    let loaded = match load_without_remote_expansion(&abs_config_path) {
+        Ok(loaded) => loaded,
         Err(e) => {
             writeln!(
                 stderr,
@@ -490,15 +508,19 @@ fn run_install(
             return 2;
         }
     };
+    let mut diagnostics = loaded.diagnostics;
+    let cfg = loaded.config;
 
     // Collect all git remotes recursively
-    let git_remotes = match collect_git_remotes_recursive(&cfg, &config_dir, &cfg.cache_path) {
-        Ok(remotes) => remotes,
-        Err(e) => {
-            writeln!(stderr, "failed to collect git remotes: {}", e).ok();
-            return 2;
-        }
-    };
+    let git_remotes =
+        match collect_git_remotes_recursive(&cfg, &config_dir, &cfg.cache_path, &mut diagnostics) {
+            Ok(remotes) => remotes,
+            Err(e) => {
+                writeln!(stderr, "failed to collect git remotes: {}", e).ok();
+                return 2;
+            }
+        };
+    print_config_diagnostics(&diagnostics, stderr);
 
     if git_remotes.is_empty() {
         writeln!(stdout, "No git remotes to cache").ok();
@@ -612,12 +634,9 @@ fn run_install(
 }
 
 /// Load config without expanding remote references
-fn load_without_remote_expansion(path: &std::path::Path) -> Result<Config, String> {
+fn load_without_remote_expansion(path: &std::path::Path) -> Result<LoadedConfig, String> {
     let data = std::fs::read_to_string(path).map_err(|e| format!("read config: {}", e))?;
-
-    let cfg: Config = serde_yaml::from_str(&data).map_err(|e| format!("decode config: {}", e))?;
-
-    Ok(cfg)
+    decode_with_diagnostics(&data, &path.to_string_lossy())
 }
 
 /// Collect all git remotes recursively from a config
@@ -625,11 +644,19 @@ fn collect_git_remotes_recursive(
     cfg: &Config,
     config_dir: &std::path::Path,
     cache_path: &Option<String>,
+    diagnostics: &mut Vec<ConfigDiagnostic>,
 ) -> Result<Vec<(String, String)>, String> {
     let mut remotes: Vec<(String, String)> = Vec::new();
     let mut visited: HashSet<std::path::PathBuf> = HashSet::new();
 
-    collect_from_config(cfg, config_dir, cache_path, &mut remotes, &mut visited)?;
+    collect_from_config(
+        cfg,
+        config_dir,
+        cache_path,
+        &mut remotes,
+        &mut visited,
+        diagnostics,
+    )?;
 
     // Remove duplicates while preserving order
     let mut seen = HashSet::new();
@@ -647,6 +674,7 @@ fn collect_from_config(
     cache_path: &Option<String>,
     remotes: &mut Vec<(String, String)>,
     visited: &mut HashSet<std::path::PathBuf>,
+    diagnostics: &mut Vec<ConfigDiagnostic>,
 ) -> Result<(), String> {
     // Scan preconditions and rules for git remotes
     let all_rules = cfg.preconditions.iter().chain(cfg.rules.iter());
@@ -665,7 +693,9 @@ fn collect_from_config(
                             visited.insert(path.clone());
                             // Load this remote config and recurse
                             match load_without_remote_expansion(&path) {
-                                Ok(remote_cfg) => {
+                                Ok(loaded) => {
+                                    diagnostics.extend(loaded.diagnostics);
+                                    let remote_cfg = loaded.config;
                                     let remote_dir = path
                                         .parent()
                                         .map(|p| p.to_path_buf())
@@ -676,6 +706,7 @@ fn collect_from_config(
                                         cache_path,
                                         remotes,
                                         visited,
+                                        diagnostics,
                                     )?;
                                 }
                                 Err(_) => {
@@ -692,99 +723,25 @@ fn collect_from_config(
     Ok(())
 }
 
-fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Write) -> i32 {
-    let schema_json = r#"{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "checksy configuration",
-  "type": "object",
-  "properties": {
-    "cachePath": {
-      "type": "string",
-      "description": "Path to cache directory for git-based remotes (defaults to .checksy-cache)",
-      "default": ".checksy-cache"
-    },
-    "checkSeverity": {
-      "type": "string",
-      "enum": ["debug", "info", "warn", "error"]
-    },
-    "failSeverity": {
-      "type": "string",
-      "enum": ["debug", "info", "warn", "error"]
-    },
-    "preconditions": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "oneOf": [
-          {
-            "description": "Remote rule - only 'remote' property allowed. Supports file paths or git+https:// URLs (requires 'checksy install' first)",
-            "required": ["remote"],
-            "properties": {
-              "remote": { 
-                "type": "string", 
-                "description": "Relative path to another config file, or git+URL#ref:path for git-based remotes (e.g., git+https://github.com/org/repo.git#main:.checksy.yaml)"
-              }
-            },
-            "additionalProperties": false
-          },
-          {
-            "description": "Inline rule - requires 'check' property",
-            "required": ["check"],
-            "properties": {
-              "name": { "type": "string" },
-              "check": { "type": "string" },
-              "severity": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "error" },
-              "fix": { "type": "string" },
-              "hint": { "type": "string" },
-              "remote": { "type": "string" }
-            },
-            "additionalProperties": false
-          }
-        ]
-      }
-    },
-    "rules": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "oneOf": [
-          {
-            "description": "Remote rule - only 'remote' property allowed. Supports file paths or git+https:// URLs (requires 'checksy install' first)",
-            "required": ["remote"],
-            "properties": {
-              "remote": { 
-                "type": "string", 
-                "description": "Relative path to another config file, or git+URL#ref:path for git-based remotes (e.g., git+https://github.com/org/repo.git#main:.checksy.yaml)"
-              }
-            },
-            "additionalProperties": false
-          },
-          {
-            "description": "Inline rule - requires 'check' property",
-            "required": ["check"],
-            "properties": {
-              "name": { "type": "string" },
-              "check": { "type": "string" },
-              "severity": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "error" },
-              "fix": { "type": "string" },
-              "hint": { "type": "string" },
-              "remote": { "type": "string" }
-            },
-            "additionalProperties": false
-          }
-        ]
-      }
-    },
-    "patterns": {
-      "type": "array",
-      "items": { "type": "string" }
-    }
-  },
-  "required": ["rules"],
-  "additionalProperties": false
-}"#;
+fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    let mut output = match serde_json::to_vec_pretty(&configuration_schema()) {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = writeln!(
+                stderr,
+                "failed to serialize configuration schema: {}",
+                error
+            );
+            return 2;
+        }
+    };
+    output.push(b'\n');
 
-    writeln!(stdout, "{}", schema_json).ok();
+    if let Err(error) = stdout.write_all(&output).and_then(|_| stdout.flush()) {
+        let _ = writeln!(stderr, "failed to write configuration schema: {}", error);
+        return 2;
+    }
+
     0
 }
 
@@ -1045,6 +1002,38 @@ fn rule_display_name(rule: &Rule) -> String {
 mod tests {
     use super::*;
 
+    struct WriteFailure;
+
+    impl Write for WriteFailure {
+        fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "injected write failure",
+            ))
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct FlushFailure(Vec<u8>);
+
+    impl Write for FlushFailure {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "injected flush failure",
+            ))
+        }
+    }
+
     #[test]
     fn test_parse_severity() {
         assert_eq!(parse_severity("debug").unwrap(), Severity::Debug);
@@ -1077,5 +1066,162 @@ mod tests {
             remote: None,
         };
         assert_eq!(rule_display_name(&rule), "custom");
+    }
+
+    #[test]
+    fn test_schema_command_matches_generated_schema_deterministically() {
+        let mut first_stdout = Vec::new();
+        let mut first_stderr = Vec::new();
+        let first_code = run(
+            vec!["schema".to_string()],
+            &mut first_stdout,
+            &mut first_stderr,
+        );
+
+        let mut second_stdout = Vec::new();
+        let mut second_stderr = Vec::new();
+        let second_code = run(
+            vec!["schema".to_string()],
+            &mut second_stdout,
+            &mut second_stderr,
+        );
+
+        assert_eq!(first_code, 0);
+        assert_eq!(second_code, 0);
+        assert!(first_stderr.is_empty());
+        assert!(second_stderr.is_empty());
+        assert_eq!(first_stdout, second_stdout);
+
+        let mut expected = serde_json::to_vec_pretty(&configuration_schema()).unwrap();
+        expected.push(b'\n');
+        assert_eq!(first_stdout, expected);
+        assert!(first_stdout.ends_with(b"\n"));
+        assert!(!first_stdout.ends_with(b"\n\n"));
+
+        let parsed: serde_json::Value = serde_json::from_slice(&first_stdout).unwrap();
+        assert_eq!(parsed["$schema"], "http://json-schema.org/draft-07/schema#");
+    }
+
+    #[test]
+    fn test_schema_command_reports_write_failure() {
+        let mut stdout = WriteFailure;
+        let mut stderr = Vec::new();
+
+        let code = run(vec!["schema".to_string()], &mut stdout, &mut stderr);
+
+        assert_eq!(code, 2);
+        assert!(String::from_utf8(stderr)
+            .unwrap()
+            .contains("failed to write configuration schema"));
+    }
+
+    #[test]
+    fn test_schema_command_reports_flush_failure() {
+        let mut stdout = FlushFailure::default();
+        let mut stderr = Vec::new();
+
+        let code = run(vec!["schema".to_string()], &mut stdout, &mut stderr);
+
+        assert_eq!(code, 2);
+        assert!(!stdout.0.is_empty());
+        assert!(String::from_utf8(stderr)
+            .unwrap()
+            .contains("failed to write configuration schema"));
+    }
+
+    #[test]
+    fn test_mixed_case_config_severities_emit_location_aware_warnings() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures")
+            .join("strict-config")
+            .join("valid")
+            .join("mixed-case-severity.yaml");
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", fixture.display()),
+                "check".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 0);
+        let stderr = String::from_utf8(stderr).unwrap();
+        let warnings: Vec<_> = stderr
+            .lines()
+            .filter(|line| line.starts_with("warning:"))
+            .collect();
+        assert_eq!(warnings.len(), 2, "unexpected stderr: {stderr:?}");
+        assert!(stderr.contains("checkSeverity"));
+        assert!(stderr.contains("use 'debug'"));
+        assert!(stderr.contains("failSeverity"));
+        assert!(stderr.contains("use 'error'"));
+    }
+
+    #[test]
+    fn test_install_reports_config_severity_deprecations() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures")
+            .join("strict-config")
+            .join("valid")
+            .join("mixed-case-severity.yaml");
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", fixture.display()),
+                "install".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 0);
+        assert!(String::from_utf8(stdout)
+            .unwrap()
+            .contains("No git remotes to cache"));
+        let stderr = String::from_utf8(stderr).unwrap();
+        assert_eq!(
+            stderr
+                .lines()
+                .filter(|line| line.starts_with("warning:"))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn test_lowercase_config_severity_aliases_do_not_warn() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let fixture = dir.path().join("config.yaml");
+        std::fs::write(
+            &fixture,
+            "checkSeverity: warn\nfailSeverity: warning\nrules: []\n",
+        )
+        .unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let code = run(
+            vec![
+                format!("--config={}", fixture.display()),
+                "check".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(code, 0);
+        assert!(
+            stderr.is_empty(),
+            "unexpected stderr: {:?}",
+            String::from_utf8(stderr)
+        );
     }
 }

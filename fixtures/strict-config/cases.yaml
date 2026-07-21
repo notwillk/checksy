@@ -3,80 +3,130 @@ cases:
   - id: complete-config
     fixture: valid/complete.yaml
     expected: accept
+    validationLayer: structural
   - id: nested-config
     fixture: valid/nested.yaml
     expected: accept
+    validationLayer: structural
   - id: warning-alias
     fixture: valid/warning-alias.yaml
     expected: accept
+    validationLayer: structural
   - id: pattern-only
     fixture: valid/pattern-only.yaml
     expected: accept
+    validationLayer: structural
+  - id: mixed-case-severity
+    fixture: valid/mixed-case-severity.yaml
+    expected: accept
+    validationLayer: structural
   - id: unknown-top-level
     fixture: invalid/unknown-top-level.yaml
     expected: reject
+    validationLayer: structural
     errorContains: unknown field
   - id: unknown-rule-field
     fixture: invalid/unknown-rule-field.yaml
     expected: reject
+    validationLayer: structural
     errorContains: unknown field
   - id: empty-rule
     fixture: invalid/empty-rule.yaml
     expected: reject
+    validationLayer: structural
     errorContains: exactly one of `remote` or a non-empty `check`
   - id: fix-without-check
     fixture: invalid/fix-without-check.yaml
     expected: reject
+    validationLayer: structural
     errorContains: cannot define `fix` without `check`
   - id: remote-with-command
     fixture: invalid/remote-with-command.yaml
     expected: reject
+    validationLayer: structural
     errorContains: remote rule cannot have properties
   - id: empty-remote
     fixture: invalid/empty-remote.yaml
     expected: reject
+    validationLayer: structural
     errorContains: non-empty `remote`
   - id: empty-check
     fixture: invalid/empty-check.yaml
     expected: reject
+    validationLayer: structural
     errorContains: non-empty `check`
   - id: explicit-null
     fixture: invalid/explicit-null.yaml
     expected: reject
+    validationLayer: structural
     errorContains: invalid type
   - id: scalar-coercion
     fixture: invalid/scalar-coercion.yaml
     expected: reject
+    validationLayer: structural
     errorContains: invalid type
   - id: invalid-pattern
     fixture: invalid/invalid-pattern.yaml
     expected: reject
+    validationLayer: runtime-only
     errorContains: patterns[0] is invalid
   - id: empty-pattern
     fixture: invalid/empty-pattern.yaml
     expected: reject
+    validationLayer: structural
     errorContains: patterns[0] must not be empty
   - id: unsupported-run-as
     fixture: invalid/unsupported-run-as.yaml
     expected: reject
+    validationLayer: structural
     errorContains: unknown field
   - id: unsupported-timeout
     fixture: invalid/unsupported-timeout.yaml
     expected: reject
+    validationLayer: structural
     errorContains: unknown field
   - id: duplicate-top-level-key
     fixture: invalid/duplicate-top-level-key.yaml
     expected: reject
+    validationLayer: yaml-parser
     errorContains: duplicate
   - id: duplicate-rule-key
     fixture: invalid/duplicate-rule-key.yaml
     expected: reject
+    validationLayer: yaml-parser
     errorContains: duplicate
   - id: invalid-severity
     fixture: invalid/invalid-severity.yaml
     expected: reject
+    validationLayer: structural
     errorContains: unknown variant
   - id: wrong-rules-type
     fixture: invalid/wrong-rules-type.yaml
     expected: reject
+    validationLayer: structural
     errorContains: invalid type
+  - id: nul-cache-path
+    fixture: invalid/nul-cache-path.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: nul-check
+    fixture: invalid/nul-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: nul-fix
+    fixture: invalid/nul-fix.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: nul-remote
+    fixture: invalid/nul-remote.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: nul-pattern
+    fixture: invalid/nul-pattern.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte

@@ -31,7 +31,7 @@ state projection, and resource bounds.
   - `check`: Load config, run checks, print results, return exit code
   - `install`: Cache git remotes with spinner UI
   - `init`: Create starter config file
-  - `schema`: Output JSON schema
+  - `schema`: Generate and output the deterministic Draft 7 configuration schema
   - `version`: Output version string
 - **Fix mode**: Implements fix/retry logic for failed checks
 - **Global flags**: `--config`, `--stdin-config` parsing
@@ -42,6 +42,8 @@ state projection, and resource bounds.
 - **Remote expansion**: Recursive config inclusion (file & git)
 - **Circular detection**: HashSet<PathBuf> tracks visited configs
 - **Default application**: Applies inherited severity defaults
+- **Diagnostics**: Successful CLI loads report deprecated non-lowercase severity
+  spellings without changing the public library-loading API
 - **Git URL parsing**: `parse_git_remote()` handles `git+<url>#<ref>:<path>` format
 
 ### cache.rs (Cache Management)
@@ -67,7 +69,13 @@ state projection, and resource bounds.
 - **Domain types**: `Config`, `Rule`, `Severity` with strict serde decoding
 - **Custom serialization**: `Severity` maps to strings ("warn", "error", etc.)
 - **Validation**: Rejects unknown/duplicate fields, invalid scalar types,
-  malformed rule forms, empty commands/remotes, and invalid glob patterns
+  malformed rule forms, empty commands/remotes, NUL bytes in constrained
+  fields, and invalid glob patterns
+- **Schema generation**: Uses the strict deserialization projection to generate
+  a closed Draft 7 schema with an exact remote/executable rule union
+- **Layered parity**: Duplicate YAML keys remain parser-owned and complete Rust
+  glob syntax remains runtime-owned; all other fixture structure is checked
+  against both the generated schema and typed deserialization
 - **CamelCase mapping**: Config fields use camelCase in YAML
 
 ### version.rs
@@ -114,8 +122,10 @@ run_install() [cli.rs]
 ### Rust Dependencies (Cargo.toml)
 - **serde**: Serialization framework
 - **serde_yaml**: YAML config parsing
-- **serde_json**: JSON schema output
+- **serde_json**: JSON schema serialization
+- **schemars**: Draft 7 schema generation from configuration types
 - **glob**: Pattern matching for rule files
+- **jsonschema**: Draft 7 metaschema and fixture validation (dev dependency)
 - **tempfile**: Test utilities (dev dependency)
 
 ### File System Interactions
@@ -165,7 +175,7 @@ git.rs
   └── cache.rs (CacheManager)
 
 schema.rs
-  └── (self-contained, only serde)
+  └── serde, serde_yaml, schemars, glob
 
 lib.rs
   └── (exports from all modules)

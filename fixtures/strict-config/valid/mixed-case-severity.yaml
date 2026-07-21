@@ -1,0 +1,3 @@
+checkSeverity: Debug
+failSeverity: ERROR
+rules: []
