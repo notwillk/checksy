@@ -3,14 +3,16 @@
 	"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
 	"features": {
 		"./features/entr": {},
-		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {
+			"moby": false
+		},
 		"ghcr.io/notwillk/devcontainer-features/devcontainer-cli": {},
 		"ghcr.io/notwillk/devcontainer-features/rustup": {},
 		"ghcr.io/notwillk/devcontainer-features/just": {},
-	    "ghcr.io/notwillk/devcontainer-features/skills": {}
+		"ghcr.io/notwillk/devcontainer-features/skills": {}
 	},
 	"containerEnv": {
-    "DEVCONTAINER": "true"
+		"DEVCONTAINER": "true"
 	},
 	"customizations": {
 		"vscode": {
