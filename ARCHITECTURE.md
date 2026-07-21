@@ -13,7 +13,8 @@ sandboxes. The working-directory behavior described above provides path context,
 not containment. Current `check` and `install` behavior does not yet implement the
 authentication, atomic state, timeout, and privilege controls required for safe
 unattended remote execution. [THREAT_MODEL.md](THREAT_MODEL.md) is the normative
-target security contract and identifies the current gaps.
+target contract for security invariants and current gaps;
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) is the normative policy contract.
 
 ## Component Responsibilities
 

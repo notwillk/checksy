@@ -1,0 +1,184 @@
+schemaVersion: 1
+status: contract-only
+
+durations:
+  grammar: '^[1-9][0-9]*(ms|s|m|h|d)$'
+  general:
+    validationLayer: syntax-only
+    accepted:
+      - 1ms
+      - 1s
+      - 1m
+      - 1h
+      - 1d
+      - 999h
+    rejected:
+      - 0s
+      - 01s
+      - -1s
+      - 1.5s
+      - 1S
+      - '1 s'
+      - 1h30m
+      - 1w
+      - '1'
+  scheduler:
+    accepted:
+      - 1m
+      - 1h
+      - 1d
+    rejected:
+      - 1ms
+      - 1s
+
+apply:
+  compliant:
+    failSeverity: error
+    finalFailures: []
+    expected:
+      exit: 0
+      promotion: true
+      compliance: compliant
+  degradedBelowThreshold:
+    failSeverity: error
+    finalFailures:
+      - severity: warn
+    expected:
+      exit: 0
+      promotion: true
+      compliance: degraded
+  thresholdFailure:
+    failSeverity: warn
+    finalFailures:
+      - severity: warn
+    expected:
+      exit: 3
+      promotion: false
+      compliance: noncompliant
+
+status:
+  recorded:
+    mode: recorded
+    expected:
+      executesRules: false
+      fetches: false
+      locks: false
+      fixes: false
+      stateWrites: false
+  live:
+    mode: live
+    expected:
+      pinsCurrent: true
+      executesRules: true
+      fetches: false
+      locks: false
+      fixes: false
+      stateWrites: false
+      commandSideEffectsPossible: true
+
+offline:
+  transientErrors:
+    - dns
+    - connect
+    - read
+    - http-408
+    - http-429
+    - http-5xx
+  prohibitedErrors:
+    - bad-signature
+    - bad-checksum
+    - malformed-manifest
+    - malformed-archive
+    - rollback-rejected
+    - generation-equivocation
+    - policy-denied
+    - http-401
+    - http-403
+    - http-404
+    - local-integrity
+  transientFresh:
+    current:
+      completed: true
+      authenticated: true
+      integrityValid: true
+    onlineContactAge: 23h
+    error: dns
+    expected:
+      useCurrent: true
+      executeRules: true
+      promotion: false
+      recordOffline: true
+  expired:
+    current:
+      completed: true
+      authenticated: true
+      integrityValid: true
+    onlineContactAge: 25h
+    error: connect
+    expected:
+      useCurrent: false
+      executeRules: false
+  securityFailure:
+    current:
+      completed: true
+      authenticated: true
+      integrityValid: true
+    onlineContactAge: 1h
+    error: bad-signature
+    expected:
+      useCurrent: false
+      executeRules: false
+
+rollback:
+  httpsExplicit:
+    currentGeneration: 42
+    highWaterGeneration: 42
+    requestedGeneration: 41
+    explicit: true
+    authentication: valid
+    expected:
+      selectGeneration: 41
+      highWaterGeneration: 42
+      auditRollback: true
+  httpsImplicit:
+    currentGeneration: 42
+    highWaterGeneration: 42
+    requestedGeneration: 41
+    explicit: false
+    expected:
+      reject: rollback
+  httpsEquivocation:
+    highWaterGeneration: 42
+    requestedGeneration: 42
+    previousManifestSha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    requestedManifestSha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    expected:
+      reject: equivocation
+  gitFastForward:
+    acceptedHead: '1111111111111111111111111111111111111111'
+    requestedHead: '2222222222222222222222222222222222222222'
+    ancestry: descendant
+    signature: allowed
+    expected:
+      accept: true
+  gitNonFastForward:
+    acceptedHead: '2222222222222222222222222222222222222222'
+    requestedHead: '1111111111111111111111111111111111111111'
+    ancestry: non-fast-forward
+    signature: allowed
+    explicitRollback: false
+    expected:
+      reject: rollback
+
+unsigned:
+  interactiveCheckOnly:
+    interactive: true
+    allowUnsigned: true
+    expected:
+      checks: true
+      fixes: false
+      promotion: false
+      cacheForReuse: false
+      offlineEligible: false
+      unattendedEligible: false
+      commandSideEffectsPossible: true

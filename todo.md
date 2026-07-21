@@ -20,7 +20,7 @@ Repository snapshot: current HEAD `1714389` differs from the reviewed baseline `
   - Document manifest authenticity, signer pinning, replay/rollback behavior, privilege limits, and offline behavior.
   - State explicitly that arbitrary fixes are not transactional and cannot be rolled back by Checksy.
 
-- [ ] Resolve and document the open design decisions.
+- [x] Resolve and document the open design decisions.
   - Default state directories and ownership for user and system scope.
   - Canonical source identity and migration from the legacy `.checksy-cache` layout.
   - Exact detached-signature location/encoding and allowed Git signer configuration.

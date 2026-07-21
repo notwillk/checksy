@@ -1,0 +1,3 @@
+rules:
+  - name: yaml default
+    check: /usr/bin/true

@@ -1,0 +1,6 @@
+schemaVersion: 1
+allowedRunAs:
+  - current
+allowedActions:
+  - check
+  - fix

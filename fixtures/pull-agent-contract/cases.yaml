@@ -1,0 +1,219 @@
+schemaVersion: 1
+status: contract-only
+cases:
+  - id: policy-user-current
+    fixture: policy/valid-user.yaml
+    expected: accept
+    milestone: P6
+    reason: user scope permits current with check and fix
+  - id: policy-system-current-root
+    fixture: policy/valid-system-root.yaml
+    expected: accept
+    milestone: P6
+    context:
+      scope: system
+      currentIdentity: root
+      acknowledgeCurrentAsRoot: true
+    reason: system scope explicitly acknowledges current and root
+  - id: policy-system-missing-identity
+    fixture: policy/invalid-system-no-identity.yaml
+    expected: reject
+    milestone: P6
+    context:
+      scope: system
+    reason: system scope has no implicit identity authorization
+  - id: enrollment-persist-insecure-http
+    fixture: policy/invalid-persisted-exceptions.case.yaml
+    selector: /cases/insecureHttp
+    expected: reject
+    milestone: P7
+    reason: enrollment cannot persist insecure HTTP
+  - id: enrollment-persist-unsigned
+    fixture: policy/invalid-persisted-exceptions.case.yaml
+    selector: /cases/unsigned
+    expected: reject
+    milestone: P7
+    reason: enrollment cannot persist unsigned execution
+  - id: enrollment-persist-rollback
+    fixture: policy/invalid-persisted-exceptions.case.yaml
+    selector: /cases/rollback
+    expected: reject
+    milestone: P7
+    reason: enrollment cannot persist rollback intent
+  - id: policy-wildcard-identity
+    fixture: policy/invalid-wildcard-identity.yaml
+    expected: reject
+    milestone: P6
+    reason: allowedRunAs accepts exact selectors only
+  - id: policy-wildcard-action
+    fixture: policy/invalid-wildcard-action.yaml
+    expected: reject
+    milestone: P6
+    reason: allowedActions accepts exact actions only
+  - id: local-default-in-root
+    fixture: local/default
+    expected: accept
+    milestone: P3
+    reason: one default config and an in-root pattern asset are unambiguous
+  - id: local-ambiguous-default
+    fixture: local/ambiguous
+    expected: reject
+    milestone: P3
+    reason: both default config names require explicit configPath
+  - id: local-parent-traversal
+    fixture: local/escape
+    expected: reject
+    milestone: P1
+    reason: recognized pattern resolution escapes the source root
+  - id: local-external-allowlisted
+    fixture: local/external
+    requires:
+      - local/external/allowed-external-roots.yaml.in
+      - local/external-assets/pass.sh
+    expected: accept
+    milestone: P1
+    context:
+      replaceToken: __EXTERNAL_ROOT__
+      replaceWith: canonical-absolute-path-of-local/external-assets
+    reason: protected local policy permits the canonical sibling root
+  - id: https-minisign-valid
+    fixture: authentication/https/manifest.json
+    requires:
+      - authentication/https/manifest.json.minisig
+      - authentication/https/minisign.pub
+    expected: accept
+    milestone: P4
+    reason: exact manifest bytes match the Minisign sidecar
+  - id: https-minisign-tampered
+    fixture: authentication/https/manifest.tampered.json
+    requires:
+      - authentication/https/manifest.json.minisig
+      - authentication/https/minisign.pub
+    expected: reject
+    milestone: P4
+    reason: changed generation invalidates the detached signature
+  - id: git-allowed-signers-exact
+    fixture: authentication/git/allowed_signers
+    expected: accept
+    milestone: P4
+    reason: v1 accepts one exact principal and SSH key
+  - id: git-allowed-signers-wildcard
+    fixture: authentication/git/allowed_signers-wildcard
+    expected: reject
+    milestone: P4
+    reason: wildcard principals are outside v1 policy
+  - id: git-allowed-signers-cert-authority
+    fixture: authentication/git/allowed_signers-cert-authority
+    expected: reject
+    milestone: P4
+    reason: cert-authority entries are outside v1 policy
+  - id: duration-general-valid
+    fixture: scenarios.yaml
+    selector: /durations/general/accepted
+    expected: accept
+    milestone: P2
+    context:
+      validationLayer: syntax-only
+    reason: tokens match the positive single-unit grammar before P0-3 bounds
+  - id: duration-general-invalid
+    fixture: scenarios.yaml
+    selector: /durations/general/rejected
+    expected: reject
+    milestone: P2
+    reason: invalid duration forms fail parsing
+  - id: duration-scheduler-valid
+    fixture: scenarios.yaml
+    selector: /durations/scheduler/accepted
+    expected: accept
+    milestone: P7
+    reason: scheduler accepts minute, hour, and day units
+  - id: duration-scheduler-invalid
+    fixture: scenarios.yaml
+    selector: /durations/scheduler/rejected
+    expected: reject
+    milestone: P7
+    reason: scheduler rejects millisecond and second units
+  - id: apply-compliant
+    fixture: scenarios.yaml
+    selector: /apply/compliant
+    expected: accept
+    milestone: P5
+    reason: passing final recheck promotes with exit 0
+  - id: apply-degraded-below-threshold
+    fixture: scenarios.yaml
+    selector: /apply/degradedBelowThreshold
+    expected: accept
+    milestone: P5
+    reason: lower severity failure degrades but permits promotion
+  - id: apply-threshold-failure
+    fixture: scenarios.yaml
+    selector: /apply/thresholdFailure
+    expected: reject
+    milestone: P5
+    reason: threshold failure blocks promotion with exit 3
+  - id: status-recorded
+    fixture: scenarios.yaml
+    selector: /status/recorded
+    expected: accept
+    milestone: P5
+    reason: default status reads recorded state only
+  - id: status-live
+    fixture: scenarios.yaml
+    selector: /status/live
+    expected: accept
+    milestone: P5
+    reason: live status checks pinned current without fixes or state writes
+  - id: offline-transient-fresh
+    fixture: scenarios.yaml
+    selector: /offline/transientFresh
+    expected: accept
+    milestone: P4
+    reason: transient failure inside 24 hours may use current
+  - id: offline-expired
+    fixture: scenarios.yaml
+    selector: /offline/expired
+    expected: reject
+    milestone: P4
+    reason: expired content fails before rule execution
+  - id: offline-security-failure
+    fixture: scenarios.yaml
+    selector: /offline/securityFailure
+    expected: reject
+    milestone: P4
+    reason: authentication and policy failures never fall back
+  - id: https-explicit-rollback
+    fixture: scenarios.yaml
+    selector: /rollback/httpsExplicit
+    expected: accept
+    milestone: P4
+    reason: authenticated one-run rollback may select older content
+  - id: https-implicit-downgrade
+    fixture: scenarios.yaml
+    selector: /rollback/httpsImplicit
+    expected: reject
+    milestone: P4
+    reason: ordinary downgrade cannot cross the high-water mark
+  - id: https-generation-equivocation
+    fixture: scenarios.yaml
+    selector: /rollback/httpsEquivocation
+    expected: reject
+    milestone: P4
+    reason: equal generation with a different digest is equivocation
+  - id: git-fast-forward
+    fixture: scenarios.yaml
+    selector: /rollback/gitFastForward
+    expected: accept
+    milestone: P4
+    reason: authenticated descendant advances branch ancestry
+  - id: git-non-fast-forward
+    fixture: scenarios.yaml
+    selector: /rollback/gitNonFastForward
+    expected: reject
+    milestone: P4
+    reason: ordinary non-fast-forward movement is rollback
+  - id: unsigned-interactive-check-only
+    fixture: scenarios.yaml
+    selector: /unsigned/interactiveCheckOnly
+    expected: accept
+    milestone: P4
+    reason: explicit unsigned input may check but never fix or persist

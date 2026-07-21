@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "generation": 42,
+  "revision": "pull-agent-contract-fixture-42",
+  "artifact": {
+    "url": "bundle.tar.gz",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "configPath": ".checksy.yaml"
+}

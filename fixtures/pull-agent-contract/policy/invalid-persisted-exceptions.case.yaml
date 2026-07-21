@@ -1,0 +1,12 @@
+schemaVersion: 1
+status: abstract-enrollment-contract
+cases:
+  insecureHttp:
+    persist:
+      allowInsecureHttp: true
+  unsigned:
+    persist:
+      allowUnsigned: true
+  rollback:
+    persist:
+      rollback: true

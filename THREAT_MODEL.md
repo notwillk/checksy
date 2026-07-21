@@ -5,6 +5,8 @@
 > current `check` and `install` commands do not yet implement many of these
 > controls and must not be treated as safe unattended remote execution. See
 > [Current implementation gaps](#current-implementation-gaps).
+> Normative policy defaults are recorded in
+> [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
 
 ## Purpose
 
@@ -92,9 +94,10 @@ The planned unattended `apply` path must satisfy all of these invariants:
 1. **Authenticate before execution eligibility.** Remote content may be parsed
    and validated only as untrusted staged input; it is not eligible for execution
    or promotion until its required authentication has succeeded. Validation never
-   substitutes for authentication. Explicit insecure or unsigned exceptions must
-   be locally authorized and auditable; their enrollment semantics remain a
-   separate policy decision.
+   substitutes for authentication. Explicit interactive insecure or unsigned
+   exceptions must be locally authorized and auditable; enrollment and
+   schedulers never persist them, as specified in
+   [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md#insecure-and-unsigned-exceptions).
 2. **Validate the whole definition.** Strictly validate configuration structure,
    source locators, paths, hashes, generations, timeouts, identities, nested
    references, and referenced assets before executing a staged definition.
@@ -152,9 +155,10 @@ within the configured staleness window. Offline operation:
 - Leaves the selected definition unchanged when policy, expiry, or local
   integrity checks fail.
 
-The exact network and command timeout values, offline staleness duration,
-rollback flag syntax, state-directory locations and ownership, and retention
-limits are intentionally deferred to the next P0 design-contract task.
+State paths and ownership, the 24-hour default offline window, rollback
+semantics, duration syntax, and retention limits are fixed in
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md). Exact numeric network and command
+timeout limits remain part of the next P0 public-contract task.
 
 ## Privilege and mutation limits
 
