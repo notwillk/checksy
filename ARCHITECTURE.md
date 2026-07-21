@@ -3,17 +3,24 @@
 ## System Overview
 checksy is a layered CLI application with clear separation between command handling, configuration management, and execution. The architecture prioritizes:
 - **Determinism**: Configs loaded and expanded before execution begins
-- **Working directory context**: Commands currently run in the top-level config's directory; origin-aware execution for nested definitions is planned
+- **Working directory context**: CLI checks, fixes, and pattern scripts run from the directory of the config that defined them
 - **Composability**: Remote configs allow modular, reusable check libraries
 
 ## Security Boundary
 
 Checksy definitions contain arbitrary shell commands and are not process
-sandboxes. The working-directory behavior described above provides path context,
-not containment. Current `check` and `install` behavior does not yet implement the
-authentication, atomic state, timeout, and privilege controls required for safe
-unattended remote execution. [THREAT_MODEL.md](THREAT_MODEL.md) is the normative
-target contract for security invariants and current gaps;
+sandboxes. Origin-aware working directories provide path context, not process
+containment. The current CLI rejects fetched Git config and pattern paths that
+traverse or follow symlinks outside their canonical checkout, but the legacy
+cache remains mutable and unauthenticated. Mutation paths reject symlinked
+components found below the operator-selected cache root during preflight, but
+the current path-based checks remain raceable until locking and descriptor-based
+mutation are implemented. Shell commands retain ambient filesystem access.
+Current `check` and `install` behavior does not yet
+implement the authentication, atomic state, timeout, and privilege controls
+required for safe unattended remote execution.
+[THREAT_MODEL.md](THREAT_MODEL.md) is the normative target contract for security
+invariants and current gaps;
 [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) is the normative policy contract; and
 [PULL_AGENT_CONTRACT.md](PULL_AGENT_CONTRACT.md) freezes the public formats, CLI,
 state projection, and resource bounds.
@@ -34,20 +41,45 @@ state projection, and resource bounds.
   - `schema`: Generate and output the deterministic Draft 7 configuration schema
   - `version`: Output version string
 - **Fix mode**: Implements fix/retry logic for failed checks
+- **Resolved execution**: Uses the internal origin-aware definition path while
+  preserving the public flat Rust API
+- **Nested acquisition**: `install` and `check --fix` repeatedly discover Git
+  dependencies after newly fetched parents become available
 - **Global flags**: `--config`, `--stdin-config` parsing
 
 ### config.rs (Configuration Layer)
 - **Path resolution**: Auto-detect `.checksy.yaml` or explicit path
 - **YAML parsing**: Deserialize with serde_yaml
-- **Remote expansion**: Recursive config inclusion (file & git)
-- **Circular detection**: HashSet<PathBuf> tracks visited configs
+- **Remote expansion**: Produces origin-aware recursive file and Git inclusions
+- **Source boundaries**: Canonicalizes local origins while preserving legacy
+  external local references; fetched Git configs cannot escape their checkout
+- **Circular detection**: Structured source identity, immutable Git revision,
+  and canonical defining path distinguish active cycles from completed includes
 - **Default application**: Applies inherited severity defaults
 - **Diagnostics**: Successful CLI loads report deprecated non-lowercase severity
   spellings without changing the public library-loading API
 - **Git URL parsing**: `parse_git_remote()` handles `git+<url>#<ref>:<path>` format
+- **Cache ownership**: Only the selected root config's `cachePath` establishes
+  the legacy cache root; nested definitions cannot redirect it
+
+### resolved.rs (Resolved Definition Model)
+- **Source identity**: Distinguishes canonical local roots, exact Git locator
+  strings/checkouts, and stdin execution without creating persistent source IDs;
+  complete provider normalization remains future source-provider work
+- **Origin metadata**: Carries defining config path, base directory, optional
+  fetched bundle root, source-relative path, and Git revision
+- **Execution plan**: Keeps resolved preconditions, rules, and per-config pattern
+  groups with their origins
+- **Recursion key**: Combines structured source identity, cached revision, and
+  canonical defining config path
+- **Compatibility projection**: Projects back to the public flat `Config` for
+  `load()`; this projection retains only the root pattern group because the
+  public type cannot preserve or execute nested groups with their origins
 
 ### cache.rs (Cache Management)
 - **Directory structure**: Manages `<cache-path>/git/<encoded-repo>/<ref>/`
+- **Legacy encoding**: Repository/ref directory names are not persistent,
+  collision-resistant source identities; complete normalization is deferred
 - **URL encoding**: Sanitizes repo URLs for filesystem (`:/?` → `_`)
 - **Cache queries**: `is_cached()`, `get_config_path()`
 - **Pruning**: Removes unused cache entries based on used set
@@ -56,13 +88,18 @@ state projection, and resource bounds.
 - **Shallow clones**: `git clone --depth 1 --branch <ref>`
 - **External dependency**: Requires `git` CLI in PATH
 - **Error handling**: Captures stderr from failed clones
-- **Network required**: All operations need network access
+- **Transport**: Clone/ref resolution may use network or local Git transports;
+  cached HEAD lookup is local
 
 ### check.rs (Execution Engine)
 - **Rule runner**: Executes shell commands via `std::process::Command`
 - **Result collection**: `RuleResult` contains stdout, stderr, exit status
 - **Filtering**: `filter_rules()`, `filter_preconditions()` by severity
 - **Pattern expansion**: Glob matching for script files (`tests/*.sh`)
+- **Origin-aware runner**: Runs resolved checks/fixes in their defining config's
+  directory and pattern scripts from their owning pattern group
+- **Preflight**: Expands every resolved pattern group before commands run and
+  rejects fetched matches outside the bundle root
 - **Reporting**: `Report` aggregates results, calculates failures
 
 ### schema.rs (Data Definitions)
@@ -89,15 +126,15 @@ main.rs
   → cli::run()
     → run_check() [cli.rs]
       → resolve_path() [config.rs]      # Find config file
-      → load() [config.rs]              # Parse & expand
-        → load_with_context()           # Recursive loading
-          → expand_remotes()            # Replace remote rules
-            → resolve_remote_path()     # File or git cache path
-      → Options { config, workdir, min_severity, fail_severity }
-      → diagnose() [check.rs]          # Execute checks
-        → run_preconditions()           # Filter & run
-        → run rules                     # Filter & run
-        → expand_rule_files()           # Glob patterns
+      → load_resolved_with_*() [config.rs]
+        → DefinitionResolver            # Recursive file/Git resolution
+          → ResolvedDefinition          # Rules and pattern groups retain origins
+      → ResolvedOptions
+      → diagnose_resolved() [check.rs]
+        → expand_resolved_rule_files()  # Preflight all origin-scoped patterns
+        → run resolved preconditions    # Defining-config working directory
+        → run resolved rules/fixes      # Defining-config working directory
+        → run resolved pattern scripts  # Defining-config working directory
       → print_report_results() [cli.rs] # Print ✓/⚠/✗
       → summarize_report()              # Exit code
 ```
@@ -105,11 +142,10 @@ main.rs
 ### 2. Install Command Flow
 ```
 run_install() [cli.rs]
-  → load_without_remote_expansion()    # Parse only, don't expand
-  → collect_git_remotes_recursive()    # Walk config tree
-    → parse_git_remote()               # Identify git URLs
-  → GitCache::shallow_clone() [git.rs] # Clone each unique (repo, ref)
-    → Command::new("git")...           # Execute git CLI
+  → load_resolved_for_install(RefreshOrClone)
+  → refresh discovered Git dependencies
+  → repeat resolution                  # Newly cached parents reveal nested Git
+  → GitCache::{get_local_sha,get_remote_sha,shallow_clone}()
   → (optional) CacheManager::prune()    # Remove unused
 ```
 
@@ -130,9 +166,11 @@ run_install() [cli.rs]
 
 ### File System Interactions
 - **Config discovery**: Looks for `.checksy.yaml`, `.checksy.yml` in CWD
-- **Cache directory**: Creates `<cache-path>/git/` structure
-- **Work directory**: All shell commands run in config file's directory
-- **Glob expansion**: Expands patterns relative to config directory
+- **Cache directory**: Creates `<root-config-cache-path>/git/`; nested
+  definitions cannot choose another cache anchor
+- **Work directory**: Resolved CLI commands use the defining config's directory
+- **Glob expansion**: Expands each config's patterns relative to that config;
+  fetched matches are canonicalized and confined to the checkout
 
 ## Entry Points
 
@@ -146,15 +184,22 @@ run_install() [cli.rs]
 - **Public exports**:
   - `run()` - CLI entry
   - `load()` - Config loading
-  - `diagnose()` - Check execution
+  - `diagnose()` - Flat compatibility check execution using one caller-supplied
+    work directory
   - `CacheManager`, `GitCache` - Git caching
+
+The resolved types and `diagnose_resolved()` remain crate-private. CLI behavior
+is origin-aware; external Rust callers using `load()` plus `diagnose(Options)`
+retain the earlier flat contract, including omission of nested remote pattern
+groups from the compatibility projection.
 
 ## Module Dependencies
 
 ```
 cli.rs
-  ├── config.rs (load, resolve_path, parse_git_remote)
-  ├── check.rs (diagnose, Options, Report)
+  ├── config.rs (resolved loading, resolve_path, parse_git_remote)
+  ├── resolved.rs (ResolvedLoad and Git dependency descriptors)
+  ├── check.rs (ResolvedOptions, resolved/compatibility execution, Report)
   ├── cache.rs (CacheManager)
   ├── git.rs (GitCache)
   ├── schema.rs (Config, Rule, Severity)
@@ -162,10 +207,12 @@ cli.rs
 
 config.rs
   ├── cache.rs (CacheManager, GitRemote)
+  ├── git.rs (cached HEAD revision lookup)
+  ├── resolved.rs (origins, identities, execution plan)
   ├── schema.rs (Config, Severity)
-  └── check.rs (uncertain: may have circularity, check carefully)
 
 check.rs
+  ├── resolved.rs (resolved rules and pattern groups)
   └── schema.rs (Config, Rule, Severity)
 
 cache.rs
@@ -176,6 +223,11 @@ git.rs
 
 schema.rs
   └── serde, serde_yaml, schemars, glob
+
+resolved.rs
+  ├── cache.rs (GitRemote dependency descriptors)
+  ├── config.rs (diagnostics carried by ResolvedLoad)
+  └── schema.rs (Config, Rule, Severity)
 
 lib.rs
   └── (exports from all modules)
@@ -189,7 +241,12 @@ main.rs
 ### Why Recursive Config Expansion at Load Time?
 - Ensures complete config known before execution
 - Allows severity filtering without re-parsing
-- Simplifies circular reference detection
+- Preserves each definition's origin while detecting canonical active cycles
+
+### Why One Root-Anchored Legacy Cache?
+- Prevents a fetched or nested definition from selecting an acquisition path
+- Gives `install`, `check`, and `check --fix` one consistent location for nested Git
+- Preserves the selected root config's existing `cachePath` behavior
 
 ### Why Separate Install Command?
 - Explicit network operations (user consent)

@@ -79,8 +79,8 @@ Checksy does not attempt to:
 
 | Boundary | Trust decision | Target contract | Current status |
 | --- | --- | --- | --- |
-| Local file or directory | Explicit operator selection establishes trust in the content. | Canonicalize and strictly validate the complete definition. The default `current` identity is the invoker; any future identity transition remains constrained by local policy. | Legacy YAML now receives strict typed and rule-shape validation, but complete origin-aware asset confinement and an execution-identity policy are not implemented. |
-| Git source | TLS, repository ownership, and a ref name are not publisher authentication. | Resolve an immutable commit. Unattended moving refs require an allowed signed commit/tag or selection by a separately signed manifest. Compare annotated tags by their peeled commit. | Git sources are shallow-cloned by ref without allowed-signer verification. |
+| Local file or directory | Explicit operator selection establishes trust in the content. | Canonicalize and strictly validate the complete definition. The default `current` identity is the invoker; any future identity transition remains constrained by local policy. | Legacy YAML receives strict typed validation and the CLI retains per-definition origins. Local file remotes and patterns preserve trusted-workspace external-path and symlink behavior; protected external-root policy is not wired, and there is no execution-identity policy. |
+| Git source | TLS, repository ownership, and a ref name are not publisher authentication. | Resolve an immutable commit. Unattended moving refs require an allowed signed commit/tag or selection by a separately signed manifest. Compare annotated tags by their peeled commit. | Git sources are shallow-cloned by ref without allowed-signer verification. The CLI now confines fetched config files and concrete pattern matches to the canonical cached checkout and retains their origins, but this does not authenticate the checkout. |
 | HTTPS source | The exact manifest bytes must be authenticated independently of the server. | Verify a detached signature with a locally provisioned pinned key, then verify the artifact SHA-256 and safely extract it inside the bundle root. | HTTPS manifests and artifact authentication are not implemented. |
 | State directory | Local ownership and complete verification metadata establish eligibility. | Lock mutations, stage on the same filesystem, and atomically select only completed generations. Protect and retain current and previous selections. | There is no generation state store, advisory lock, or current/previous selection. |
 | Rule execution | Crossing this boundary executes arbitrary code. | Execute only an authenticated, strictly validated, locally authorized definition under its selected identity with bounded runtime. | Commands run through Bash with the invoking process's ambient identity and environment and without timeouts. |
@@ -88,6 +88,17 @@ Checksy does not attempt to:
 Transport security protects a connection; it does not establish that a specific
 publisher authorized a definition. A remote source must never establish its own
 root of trust.
+
+The current CLI's resolved-definition model prevents a nested definition from
+changing the selected root config's legacy cache location, executes each rule
+from its defining config directory, and checks structured fetched config and
+pattern paths before execution. Clone, refresh, and prune paths also reject
+symlink redirects found below the operator-selected cache root during preflight.
+These path-based controls remain raceable without a mutation lock and
+descriptor-relative no-follow operations. They reduce wrong-origin execution
+and path escape through structured fields, but do not make the mutable cache
+verified, prevent a local actor from changing it, or constrain paths deliberately
+accessed by arbitrary shell code.
 
 ## Target security invariants
 
@@ -204,8 +215,8 @@ At the current repository state:
 | Control area | Current gap | Threats left unmitigated |
 | --- | --- | --- |
 | Remote source contract | There is no `apply`, `status`, HTTPS manifest, signer authentication, enrollment, rollback control, or offline policy implementation. | Compromised transport/hosting, signing-key trust, artifact substitution, and unaudited rollback cannot be handled by the target workflow. |
-| Git acquisition and freshness | Cache validity is based on the presence of `.git`; moving refs are not checked against an allowed signer or ordered freshness policy. | A ref can move to unauthenticated or replayed content, and Git signatures do not currently establish an allowed publisher. |
-| Validation and bundle confinement | Runtime YAML rejects unknown fields, invalid scalar types, malformed rule forms, NUL bytes in constrained fields, and invalid patterns. Its generated Draft 7 schema has fixture-tested structural parity; duplicate YAML keys remain parser-owned and the complete Rust glob grammar remains runtime-owned. Fetched paths are not confined to a verified bundle, and remote definitions lose some origin information during expansion. | Schema-only consumers cannot detect the two documented layered cases. Path traversal, archive/link escape, and incorrect asset origin are not covered by strict end-to-end validation. |
+| Git acquisition and freshness | Cache validity is based on the presence of `.git`; moving refs are not checked against an allowed signer or ordered freshness policy, and the legacy ref-directory encoding is not collision-resistant. | A ref can move to unauthenticated or replayed content, distinct ref spellings can alias one legacy slot, and Git signatures do not currently establish an allowed publisher. |
+| Validation and bundle confinement | Runtime YAML rejects unknown fields, invalid scalar types, malformed rule forms, NUL bytes in constrained fields, and invalid patterns. Its generated Draft 7 schema has fixture-tested structural parity; duplicate YAML keys remain parser-owned and the complete Rust glob grammar remains runtime-owned. The CLI retains origins for inline rules and per-config patterns, preflights patterns before commands, and confines fetched Git config/pattern targets to the canonical checkout. The public flat Rust loading/execution compatibility projection omits nested remote pattern groups because it cannot preserve their origins; local definitions retain legacy external-path behavior; HTTPS archive validation and protected local external-root policy are not implemented. | Schema-only consumers cannot detect the two documented layered cases. A mutable or concurrently changed legacy checkout can invalidate path assumptions, trusted local definitions can select external content, archive attacks remain unhandled, and arbitrary shell commands can access paths outside every structured source boundary. |
 | State integrity and concurrency | There is no protected generation or durable status/audit metadata, advisory lock, or atomic current/previous selection. | Local state tampering, concurrent mutation, and interrupted updates can leave no trustworthy selection history. |
 | Process and resource bounds | Git, checks, and fixes use blocking subprocesses without comprehensive timeouts or process-group termination; Git prompting is not consistently disabled. | Hung descendants, credential prompts, and command resource exhaustion are not bounded by Checksy. |
 | Privilege policy | Commands execute through Bash with the invoking process's ambient identity and environment; there is no `runAs` or local privilege-ceiling policy. | A trusted or compromised definition receives all authority of the invoking identity, subject only to host policy. |

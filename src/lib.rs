@@ -3,6 +3,7 @@ pub mod check;
 pub mod cli;
 pub mod config;
 pub mod git;
+mod resolved;
 pub mod schema;
 pub mod version;
 

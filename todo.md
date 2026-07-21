@@ -54,7 +54,7 @@ Exit gate: the trust model, state model, manifest/signature format, CLI behavior
   - Add tests proving that runtime validation and emitted schema accept and reject the same fixtures.
   - Remove the hand-maintained schema once parity is established.
 
-- [ ] Introduce an internal resolved-definition model.
+- [x] Introduce an internal resolved-definition model.
   - Carry the rule, canonical source identity, defining config path, base directory, and fetched bundle root.
   - Execute inline checks, fixes, patterns, Brewfiles, templates, and other assets relative to the defining config.
   - Merge remote `patterns` as well as preconditions and rules while preserving order/default semantics.

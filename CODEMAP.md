@@ -1,297 +1,188 @@
 # checksy Code Map
 
-## Directory Structure
+## Repository Structure
 
-```
+```text
 /workspaces/checksy/
-├── src/                    # Rust source code
-│   ├── Cargo.toml          # Package manifest
-│   ├── Cargo.lock          # Dependency lock (uncertain if present)
-│   ├── lib.rs              # Library exports
-│   ├── main.rs             # Binary entry point
-│   ├── cli.rs              # ~950 lines: Command parsing & orchestration
-│   ├── config.rs           # ~575 lines: Config loading & remote expansion
-│   ├── cache.rs            # ~270 lines: Cache directory management
-│   ├── git.rs              # ~120 lines: Git shallow clone operations
-│   ├── check.rs            # ~450 lines: Rule execution & reporting
-│   ├── schema.rs           # ~160 lines: Data structures & serialization
-│   └── version.rs          # ~1 line: VERSION constant
-│
-├── fixtures/               # Test configurations (YAML)
-│   ├── happy-path/         # Basic severity level tests
-│   ├── inline-check/       # Simple inline rule tests
-│   ├── preconditions/      # Precondition execution tests
-│   ├── fix-behavior/       # Auto-fix functionality tests
-│   ├── rule-files/         # Pattern/glob matching tests
-│   ├── default-severity/   # Default severity behavior
-│   ├── check-logs/         # Log output testing
-│   ├── hint-test/          # Hint message testing
-│   └── remote-config/      # Remote inclusion tests
-│       ├── git/            # Git-based remote fixture
-│       ├── circular/       # Circular reference handling
-│       ├── nested/         # Nested remote expansion
-│       └── invalid/        # Validation error tests
-│
-├── scripts/                # Installation scripts
-│   ├── install.sh          # Install checksy binary
-│   └── uninstall.sh        # Remove checksy binary
-│
-├── .github/workflows/      # CI/CD
-│   └── release.yml         # Release automation
-│
-├── justfile                # Just command runner recipes
-├── README.md               # User documentation
-├── LICENSE                 # MIT license
-├── rust-toolchain.toml     # Rust version specification
-└── CODEMAP.md              # This file
+├── src/                         # Rust crate and binary
+│   ├── main.rs                  # Process entry point
+│   ├── cli.rs                   # Command parsing and orchestration
+│   ├── config.rs                # Strict loading and recursive resolution
+│   ├── resolved.rs              # Private origin-aware execution model
+│   ├── check.rs                 # Compatibility and resolved execution
+│   ├── cache.rs                 # Legacy Git cache layout
+│   ├── git.rs                   # Git CLI operations
+│   ├── schema.rs                # Config types and generated Draft 7 schema
+│   ├── version.rs               # Version constant
+│   ├── lib.rs                   # Modules and public compatibility exports
+│   ├── Cargo.toml
+│   └── Cargo.lock
+├── fixtures/
+│   ├── strict-config/           # Runtime/schema parity corpus
+│   ├── pull-agent-contract/     # Static future-agent contract corpus
+│   ├── remote-config/           # File/Git inclusion examples
+│   └── rule-files/              # Pattern-script examples
+├── schemas/pull-agent/          # Public 2020-12 pull-agent schemas
+├── scripts/                     # Installation scripts
+├── README.md
+├── ARCHITECTURE.md
+├── THREAT_MODEL.md
+├── DESIGN_DECISIONS.md
+├── PULL_AGENT_CONTRACT.md
+└── todo.md
 ```
 
-## Source Files Deep Dive
+## Runtime Flow
 
-### lib.rs (15 lines)
-**Role**: Module declaration and public API exports
-**Key Exports**:
-- `pub mod cache, check, cli, config, git, schema, version`
-- `pub use` re-exports for convenient access
+### `check` and deprecated `diagnose`
 
-### main.rs (25 lines)
-**Role**: Thin binary wrapper
-**Key Items**:
-- `run()` function: Delegates to `cli::run()`
-- `main()`: Stdio setup, exit code propagation
-- Test: `test_run_help_command()`
-
-### cli.rs (~950 lines)
-**Role**: Primary orchestrator - command parsing and dispatch
-**Key Functions**:
-- `run()`: Entry point, help handling, command dispatch
-- `run_check()`: Full check workflow
-- `run_install()`: Git remote caching with spinner UI
-- `run_init()`: Config file creation
-- `run_schema()`: JSON schema output
-- `check_with_fixes()`: Fix mode implementation
-
-**Key Types**:
-- `GlobalFlags`: `--config`, `--stdin-config`
-- Internal parsing functions
-
-**Sections**:
-- Lines 1-60: Imports and main dispatch
-- Lines 61-115: Global flag parsing
-- Lines 200-335: `run_check()` implementation
-- Lines 335-560: `run_install()` implementation
-- Lines 560-750: Fix mode logic
-- Lines 750-950: Helper functions, tests
-
-### config.rs (~575 lines)
-**Role**: Configuration loading and remote expansion
-**Key Functions**:
-- `resolve_path()`: Config file discovery
-- `load()`: Main entry for config loading
-- `load_with_context()`: Recursive loader with circular detection
-- `expand_remotes()`: Remote rule expansion
-- `parse_git_remote()`: Git URL parser
-- `resolve_remote_path()`: Git cache or file path resolution
-
-**Key Types**:
-- `GitRemote { repo, ref_, path }`: Parsed git URL
-
-**Sections**:
-- Lines 1-40: Path resolution
-- Lines 40-115: Contextual loading with circular detection
-- Lines 115-190: Remote expansion
-- Lines 190-245: Git URL parsing
-- Lines 245-270: Path resolution for git remotes
-- Lines 270-575: Tests
-
-### cache.rs (~270 lines)
-**Role**: Cache directory structure management
-**Key Structs/Methods**:
-- `CacheManager { root }`
-  - `new()`: Create with config dir and cache path
-  - `encode_repo_name()`: URL-safe encoding
-  - `ref_cache_path()`: Path to ref directory
-  - `is_cached()`: Check if clone exists
-  - `get_config_path()`: Path to config within cache
-  - `prune()`: Remove unused entries
-
-**Sections**:
-- Lines 1-20: Constants and struct
-- Lines 22-80: Core methods
-- Lines 80-150: Pruning and cleanup
-- Lines 150-270: Tests
-
-### git.rs (~120 lines)
-**Role**: Git operations via CLI
-**Key Structs/Methods**:
-- `GitCache`: Stateless struct
-  - `shallow_clone()`: `git clone --depth 1 --branch`
-  - `ensure_cached()`: Idempotent cache check
-
-**External Dependency**: Requires `git` CLI in PATH
-
-**Sections**:
-- Lines 1-80: Clone implementation
-- Lines 80-120: Tests (network-dependent, ignored)
-
-### check.rs (~450 lines)
-**Role**: Rule execution and result collection
-**Key Types**:
-- `Options { config, workdir, min_severity, fail_severity }`: Execution context
-- `Report { rules, fail_severity }`: Aggregated results
-- `RuleResult { rule, err, stdout, stderr }`: Single check result
-
-**Key Functions**:
-- `diagnose()`: Main execution entry
-- `run_rule()`: Execute single rule via bash
-- `run_rule_file()`: Execute script file
-- `expand_rule_files()`: Glob pattern expansion
-- `filter_rules()`, `filter_preconditions()`: Severity filtering
-- `min_severity()`: Severity comparison utility
-
-**Sections**:
-- Lines 1-90: Types and implementations
-- Lines 90-200: `diagnose()` and execution flow
-- Lines 200-300: Rule file pattern expansion
-- Lines 300-450: Tests
-
-### schema.rs (~160 lines)
-**Role**: Data definitions with serde
-**Key Types**:
-- `Severity`: Enum with custom serialization (Error/Warning/Info/Debug)
-- `Rule`: Struct with optional fields, validation
-- `Config`: Top-level config struct
-
-**Key Methods**:
-- `Severity::parse()`: String parsing
-- `Rule::is_remote()`: Check if remote rule
-- `Rule::validate_remote_only()`: Enforce remote-only constraint
-
-**Sections**:
-- Lines 1-70: Severity enum
-- Lines 70-130: Rule struct and validation
-- Lines 130-160: Config struct
-
-### version.rs (1 line)
-**Role**: Single constant
-**Content**: `pub const VERSION: &str = "0.7.0";`
-
-## Fixture Structure
-
-### Organization
-Fixtures organized by feature/scenario:
-- Each directory contains `.checksy.yaml` configs
-- May include shell scripts (`.sh`) for rule files
-- `README.md` explains fixture purpose
-
-### Key Fixtures
-
-**happy-path/** (Basic functionality)
-- Tests all severity levels (debug, info, warn, error)
-- Contains `pass.sh` and `fail.sh` helper scripts
-
-**remote-config/** (Remote inclusion)
-- `.checksy.yaml`: Main config with file remote
-- `shared.yaml`: Included config
-- `inherit-parent.yaml`: Tests default inheritance
-- `circular/`: A→B→C→A circular reference test
-- `nested/`: A→B→C linear chain test
-- `invalid/`: Validation error tests
-- `git/`: Git-based remote with real clone
-
-**Pattern fixtures**
-- `rule-files/`: Tests glob pattern matching
-- `preconditions/`: Tests preconditions execution order
-
-## Test Locations
-
-### Unit Tests
-Inline at bottom of each source file:
-- `config.rs`: ~300 lines of tests (config loading, git parsing, remotes)
-- `cache.rs`: ~120 lines of tests (encoding, paths, pruning)
-- `cli.rs`: ~100 lines of tests (severity parsing, rule names)
-- `check.rs`: ~150 lines of tests (filtering, results, severity)
-
-### Integration Tests
-- `main.rs`: Single test for help command
-- `fixtures/`: Real config scenarios tested manually or via CI
-
-## Dependency Map
-
-### Data Flow Direction
-```
-Config YAML
-  ↓ (config.rs parse)
-Config struct
-  ↓ (remote expansion)
-Expanded Config
-  ↓ (Options creation)
-Options
-  ↓ (diagnose execution)
-Report
-  ↓ (CLI output)
-Exit code + stdout/stderr
-```
-
-### Module Import Graph
-```
+```text
 main.rs
-  └── cli.rs (run)
-
-cli.rs
-  ├── cache.rs
-  ├── check.rs
-  ├── config.rs
-  ├── git.rs
-  ├── schema.rs
-  └── version.rs
-
-config.rs
-  ├── cache.rs
-  └── schema.rs
-
-cache.rs
-  └── (std only)
-
-git.rs
-  ├── cache.rs
-  └── (std only)
-
-check.rs
-  └── schema.rs
-
-schema.rs
-  └── (serde only)
-
-lib.rs
-  └── (all modules)
+  → cli::run
+  → run_check
+  → config::load_resolved_with_*
+      → strict Config decode
+      → DefinitionResolver
+          → local/Git remote expansion
+          → source identity and cycle tracking
+          → ResolvedDefinition with per-item origins
+  → check::diagnose_resolved or CLI fix/recheck
+      → preflight every pattern group
+      → run preconditions from defining config directories
+      → run checks/fixes from defining config directories
+      → run pattern scripts from defining config directories
+  → Report and CLI exit status
 ```
 
-## Entry Points for Modifications
+The selected root config establishes the local source identity and the one
+legacy Git cache root. Nested configs may define `cachePath`, but those values do
+not redirect acquisition. Local definitions retain legacy external-path
+behavior. Fetched Git config files and concrete pattern matches are canonicalized
+and must remain inside their checkout. These fetched path boundaries do not
+sandbox shell commands.
 
-### Add Config Field
-1. `schema.rs`: Add to `Config` struct
-2. `config.rs`: Use in loading if needed
-3. `cli.rs`: Update JSON schema in `run_schema()`
+### `install`
 
-### Add Command
-1. `cli.rs`: Add to `run()` match
-2. `cli.rs`: Implement `run_<command>()`
-3. `cli.rs`: Update `print_usage()`
+```text
+cli::run_install
+  → resolve in RefreshOrClone mode
+  → refresh each newly discovered Git dependency
+  → resolve again to discover remotes inside fetched parents
+  → repeat until the dependency graph is complete
+  → optionally prune unused entries from the root-anchored cache
+```
 
-### Add Rule Behavior
-1. `schema.rs`: Add to `Rule` struct (if data)
-2. `check.rs`: Modify `run_rule()` (if execution)
-3. `cli.rs`: Update reporting (if output)
+The legacy updater still compares refs through Git, removes a changed checkout,
+and shallow-clones its replacement. Authentication, locking, atomic replacement,
+collision-resistant provider identities, and last-known-good state belong to
+later roadmap work.
 
-### Change Git Caching
-1. `git.rs`: Modify clone command
-2. `cache.rs`: Update path structure
-3. `config.rs`: Update path resolution
+## Source Responsibilities
 
-## Uncertain Areas
+### `cli.rs`
 
-1. **Exact dependency versions**: Check `Cargo.toml` for precise versions
-2. **CI/CD details**: `.github/workflows/release.yml` specifics not examined
-3. **Cross-compilation**: `justfile` recipes for cross-comp not detailed
-4. **Windows support**: Uncertain if fully tested (paths use `/` separator)
+- Parses legacy global flags and dispatches `check`, `diagnose`, `install`,
+  `init`, `schema`, and `version`.
+- Uses the resolved-definition path for CLI checking and fix/recheck behavior.
+- Iteratively discovers nested Git dependencies for `install` and missing-cache
+  repair during `check --fix`.
+- Prints configuration diagnostics, rule outcomes, summaries, and the generated
+  schema.
+
+### `config.rs`
+
+- Discovers and strictly decodes YAML configurations.
+- Applies inherited check/fail severities and rule defaults.
+- Recursively resolves local files and cached Git locators into a
+  `ResolvedDefinition`.
+- Tracks active and completed definitions by structured identity, revision, and
+  canonical defining path: active recursion is an error; a completed include is
+  deduplicated.
+- Retains each rule and pattern group's defining origin.
+- Canonicalizes local file remotes while preserving their legacy ability to
+  resolve externally; fetched config paths must remain inside their checkout.
+- Validates canonical repository-relative Git entry config paths.
+- Preserves the public `load() -> Config` API through a flat compatibility
+  projection that retains only the selected root pattern group.
+
+### `resolved.rs`
+
+- Defines private `SourceIdentity` variants for local, Git, and stdin sources.
+- Uses canonical filesystem locations but exact legacy Git endpoint/ref strings;
+  complete provider normalization remains a later source-provider milestone.
+- Defines `DefinitionOrigin`, including defining path, base directory,
+  source-relative config path, optional fetched bundle root, and revision.
+- Defines `DefinitionKey` for active-cycle and completed-include tracking.
+- Defines origin-bearing rules, pattern groups, complete definitions, resolver
+  modes, and Git dependency descriptors.
+- Does not create persistent 64-character source IDs; that belongs to the future
+  state/source-provider layer.
+
+### `check.rs`
+
+- Retains the public flat `Options`/`diagnose` execution API.
+- Provides crate-private resolved filtering and execution for the CLI.
+- Runs inline checks and fixes with the defining config directory as `cwd`.
+- Expands each pattern group independently, so negations remain origin-scoped.
+- Preflights all resolved patterns before executing commands and rejects fetched
+  traversal or symlink escapes.
+- Aggregates `RuleResult` values into a `Report` and applies severity thresholds.
+
+### `cache.rs` and `git.rs`
+
+- `CacheManager` maps repository/ref pairs into the legacy
+  `<cache>/git/<encoded-repository>/<ref>/` layout and supports pruning.
+- The historical directory encoding is shared consistently by lookup and prune
+  but is not collision-resistant; it is not a persistent source identity.
+- `CacheManager::from_root` preserves the root-selected cache anchor while
+  callers process nested dependencies.
+- `GitCache` invokes the Git CLI for shallow clones, local HEAD lookup, and
+  remote-ref lookup.
+- A present `.git` directory is still only a legacy cache-presence check, not an
+  integrity or authentication proof.
+
+### `schema.rs`
+
+- Owns strict `Config`, `Rule`, and `Severity` deserialization.
+- Generates the deterministic Draft 7 config schema from the Rust model.
+- Keeps duplicate YAML keys at the parser layer and full glob grammar at the
+  runtime layer; the fixture corpus records those narrow parity exceptions.
+
+### `lib.rs` and `main.rs`
+
+- `main.rs` connects process stdio and exit status to `cli::run`.
+- `lib.rs` keeps the existing flat configuration/check APIs public.
+- The resolved-definition module and origin-aware executor are deliberately
+  crate-private; external Rust callers using `load()` plus `diagnose(Options)`
+  keep the legacy single-workdir behavior.
+
+## Test and Fixture Map
+
+- `schema.rs` and `config.rs`: generated-schema validity, strict fixture parity,
+  typed loading, diagnostics, defaults, remote expansion, identities, cycles,
+  nested Git discovery, and config confinement.
+- `check.rs`: severity behavior, compatibility execution, origin-relative rules
+  and patterns, pattern-only configs, and fetched pattern confinement.
+- `cli.rs`: dispatch, schema output, diagnostics, resolved fix behavior, and
+  install orchestration helpers.
+- `cache.rs` and `git.rs`: cache paths/pruning and Git command helpers; network
+  tests remain ignored by default.
+- `fixtures/strict-config/`: indexed structural, YAML-parser, and runtime-only
+  cases.
+- `fixtures/remote-config/` and `fixtures/rule-files/`: human-readable legacy
+  examples. The dedicated origin regression bundle remains a separate roadmap
+  item.
+
+## Change Routing
+
+- Configuration syntax or validation: update `schema.rs`, generated-schema tests,
+  and `fixtures/strict-config/`.
+- Remote resolution, origins, or cycle behavior: update `config.rs` and the
+  private types in `resolved.rs`.
+- Check/fix/pattern execution: update `check.rs` and the CLI fix path.
+- Git cache discovery or refresh: update `cli.rs`, `cache.rs`, and `git.rs`.
+- New command: update dispatch, parser/help text, exit behavior, and CLI tests in
+  `cli.rs`.
+- Pull-agent public formats or policy: update the normative contract, its
+  2020-12 schemas, and `fixtures/pull-agent-contract/`; do not infer those rules
+  from the legacy cache implementation.

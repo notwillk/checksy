@@ -1,11 +1,12 @@
 use crate::cache::CacheManager;
-use crate::check::{self, Options, Report, RuleResult};
+use crate::check::{self, Report, ResolvedOptions, RuleResult};
 use crate::config::{
-    decode_with_diagnostics, load_with_diagnostics, parse_git_remote, resolve_path,
-    ConfigDiagnostic, LoadedConfig,
+    load_resolved_for_install, load_resolved_with_diagnostics, load_resolved_with_mode,
+    resolve_path, ConfigDiagnostic,
 };
 use crate::git::GitCache;
-use crate::schema::{configuration_schema, Config, Rule, Severity};
+use crate::resolved::{GitDependency, ResolvedLoad, ResolvedRule, ResolverMode};
+use crate::schema::{configuration_schema, Rule, Severity};
 use crate::version::VERSION;
 use std::collections::HashSet;
 use std::io::Write;
@@ -204,7 +205,7 @@ fn run_check(
         }
     };
 
-    let loaded = match load_with_fix(&abs_config_path, apply_fixes, stdout, stderr) {
+    let loaded = match load_resolved_with_fix(&abs_config_path, apply_fixes, stdout) {
         Ok(loaded) => loaded,
         Err(e) => {
             writeln!(stderr, "failed to load config '{}': {}", abs_config_path, e).ok();
@@ -212,7 +213,7 @@ fn run_check(
         }
     };
     print_config_diagnostics(&loaded.diagnostics, stderr);
-    let cfg = loaded.config;
+    let definition = loaded.definition;
 
     let check_severity = if let Some(ref s) = check_severity {
         match parse_severity(s) {
@@ -222,7 +223,7 @@ fn run_check(
                 return 2;
             }
         }
-    } else if let Some(s) = cfg.check_severity {
+    } else if let Some(s) = definition.check_severity {
         s
     } else {
         Severity::Debug
@@ -236,7 +237,7 @@ fn run_check(
                 return 2;
             }
         }
-    } else if let Some(s) = cfg.fail_severity {
+    } else if let Some(s) = definition.fail_severity {
         s
     } else {
         Severity::Error
@@ -244,14 +245,8 @@ fn run_check(
 
     let min_severity = check::min_severity(check_severity, fail_severity);
 
-    let workdir = Path::new(&abs_config_path)
-        .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| ".".to_string());
-
-    let opts = Options {
-        config: cfg,
-        workdir,
+    let opts = ResolvedOptions {
+        definition,
         min_severity,
         fail_severity,
     };
@@ -265,7 +260,7 @@ fn run_check(
             }
         }
     } else {
-        match check::diagnose(opts) {
+        match check::diagnose_resolved(opts) {
             Ok(r) => r,
             Err(e) => {
                 writeln!(stderr, "check failed: {}", e).ok();
@@ -281,95 +276,64 @@ fn run_check(
     summarize_report(&report, no_fail, stdout)
 }
 
-/// Load config, optionally fixing missing git remotes
-fn load_with_fix(
+/// Resolve a complete definition, optionally materializing every missing Git
+/// dependency before retrying. Discovery is repeated because a newly cloned
+/// parent can reveal more nested Git references.
+fn load_resolved_with_fix(
     abs_config_path: &str,
     apply_fixes: bool,
     stdout: &mut dyn Write,
-    _stderr: &mut dyn Write,
-) -> Result<LoadedConfig, String> {
-    match load_with_diagnostics(abs_config_path) {
-        Ok(c) => Ok(c),
-        Err(e) => {
-            // Check if this is a "not cached" error and --fix is enabled
-            if !apply_fixes || !e.contains("git remote not cached") {
-                return Err(e);
-            }
+) -> Result<ResolvedLoad, String> {
+    // Stdin definitions cannot contain remotes and the stream is not replayable.
+    // Resolve it exactly once even when command fixes are enabled.
+    if !apply_fixes || abs_config_path == "-" {
+        return load_resolved_with_diagnostics(abs_config_path);
+    }
 
-            // Need to cache git remotes
-            writeln!(stdout, "🔧 Caching missing git remotes...").ok();
+    let mut announced = false;
+    loop {
+        let discovered = load_resolved_with_mode(abs_config_path, ResolverMode::CacheMissing)?;
+        let missing: Vec<GitDependency> = discovered
+            .git_dependencies
+            .into_iter()
+            .filter(|dependency| !dependency.cached)
+            .collect();
 
-            let config_dir = if abs_config_path == "-" {
-                std::path::PathBuf::from(".")
-            } else {
-                std::path::Path::new(abs_config_path)
-                    .parent()
-                    .map(|p| p.to_path_buf())
-                    .unwrap_or_else(|| std::path::PathBuf::from("."))
-            };
-
-            // Load config without expanding to collect git remotes
-            let loaded = match load_without_remote_expansion(std::path::Path::new(abs_config_path))
-            {
-                Ok(loaded) => loaded,
-                Err(e2) => {
-                    return Err(format!("{} (and failed to parse for fix: {})", e, e2));
-                }
-            };
-            let cfg = loaded.config;
-
-            // Collect all git remotes
-            let mut ignored_diagnostics = Vec::new();
-            let git_remotes = match collect_git_remotes_recursive(
-                &cfg,
-                &config_dir,
-                &cfg.cache_path,
-                &mut ignored_diagnostics,
-            ) {
-                Ok(remotes) => remotes,
-                Err(e2) => {
-                    return Err(format!("{} (and failed to collect remotes: {})", e, e2));
-                }
-            };
-
-            if git_remotes.is_empty() {
-                return Err(e); // No git remotes to fix, return original error
-            }
-
-            // Cache each remote
-            let cache_mgr = CacheManager::new(&config_dir, cfg.cache_path.as_deref());
-
-            for (i, (repo, ref_)) in git_remotes.iter().enumerate() {
-                if cache_mgr.is_cached(repo, ref_) {
-                    continue;
-                }
-
-                let _ = write!(
-                    stdout,
-                    "  [{}/{}] {}#{} ",
-                    i + 1,
-                    git_remotes.len(),
-                    repo,
-                    ref_
-                );
-
-                let dest = cache_mgr.ref_cache_path(repo, ref_);
-                match GitCache::shallow_clone(repo, ref_, &dest) {
-                    Ok(_) => {
-                        let _ = writeln!(stdout, "✓");
-                    }
-                    Err(e2) => {
-                        let _ = writeln!(stdout, "✗");
-                        return Err(format!("failed to cache {}#{}: {}", repo, ref_, e2));
-                    }
-                }
-            }
-
-            writeln!(stdout, "✅ Git remotes cached, retrying...").ok();
-
-            // Retry loading the config
-            load_with_diagnostics(abs_config_path)
+        if missing.is_empty() {
+            return load_resolved_with_diagnostics(abs_config_path);
         }
+
+        if !announced {
+            writeln!(stdout, "🔧 Caching missing Git remotes...").ok();
+            announced = true;
+        }
+
+        for dependency in &missing {
+            let remote = &dependency.remote;
+            let cache = CacheManager::from_root(dependency.cache_root.clone());
+            let _ = write!(stdout, "  {}#{} ", remote.repo, remote.ref_);
+            let destination = match cache.prepare_ref_cache_path(&remote.repo, &remote.ref_) {
+                Ok(destination) => destination,
+                Err(error) => {
+                    let _ = writeln!(stdout, "✗");
+                    return Err(error);
+                }
+            };
+            match GitCache::shallow_clone(&remote.repo, &remote.ref_, &destination) {
+                Ok(()) => {
+                    let _ = writeln!(stdout, "✓");
+                }
+                Err(error) => {
+                    let _ = writeln!(stdout, "✗");
+                    return Err(format!(
+                        "failed to cache {}#{}: {}",
+                        remote.repo, remote.ref_, error
+                    ));
+                }
+            }
+        }
+
+        writeln!(stdout, "✅ Git remotes cached, retrying...").ok();
     }
 }
 
@@ -489,237 +453,161 @@ fn run_install(
         }
     };
 
-    let config_dir = abs_config_path
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let config_path = abs_config_path.to_string_lossy().into_owned();
+    let mut processed: HashSet<(std::path::PathBuf, String, String)> = HashSet::new();
+    let mut expanded = HashSet::new();
+    let mut announced = false;
 
-    // Load config (without expanding remotes - we just need to find git remotes)
-    let loaded = match load_without_remote_expansion(&abs_config_path) {
-        Ok(loaded) => loaded,
-        Err(e) => {
-            writeln!(
-                stderr,
-                "failed to load config '{}': {}",
-                abs_config_path.display(),
-                e
-            )
-            .ok();
-            return 2;
-        }
-    };
-    let mut diagnostics = loaded.diagnostics;
-    let cfg = loaded.config;
-
-    // Collect all git remotes recursively
-    let git_remotes =
-        match collect_git_remotes_recursive(&cfg, &config_dir, &cfg.cache_path, &mut diagnostics) {
-            Ok(remotes) => remotes,
-            Err(e) => {
-                writeln!(stderr, "failed to collect git remotes: {}", e).ok();
+    loop {
+        let discovered = match load_resolved_for_install(&config_path, &expanded) {
+            Ok(discovered) => discovered,
+            Err(error) => {
+                writeln!(stderr, "failed to collect git remotes: {}", error).ok();
                 return 2;
             }
         };
-    print_config_diagnostics(&diagnostics, stderr);
 
-    if git_remotes.is_empty() {
+        let pending: Vec<GitDependency> = discovered
+            .git_dependencies
+            .iter()
+            .filter(|dependency| {
+                !processed.contains(&(
+                    dependency.cache_root.clone(),
+                    dependency.remote.repo.clone(),
+                    dependency.remote.ref_.clone(),
+                ))
+            })
+            .cloned()
+            .collect();
+
+        if pending.is_empty() {
+            break;
+        }
+
+        if !announced {
+            let _ = writeln!(stdout, "📦 Caching Git remotes...");
+            announced = true;
+        }
+
+        for dependency in pending {
+            if let Err(error) = refresh_git_dependency(&dependency, stdout) {
+                let _ = writeln!(stderr, "{}", error);
+                return 2;
+            }
+            processed.insert((
+                dependency.cache_root.clone(),
+                dependency.remote.repo.clone(),
+                dependency.remote.ref_.clone(),
+            ));
+            expanded.insert((dependency.remote.repo, dependency.remote.ref_));
+        }
+    }
+
+    // The frontier walk deliberately defers unrefreshed Git parsing. Validate
+    // the complete fresh graph once more before reporting success or pruning.
+    let final_load = match load_resolved_with_diagnostics(&config_path) {
+        Ok(loaded) => loaded,
+        Err(error) => {
+            writeln!(stderr, "failed to load refreshed config: {}", error).ok();
+            return 2;
+        }
+    };
+    print_config_diagnostics(&final_load.diagnostics, stderr);
+
+    if final_load.git_dependencies.is_empty() {
         writeln!(stdout, "No git remotes to cache").ok();
         return 0;
     }
 
-    // Show spinner
-    let _ = writeln!(stdout, "📦 Caching {} git remote(s)...", git_remotes.len());
-
-    // Cache each remote
-    let cache_mgr = CacheManager::new(&config_dir, cfg.cache_path.as_deref());
-
-    for (i, (repo, ref_)) in git_remotes.iter().enumerate() {
-        let _ = write!(
-            stdout,
-            "  [{}/{}] {}#{} ",
-            i + 1,
-            git_remotes.len(),
-            repo,
-            ref_
-        );
-
-        if cache_mgr.is_cached(repo, ref_) {
-            let cache_path = cache_mgr.ref_cache_path(repo, ref_);
-
-            // Check local SHA
-            let local_sha = match GitCache::get_local_sha(&cache_path) {
-                Ok(sha) => sha,
-                Err(e) => {
-                    let _ = writeln!(stdout, "✗");
-                    let _ = writeln!(
-                        stderr,
-                        "Failed to read local cache for {}#{}: {}",
-                        repo, ref_, e
-                    );
-                    return 2;
-                }
-            };
-
-            // Get remote SHA
-            let remote_sha = match GitCache::get_remote_sha(repo, ref_) {
-                Ok(sha) => sha,
-                Err(e) => {
-                    let _ = writeln!(stdout, "✗");
-                    let _ = writeln!(
-                        stderr,
-                        "Failed to check remote for {}#{}: {}",
-                        repo, ref_, e
-                    );
-                    return 2;
-                }
-            };
-
-            // Compare SHAs
-            if local_sha == remote_sha {
-                let _ = writeln!(stdout, "✓ (already cached)");
-                continue;
-            }
-
-            // SHAs differ - need to update
-            let _ = writeln!(stdout, "↑ updating...");
-
-            // Remove old cache before re-cloning
-            if let Err(e) = std::fs::remove_dir_all(&cache_path) {
-                let _ = writeln!(stdout, "✗");
-                let _ = writeln!(
-                    stderr,
-                    "Failed to remove old cache for {}#{}: {}",
-                    repo, ref_, e
-                );
-                return 2;
-            }
-
-            // Fall through to re-clone
-        }
-
-        let dest = cache_mgr.ref_cache_path(repo, ref_);
-        match GitCache::shallow_clone(repo, ref_, &dest) {
-            Ok(_) => {
-                let _ = writeln!(stdout, "✓");
-            }
-            Err(e) => {
-                let _ = writeln!(stdout, "✗");
-                let _ = writeln!(stderr, "Failed to cache {}#{}: {}", repo, ref_, e);
-                return 2;
-            }
-        }
-    }
-
     let _ = writeln!(stdout, "✅ All remotes cached");
 
-    // Prune if requested
     if prune {
-        let used_set: HashSet<(String, String)> = git_remotes
-            .into_iter()
-            .map(|(repo, ref_)| (CacheManager::encode_repo_name(&repo), ref_))
-            .collect();
+        let mut roots: std::collections::HashMap<std::path::PathBuf, HashSet<(String, String)>> =
+            std::collections::HashMap::new();
+        for dependency in &final_load.git_dependencies {
+            roots
+                .entry(dependency.cache_root.clone())
+                .or_default()
+                .insert((
+                    CacheManager::encode_repo_name(&dependency.remote.repo),
+                    CacheManager::encode_ref_name(&dependency.remote.ref_),
+                ));
+        }
 
-        match cache_mgr.prune(&used_set) {
-            Ok(_) => {
-                let _ = writeln!(stdout, "✅ Pruned unused cache entries");
-            }
-            Err(e) => {
-                let _ = writeln!(stderr, "Prune failed: {}", e);
+        for (root, used) in roots {
+            if let Err(error) = CacheManager::from_root(root).prune(&used) {
+                let _ = writeln!(stderr, "Prune failed: {}", error);
                 return 2;
             }
         }
+        let _ = writeln!(stdout, "✅ Pruned unused cache entries");
     }
 
     0
 }
 
-/// Load config without expanding remote references
-fn load_without_remote_expansion(path: &std::path::Path) -> Result<LoadedConfig, String> {
-    let data = std::fs::read_to_string(path).map_err(|e| format!("read config: {}", e))?;
-    decode_with_diagnostics(&data, &path.to_string_lossy())
-}
-
-/// Collect all git remotes recursively from a config
-fn collect_git_remotes_recursive(
-    cfg: &Config,
-    config_dir: &std::path::Path,
-    cache_path: &Option<String>,
-    diagnostics: &mut Vec<ConfigDiagnostic>,
-) -> Result<Vec<(String, String)>, String> {
-    let mut remotes: Vec<(String, String)> = Vec::new();
-    let mut visited: HashSet<std::path::PathBuf> = HashSet::new();
-
-    collect_from_config(
-        cfg,
-        config_dir,
-        cache_path,
-        &mut remotes,
-        &mut visited,
-        diagnostics,
-    )?;
-
-    // Remove duplicates while preserving order
-    let mut seen = HashSet::new();
-    let unique_remotes: Vec<(String, String)> = remotes
-        .into_iter()
-        .filter(|(repo, ref_)| seen.insert((repo.clone(), ref_.clone())))
-        .collect();
-
-    Ok(unique_remotes)
-}
-
-fn collect_from_config(
-    cfg: &Config,
-    config_dir: &std::path::Path,
-    cache_path: &Option<String>,
-    remotes: &mut Vec<(String, String)>,
-    visited: &mut HashSet<std::path::PathBuf>,
-    diagnostics: &mut Vec<ConfigDiagnostic>,
+fn refresh_git_dependency(
+    dependency: &GitDependency,
+    stdout: &mut dyn Write,
 ) -> Result<(), String> {
-    // Scan preconditions and rules for git remotes
-    let all_rules = cfg.preconditions.iter().chain(cfg.rules.iter());
+    let remote = &dependency.remote;
+    let cache = CacheManager::from_root(dependency.cache_root.clone());
+    let _ = write!(stdout, "  {}#{} ", remote.repo, remote.ref_);
+    let cache_path = match cache.prepare_ref_cache_path(&remote.repo, &remote.ref_) {
+        Ok(cache_path) => cache_path,
+        Err(error) => {
+            let _ = writeln!(stdout, "✗");
+            return Err(error);
+        }
+    };
 
-    for rule in all_rules {
-        if let Some(remote_path) = &rule.remote {
-            if let Some(git_remote) = parse_git_remote(remote_path) {
-                remotes.push((git_remote.repo.clone(), git_remote.ref_.clone()));
-            } else {
-                // Regular file remote - check if it points to another config that might have git remotes
-                let resolved = config_dir.join(remote_path);
-                if resolved.exists() && resolved.is_file() {
-                    let canonical = resolved.canonicalize().ok();
-                    if let Some(path) = canonical {
-                        if !visited.contains(&path) {
-                            visited.insert(path.clone());
-                            // Load this remote config and recurse
-                            match load_without_remote_expansion(&path) {
-                                Ok(loaded) => {
-                                    diagnostics.extend(loaded.diagnostics);
-                                    let remote_cfg = loaded.config;
-                                    let remote_dir = path
-                                        .parent()
-                                        .map(|p| p.to_path_buf())
-                                        .unwrap_or_else(|| config_dir.to_path_buf());
-                                    collect_from_config(
-                                        &remote_cfg,
-                                        &remote_dir,
-                                        cache_path,
-                                        remotes,
-                                        visited,
-                                        diagnostics,
-                                    )?;
-                                }
-                                Err(_) => {
-                                    // Ignore configs we can't parse
-                                }
-                            }
-                        }
-                    }
-                }
+    if dependency.cached {
+        let local_sha = match GitCache::get_local_sha(&cache_path) {
+            Ok(sha) => sha,
+            Err(error) => {
+                let _ = writeln!(stdout, "✗");
+                return Err(format!(
+                    "Failed to read local cache for {}#{}: {}",
+                    remote.repo, remote.ref_, error
+                ));
             }
+        };
+        let remote_sha = match GitCache::get_remote_sha(&remote.repo, &remote.ref_) {
+            Ok(sha) => sha,
+            Err(error) => {
+                let _ = writeln!(stdout, "✗");
+                return Err(format!(
+                    "Failed to check remote for {}#{}: {}",
+                    remote.repo, remote.ref_, error
+                ));
+            }
+        };
+
+        if local_sha == remote_sha {
+            let _ = writeln!(stdout, "✓ (already cached)");
+            return Ok(());
+        }
+
+        let _ = writeln!(stdout, "↑ updating...");
+        let cache_path = cache.confined_ref_cache_path(&remote.repo, &remote.ref_)?;
+        if let Err(error) = std::fs::remove_dir_all(&cache_path) {
+            let _ = writeln!(stdout, "✗");
+            return Err(format!(
+                "Failed to remove old cache for {}#{}: {}",
+                remote.repo, remote.ref_, error
+            ));
         }
     }
 
+    let cache_path = cache.prepare_ref_cache_path(&remote.repo, &remote.ref_)?;
+    if let Err(error) = GitCache::shallow_clone(&remote.repo, &remote.ref_, &cache_path) {
+        let _ = writeln!(stdout, "✗");
+        return Err(format!(
+            "Failed to cache {}#{}: {}",
+            remote.repo, remote.ref_, error
+        ));
+    }
+    let _ = writeln!(stdout, "✓");
     Ok(())
 }
 
@@ -878,27 +766,20 @@ fn summarize_report(report: &Report, no_fail: bool, stdout: &mut dyn Write) -> i
 }
 
 fn check_with_fixes(
-    opts: Options,
+    opts: ResolvedOptions,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> Result<Report, String> {
-    if opts.config.rules.is_empty() && opts.config.preconditions.is_empty() {
-        return Ok(Report {
-            rules: vec![],
-            fail_severity: opts.fail_severity,
-        });
-    }
-
-    let workdir = if opts.workdir.is_empty() {
-        "."
-    } else {
-        &opts.workdir
-    };
+    // Resolve and confine every pattern match before a check or fix can mutate
+    // the host. Pattern-only definitions are valid and must reach execution.
+    let rule_files = check::expand_resolved_rule_files(&opts.definition.pattern_groups)?;
     let mut results = vec![];
 
-    let preconditions = check::filter_preconditions(&opts.config, opts.min_severity);
-    for rule in preconditions {
-        let result = check::run_rule(rule.clone(), workdir);
+    let preconditions =
+        check::filter_resolved_rules(&opts.definition.preconditions, opts.min_severity);
+    for resolved_rule in preconditions {
+        let rule = resolved_rule.rule.clone();
+        let result = check::run_resolved_rule(resolved_rule.clone());
         if result.success() {
             print_rule_success(&result, stdout, stderr);
             results.push(result);
@@ -913,15 +794,18 @@ fn check_with_fixes(
 
         print_rule_status(&result, "⚠️ ", false, stdout, stderr);
 
-        let fix_rule = Rule {
-            name: Some(format!("{} fix", rule_display_name(&rule))),
-            check: Some(rule.fix.clone().unwrap_or_default()),
-            severity: rule.severity.clone(),
-            fix: None,
-            hint: rule.hint.clone(),
-            remote: None,
+        let fix_rule = ResolvedRule {
+            rule: Rule {
+                name: Some(format!("{} fix", rule_display_name(&rule))),
+                check: Some(rule.fix.clone().unwrap_or_default()),
+                severity: rule.severity,
+                fix: None,
+                hint: rule.hint.clone(),
+                remote: None,
+            },
+            origin: resolved_rule.origin.clone(),
         };
-        let fix_result = check::run_rule(fix_rule, workdir);
+        let fix_result = check::run_resolved_rule(fix_rule);
         if !fix_result.success() {
             print_rule_failure(&fix_result, stdout, stderr);
             print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
@@ -931,14 +815,15 @@ fn check_with_fixes(
 
         print_rule_success(&fix_result, stdout, stderr);
 
-        let result = check::run_rule(rule, workdir);
+        let result = check::run_resolved_rule(resolved_rule);
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }
 
-    let rules = check::filter_rules(&opts.config, opts.min_severity);
-    for rule in rules {
-        let result = check::run_rule(rule.clone(), workdir);
+    let rules = check::filter_resolved_rules(&opts.definition.rules, opts.min_severity);
+    for resolved_rule in rules {
+        let rule = resolved_rule.rule.clone();
+        let result = check::run_resolved_rule(resolved_rule.clone());
         if result.success() {
             print_rule_success(&result, stdout, stderr);
             results.push(result);
@@ -953,15 +838,18 @@ fn check_with_fixes(
 
         print_rule_status(&result, "⚠️ ", false, stdout, stderr);
 
-        let fix_rule = Rule {
-            name: Some(format!("{} fix", rule_display_name(&rule))),
-            check: Some(rule.fix.clone().unwrap_or_default()),
-            severity: rule.severity.clone(),
-            fix: None,
-            hint: rule.hint.clone(),
-            remote: None,
+        let fix_rule = ResolvedRule {
+            rule: Rule {
+                name: Some(format!("{} fix", rule_display_name(&rule))),
+                check: Some(rule.fix.clone().unwrap_or_default()),
+                severity: rule.severity,
+                fix: None,
+                hint: rule.hint.clone(),
+                remote: None,
+            },
+            origin: resolved_rule.origin.clone(),
         };
-        let fix_result = check::run_rule(fix_rule, workdir);
+        let fix_result = check::run_resolved_rule(fix_rule);
         if !fix_result.success() {
             print_rule_failure(&fix_result, stdout, stderr);
             print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
@@ -971,14 +859,13 @@ fn check_with_fixes(
 
         print_rule_success(&fix_result, stdout, stderr);
 
-        let result = check::run_rule(rule, workdir);
+        let result = check::run_resolved_rule(resolved_rule);
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }
 
-    let file_paths = check::expand_rule_files(workdir, &opts.config.patterns)?;
-    for rel_path in file_paths {
-        let result = check::run_rule_file(workdir, &rel_path);
+    for rule_file in rule_files {
+        let result = check::run_resolved_rule_file(rule_file);
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }
@@ -1223,5 +1110,398 @@ mod tests {
             "unexpected stderr: {:?}",
             String::from_utf8(stderr)
         );
+    }
+
+    #[test]
+    fn test_cli_uses_nested_origins_for_checks_fixes_and_patterns() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path();
+        let child = root.join("child");
+        std::fs::create_dir(&child).unwrap();
+        std::fs::write(root.join("root-marker"), "root\n").unwrap();
+        std::fs::write(child.join("child-marker"), "child\n").unwrap();
+        std::fs::write(
+            root.join("root.sh"),
+            "test -f root-marker && touch root-pattern-ran\n",
+        )
+        .unwrap();
+        std::fs::write(
+            child.join("run.sh"),
+            "test -f child-marker && test -f repaired && touch child-pattern-ran\n",
+        )
+        .unwrap();
+        std::fs::write(child.join("skip.sh"), "touch skipped-pattern-ran\nexit 1\n").unwrap();
+        std::fs::write(
+            child.join("child.yaml"),
+            concat!(
+                "rules:\n",
+                "  - name: child repair\n",
+                "    check: test -f repaired\n",
+                "    fix: touch repaired\n",
+                "patterns:\n",
+                "  - '*.sh'\n",
+                "  - '!skip.sh'\n"
+            ),
+        )
+        .unwrap();
+        let config = root.join("root.yaml");
+        std::fs::write(
+            &config,
+            concat!(
+                "rules:\n",
+                "  - name: root\n",
+                "    check: test -f root-marker\n",
+                "  - remote: child/child.yaml\n",
+                "patterns:\n",
+                "  - 'root.sh'\n"
+            ),
+        )
+        .unwrap();
+
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "check".to_string(),
+                "--fix".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(
+            code,
+            0,
+            "stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&stdout),
+            String::from_utf8_lossy(&stderr)
+        );
+        assert!(child.join("repaired").is_file());
+        assert!(!root.join("repaired").exists());
+        assert!(root.join("root-pattern-ran").is_file());
+        assert!(child.join("child-pattern-ran").is_file());
+        assert!(!child.join("skipped-pattern-ran").exists());
+    }
+
+    #[test]
+    fn test_cli_executes_root_and_remote_pattern_only_definitions() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path().join("root");
+        let child = root.join("child");
+        std::fs::create_dir_all(&child).unwrap();
+        std::fs::write(root.join("root.sh"), "touch root-pattern-ran\n").unwrap();
+        std::fs::write(child.join("child.sh"), "touch child-pattern-ran\n").unwrap();
+        std::fs::write(child.join("child.yaml"), "patterns:\n  - child.sh\n").unwrap();
+        let config = root.join("root.yaml");
+        std::fs::write(
+            &config,
+            concat!(
+                "rules:\n",
+                "  - remote: child/child.yaml\n",
+                "patterns:\n",
+                "  - root.sh\n"
+            ),
+        )
+        .unwrap();
+
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "check".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(
+            code,
+            0,
+            "stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&stdout),
+            String::from_utf8_lossy(&stderr)
+        );
+        assert!(root.join("root-pattern-ran").is_file());
+        assert!(child.join("child-pattern-ran").is_file());
+    }
+
+    fn initialize_local_git_repository(
+        path: &std::path::Path,
+        config: &str,
+        marker: &str,
+    ) -> String {
+        std::fs::create_dir_all(path).unwrap();
+        std::fs::write(path.join(".checksy.yaml"), config).unwrap();
+        std::fs::write(path.join(marker), marker).unwrap();
+
+        let run_git = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(path)
+                .args(args)
+                .env("GIT_AUTHOR_NAME", "Checksy Test")
+                .env("GIT_AUTHOR_EMAIL", "checksy@example.invalid")
+                .env("GIT_COMMITTER_NAME", "Checksy Test")
+                .env("GIT_COMMITTER_EMAIL", "checksy@example.invalid")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        run_git(&["init", "--initial-branch=main"]);
+        run_git(&["add", "."]);
+        run_git(&["commit", "-m", "fixture"]);
+
+        format!("file://{}", path.display())
+    }
+
+    #[test]
+    fn test_install_and_check_fix_discover_nested_git_dependencies() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_b_path = temp.path().join("repo-b");
+        let repo_b = initialize_local_git_repository(
+            &repo_b_path,
+            "rules:\n  - name: repository b\n    check: test -f b.marker\n",
+            "b.marker",
+        );
+        let repo_a_path = temp.path().join("repo-a");
+        let repo_a_config = format!(
+            concat!(
+                "cachePath: nested-cache-must-be-ignored\n",
+                "rules:\n",
+                "  - name: repository a\n",
+                "    check: test -f a.marker\n",
+                "  - remote: 'git+{}#main:.checksy.yaml'\n"
+            ),
+            repo_b
+        );
+        let repo_a = initialize_local_git_repository(&repo_a_path, &repo_a_config, "a.marker");
+
+        let install_root = temp.path().join("install-root");
+        std::fs::create_dir(&install_root).unwrap();
+        let install_config = install_root.join("root.yaml");
+        std::fs::write(
+            &install_config,
+            format!(
+                "cachePath: cache\nrules:\n  - remote: 'git+{}#main:.checksy.yaml'\n",
+                repo_a
+            ),
+        )
+        .unwrap();
+
+        let mut install_stdout = Vec::new();
+        let mut install_stderr = Vec::new();
+        let install_code = run(
+            vec![
+                format!("--config={}", install_config.display()),
+                "install".to_string(),
+            ],
+            &mut install_stdout,
+            &mut install_stderr,
+        );
+        assert_eq!(
+            install_code,
+            0,
+            "stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&install_stdout),
+            String::from_utf8_lossy(&install_stderr)
+        );
+        let install_cache = CacheManager::new(&install_root, Some("cache"));
+        assert!(install_cache.is_cached(&repo_a, "main"));
+        assert!(install_cache.is_cached(&repo_b, "main"));
+
+        let mut check_stdout = Vec::new();
+        let mut check_stderr = Vec::new();
+        let check_code = run(
+            vec![
+                format!("--config={}", install_config.display()),
+                "check".to_string(),
+            ],
+            &mut check_stdout,
+            &mut check_stderr,
+        );
+        assert_eq!(
+            check_code,
+            0,
+            "stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&check_stdout),
+            String::from_utf8_lossy(&check_stderr)
+        );
+
+        let fix_root = temp.path().join("fix-root");
+        std::fs::create_dir(&fix_root).unwrap();
+        let fix_config = fix_root.join("root.yaml");
+        std::fs::write(
+            &fix_config,
+            format!(
+                "cachePath: cache\nrules:\n  - remote: 'git+{}#main:.checksy.yaml'\n",
+                repo_a
+            ),
+        )
+        .unwrap();
+
+        let mut fix_stdout = Vec::new();
+        let mut fix_stderr = Vec::new();
+        let fix_code = run(
+            vec![
+                format!("--config={}", fix_config.display()),
+                "check".to_string(),
+                "--fix".to_string(),
+            ],
+            &mut fix_stdout,
+            &mut fix_stderr,
+        );
+        assert_eq!(
+            fix_code,
+            0,
+            "stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&fix_stdout),
+            String::from_utf8_lossy(&fix_stderr)
+        );
+        let fix_cache = CacheManager::new(&fix_root, Some("cache"));
+        assert!(fix_cache.is_cached(&repo_a, "main"));
+        assert!(fix_cache.is_cached(&repo_b, "main"));
+    }
+
+    #[test]
+    fn test_install_prune_keeps_an_in_use_ref_with_a_slash() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let source_path = temp.path().join("source-with-feature");
+        let source = initialize_local_git_repository(
+            &source_path,
+            "rules:\n  - check: 'true'\n",
+            "source.marker",
+        );
+        let branch_status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&source_path)
+            .args(["branch", "feature/origin-aware"])
+            .status()
+            .unwrap();
+        assert!(branch_status.success());
+
+        let root = temp.path().join("root-with-prune");
+        std::fs::create_dir(&root).unwrap();
+        let config = root.join("root.yaml");
+        std::fs::write(
+            &config,
+            format!(
+                "cachePath: cache\nrules:\n  - remote: 'git+{}#feature/origin-aware:.checksy.yaml'\n",
+                source
+            ),
+        )
+        .unwrap();
+
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = run(
+            vec![
+                format!("--config={}", config.display()),
+                "install".to_string(),
+                "--prune".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+
+        assert_eq!(
+            code,
+            0,
+            "stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&stdout),
+            String::from_utf8_lossy(&stderr)
+        );
+        let cache = CacheManager::new(&root, Some("cache"));
+        assert!(cache.is_cached(&source, "feature/origin-aware"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_install_and_check_fix_reject_symlinked_cache_ancestors_before_mutation() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::TempDir::new().unwrap();
+        let source_path = temp.path().join("source");
+        let source = initialize_local_git_repository(
+            &source_path,
+            "rules:\n  - check: 'true'\n",
+            "source.marker",
+        );
+
+        let install_root = temp.path().join("install-root");
+        std::fs::create_dir(&install_root).unwrap();
+        let install_config = install_root.join("root.yaml");
+        std::fs::write(
+            &install_config,
+            format!(
+                "cachePath: cache\nrules:\n  - remote: 'git+{}#main:.checksy.yaml'\n",
+                source
+            ),
+        )
+        .unwrap();
+        let install_cache = CacheManager::new(&install_root, Some("cache"));
+        let install_slot = install_cache.ref_cache_path(&source, "main");
+        let external_repo_directory = temp.path().join("external-install");
+        let external_checkout = external_repo_directory.join("main");
+        initialize_local_git_repository(
+            &external_checkout,
+            "rules:\n  - check: 'true'\n",
+            "must-survive.marker",
+        );
+        std::fs::create_dir_all(install_slot.parent().unwrap().parent().unwrap()).unwrap();
+        symlink(&external_repo_directory, install_slot.parent().unwrap()).unwrap();
+
+        let mut install_stdout = Vec::new();
+        let mut install_stderr = Vec::new();
+        let install_code = run(
+            vec![
+                format!("--config={}", install_config.display()),
+                "install".to_string(),
+            ],
+            &mut install_stdout,
+            &mut install_stderr,
+        );
+        assert_eq!(install_code, 2);
+        assert!(external_checkout.join("must-survive.marker").is_file());
+        assert!(String::from_utf8_lossy(&install_stderr).contains("symbolic link"));
+
+        let fix_root = temp.path().join("fix-root");
+        std::fs::create_dir(&fix_root).unwrap();
+        let fix_config = fix_root.join("root.yaml");
+        std::fs::write(
+            &fix_config,
+            format!(
+                "cachePath: cache\nrules:\n  - remote: 'git+{}#main:.checksy.yaml'\n",
+                source
+            ),
+        )
+        .unwrap();
+        let fix_cache = CacheManager::new(&fix_root, Some("cache"));
+        let fix_slot = fix_cache.ref_cache_path(&source, "main");
+        let external_missing = temp.path().join("external-fix");
+        std::fs::create_dir(&external_missing).unwrap();
+        std::fs::create_dir_all(fix_slot.parent().unwrap().parent().unwrap()).unwrap();
+        symlink(&external_missing, fix_slot.parent().unwrap()).unwrap();
+
+        let mut fix_stdout = Vec::new();
+        let mut fix_stderr = Vec::new();
+        let fix_code = run(
+            vec![
+                format!("--config={}", fix_config.display()),
+                "check".to_string(),
+                "--fix".to_string(),
+            ],
+            &mut fix_stdout,
+            &mut fix_stderr,
+        );
+        assert_eq!(fix_code, 2);
+        assert!(!external_missing.join("main").exists());
+        assert!(String::from_utf8_lossy(&fix_stderr).contains("symbolic link"));
     }
 }

@@ -7,10 +7,13 @@ checksy is a Rust-based command line utility intended to run lightweight health 
 Checksy rules and fixes are arbitrary shell code executed with the invoking
 process's permissions; they are not sandboxed. Current Git remote caching does
 not verify an authorized publisher and is not suitable for unattended privileged
-execution. Run only definitions you trust. The planned fail-closed security
-contract and current implementation gaps are documented in the
-[threat model](THREAT_MODEL.md). The frozen target formats, CLI, and resource
-bounds are specified in the [pull-agent contract](PULL_AGENT_CONTRACT.md).
+execution. The CLI confines fetched Git config files and pattern matches to their
+cached checkout, but an authorized shell command can still access anything its
+process identity can access. Run only definitions you trust. The planned
+fail-closed security contract and current implementation gaps are documented in
+the [threat model](THREAT_MODEL.md). The frozen target formats, CLI, and
+resource bounds are specified in the
+[pull-agent contract](PULL_AGENT_CONTRACT.md).
 
 ## Installation
 
@@ -35,6 +38,7 @@ src/
   config.rs            # Configuration loading
   check.rs             # Check execution and reporting helpers
   git.rs               # Git operations for caching remotes
+  resolved.rs          # Internal source/origin-aware definition model
   schema.rs            # Configuration schema definitions
   version.rs           # Centralized version string
 ```
@@ -109,7 +113,18 @@ checksy install
 checksy install --prune
 ```
 
-Git remotes are cached in the `.checksy-cache/git/` directory (or the path specified by `cachePath` in your config). Each unique repository and ref combination gets a shallow clone (`--depth 1`).
+Git remotes are cached in the `.checksy-cache/git/` directory (or the path
+specified by `cachePath` in the selected root config). Each repository/ref
+locator is mapped to a legacy shallow-clone slot (`--depth 1`). The root config alone
+chooses this legacy cache location; a nested local or Git definition cannot
+redirect acquisition with its own `cachePath`. `install` discovers nested file
+and Git remotes iteratively as their parent repositories become available.
+
+This cache is still legacy, mutable, and unauthenticated. Its `.git` directory
+only indicates that a clone exists; it does not establish an authorized signer
+or make the cached content safe for unattended execution. Its historical ref
+directory encoding is also not collision-resistant; a future source-provider
+layer will replace it rather than treating it as a persistent source identity.
 
 These severity options can also be set in the config file at the top level:
 
@@ -124,13 +139,24 @@ rules:
 
 ## Configuration
 
-`checksy --config=path/to/workspace.yaml check` strictly deserializes the provided YAML using the Rust configuration types. Unknown and duplicate fields, incorrectly typed or null values, malformed rule forms, empty commands, NUL bytes in command/path/pattern fields, and invalid patterns are rejected before remote expansion or execution. The generated Draft 7 schema has fixture-tested parity for structural validation. Duplicate YAML keys remain a parser-layer check, and the complete Rust glob grammar remains a runtime-layer check; these narrow exceptions are documented in the [strict configuration fixture corpus](fixtures/strict-config/README.md). When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable.
+`checksy --config=path/to/workspace.yaml check` strictly deserializes the provided YAML using the Rust configuration types. Unknown and duplicate fields, incorrectly typed or null values, malformed rule forms, empty commands, NUL bytes in command/path/pattern fields, and invalid patterns are rejected before remote expansion or execution. The generated Draft 7 schema has fixture-tested parity for structural validation. Duplicate YAML keys remain a parser-layer check, and the complete Rust glob grammar remains a runtime-layer check; these narrow exceptions are documented in the [strict configuration fixture corpus](fixtures/strict-config/README.md). When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default.
+
+The `check` CLI and its deprecated `diagnose` alias retain an internal origin for
+every resolved rule and pattern group. Inline checks and fixes run from the
+directory containing the config that defined them; relative shell references to
+Brewfiles, templates, and other files therefore use that same directory.
+Patterns are also expanded and executed from their defining config's directory.
+The public Rust `load()` and `diagnose(Options)` interfaces remain flat for
+source compatibility and do not expose this per-definition origin model.
+Their compatibility projection retains only the selected root config's pattern
+list; nested remote pattern groups are available only through the CLI's private
+resolved path.
 
 ### Inline rules, preconditions, and patterns
 
 - **`preconditions`** — An array of rule objects that run **before** the main rules. They follow the same failure/fix behavior as regular rules. Useful for checks that must pass before proceeding (e.g., verifying dependencies).
 - **`rules`** — An array of rule objects, each with `name`, `check`, optional `severity`, `fix`, and `hint`. These run first in config order.
-- **`patterns`** — An array of glob-style patterns that select script files to run as rules (e.g. `tests/*.sh`). Success and failure are determined by the script's exit code, same as inline rules. There is no fix step for file-based rules; they run after inline rules in a deterministic order (alphabetically by file path). Patterns are resolved relative to the config file directory. You can use **positive** patterns (any match is included) and **negated** patterns (prefix with `!` to exclude). A file is included only if it matches at least one positive pattern and no negative pattern.
+- **`patterns`** — An array of glob-style patterns that select script files to run as rules (e.g. `tests/*.sh`). Success and failure are determined by the script's exit code, same as inline rules. There is no fix step for file-based rules. All pattern groups run after inline rules; the selected config's group comes first, followed by nested groups in deterministic discovery order, with files sorted within each group. Patterns are resolved relative to the config that defines them. You can use **positive** patterns (any match is included) and **negated** patterns (prefix with `!` to exclude). Negations apply only within their defining config's group.
 
 ### Remote Config References
 
@@ -149,7 +175,24 @@ rules:
     check: echo "hello"
 ```
 
-When a remote rule is expanded, all its preconditions and rules are loaded inline and inherit the parent config's defaults. Circular references are automatically detected and skipped.
+When a remote rule is expanded, its preconditions and rules are loaded inline,
+its patterns are retained for the final pattern phase, and inherited severity
+defaults keep their existing behavior. Nested file and Git remotes are supported.
+A definition already completed during one load is included once; an active
+circular reference is a configuration error instead of being silently skipped.
+
+Local definitions preserve the legacy trusted-workspace behavior: file remotes
+may resolve outside the selected config's directory, and local patterns keep
+their previous external-path and symlink handling. There is not yet a protected
+local external-root policy. Fetched Git config paths, nested file remotes, and
+concrete pattern matches must instead remain inside the canonical cached
+checkout; traversal and symlink escapes fail before any rule runs. These fetched
+path checks constrain structured references only. Before clone, refresh, or
+prune, the CLI rejects cache symlink components already present below the
+operator-selected root. There is not yet a mutation lock or descriptor-relative
+no-follow operation, so a concurrent local actor can race that check. Checks and
+fixes remain arbitrary shell and can deliberately access paths outside the
+checkout.
 
 Example with preconditions:
 

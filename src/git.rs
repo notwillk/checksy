@@ -67,14 +67,12 @@ impl GitCache {
         use crate::cache::CacheManager;
 
         let cache_mgr = CacheManager::new(cache_root.parent().unwrap_or(cache_root), None);
+        let dest = cache_mgr.prepare_ref_cache_path(repo_url, ref_)?;
 
         // Check if already cached
-        if cache_mgr.is_cached(repo_url, ref_) {
+        if dest.join(".git").is_dir() {
             return Ok(());
         }
-
-        // Get the destination path
-        let dest = cache_mgr.ref_cache_path(repo_url, ref_);
 
         // Perform shallow clone
         Self::shallow_clone(repo_url, ref_, &dest)
@@ -223,6 +221,26 @@ mod tests {
         // Should fail when not a git repository
         let result = GitCache::get_local_sha(&not_a_repo);
         assert!(result.is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_ensure_cached_rejects_symlinked_cache_ancestor() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().unwrap();
+        let cache_root = temp_dir.path().join(".checksy-cache");
+        let cache = crate::cache::CacheManager::new(temp_dir.path(), None);
+        let repo = "https://example.invalid/symlinked.git";
+        let slot = cache.ref_cache_path(repo, "main");
+        let outside = temp_dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::create_dir_all(slot.parent().unwrap().parent().unwrap()).unwrap();
+        symlink(&outside, slot.parent().unwrap()).unwrap();
+
+        let error = GitCache::ensure_cached(&cache_root, repo, "main").unwrap_err();
+        assert!(error.contains("symbolic link"), "{error}");
+        assert!(!outside.join("main").exists());
     }
 
     #[test]
