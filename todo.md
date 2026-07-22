@@ -1,8 +1,7 @@
 # Checksy machine-provisioning roadmap
 
-This roadmap keeps Checksy focused on one job: take an explicitly supplied
-configuration and provision the current machine by running checks, fixes, and
-final checks.
+Checksy has one job: take an explicitly supplied configuration and provision
+the current machine by running checks, applicable fixes, and final checks.
 
 ## Product boundary
 
@@ -12,13 +11,13 @@ final checks.
   stdin.
 - Fetching, updating, authenticating, and unpacking configuration are external
   concerns that compose with Checksy through files and pipes.
-- `check --fix` remains the provisioning operation; do not add a parallel
-  `apply` lifecycle.
+- `check --fix` is the provisioning operation. Do not add a parallel `apply`
+  lifecycle.
+- Checksy does not promise transactional rollback of arbitrary fixes and does
+  not invoke `sudo` automatically.
 - Keep Checksy a CLI. Do not add a daemon, enrollment system, scheduler
   manager, source-provider framework, recorded-status database, generation
   store, trust database, or rollback engine.
-- Checksy does not promise transactional rollback of arbitrary fixes and does
-  not invoke `sudo` automatically.
 
 ## Compatibility guardrails
 
@@ -29,234 +28,285 @@ final checks.
   of scope.
 - Deprecate Git acquisition deliberately rather than silently changing or
   immediately removing existing configurations.
-- Treat configuration acquisition as shell composition. A self-contained YAML
-  document may be piped to stdin; a configuration with scripts, Brewfiles,
-  templates, or other assets is materialized locally before invoking Checksy.
+- A self-contained YAML document may be piped to stdin. A configuration with
+  scripts, Brewfiles, templates, or other assets is materialized locally before
+  invoking Checksy.
 
-## P0 — Confirm the reset contract
+## Priority and delivery policy
 
-- [x] Start a clean branch from `origin/main` with a provisioning-only
-  roadmap.
-- [ ] Add a short architecture decision documenting the product boundary
-  above.
-- [ ] Define the exact interactive/headless contract:
-  - Checks and post-fix checks are always non-interactive.
-  - `fix` is a headless-capable command and always receives `/dev/null` as
-    stdin, whether or not a controlling terminal is present.
-  - `interactive-fix` is an alternative fix command that requires a
-    controlling terminal and receives real terminal semantics.
-  - A rule may define `fix` or `interactive-fix`, never both.
-  - `--non-interactive` explicitly prohibits terminal use but does not prevent
-    ordinary `fix` commands from running.
-  - `--stdin-config` implicitly selects non-interactive execution. Checksy
-    never opens `/dev/tty`, allocates a PTY, or otherwise attaches a terminal
-    for a stdin-supplied configuration. An explicit `--non-interactive` flag is
-    accepted but redundant in this mode.
-  - A missing or prohibited terminal matters only after a rule with
-    `interactive-fix` fails its check. Checksy then leaves that fix unexecuted
-    and reports that interactive repair is required.
-  - A passing rule with `interactive-fix` never requires a terminal.
-- [ ] Define conditional rule execution through an optional `skip-if` command:
-  - Run `skip-if` once immediately before its rule's initial check.
-  - Exit `0` means the skip condition succeeded: mark the rule skipped and do
-    not run its check, fix, interactive fix, or final check.
-  - Any completed nonzero exit means the skip condition was false: continue
-    with the rule's check. Do not assign special meanings to individual
-    nonzero exit codes.
-  - Failure to start the predicate, timeout, or signal termination is an
-    operational error and prevents the rule's check from running.
-  - Run the predicate non-interactively with `/dev/null`, the inherited
-    environment, and the working directory of the rule's defining config.
-  - Report a skipped rule distinctly; it is neither compliant nor failed and
-    does not affect severity thresholds.
-- [ ] Choose one provisioning-lock namespace and default location that works
-  for both file-backed and stdin configurations and does not depend on
-  `cachePath`.
-- [ ] Define the Git deprecation window and the release in which Git
-  acquisition, `install`, and `cachePath` may be removed.
+- **P0 — Core:** required for Checksy's provisioning contract and safety.
+- **P1 — Important:** meaningful correctness, compatibility, and maintenance
+  improvements that are not required for the smallest complete provisioner.
+- **P2 — Kinda important:** valuable hardening or cleanup that may follow core
+  adoption.
+- **P3 — Not important:** optional refinements that should be implemented only
+  after real usage demonstrates a need.
+- Work on the highest-priority unblocked feature. A lower-priority feature may
+  proceed only when every higher-priority remaining feature is genuinely
+  blocked.
+- Every feature is a vertical slice. Do not check it off until runtime
+  behavior, strict configuration/schema handling, reporting, CLI help,
+  documentation, deterministic unit/integration tests, formatting, tests, and
+  Clippy all pass together.
+- Do not land speculative foundations, dormant models, or fixture-only
+  contracts for behavior that has no runtime consumer.
 
-Exit gate: the CLI interaction modes, lock identity, compatibility policy, and
-deprecation path are precise enough to test before implementation.
+## Reset status
 
-## P1 — Make configuration strict without changing its purpose
+- [x] Start `codex/provisioner-reset` from `origin/main` and replace the
+  pull-agent roadmap with this provisioning-only roadmap.
 
-- [ ] Replace permissive YAML loading with strict typed deserialization.
+## P0 — Core
+
+### Lock the product and CLI contract
+
+- [ ] Document the product boundary in README and architecture documentation.
+  - State that source acquisition and authentication happen outside Checksy.
+  - Keep `check --fix` as the only provisioning lifecycle.
+  - Document that commands are trusted arbitrary code and machine mutations
+    are not transactionally reversible.
+  - Define the exact interaction modes, provisioning-lock namespace, lock
+    location, and stable operational exit classes before implementing them.
+
+This item is unblocked and prevents another architecture drift.
+
+### Strict configuration and generated schema
+
+- [ ] Implement strict configuration loading end to end.
   - Reject unknown and duplicate fields.
-  - Require every rule to be exactly one valid form: a local include or an
-    executable check.
-  - Reject empty checks/includes, `fix` or `interactive-fix` without `check`,
-    `skip-if` without `check`, rules defining both fix forms, invalid
-    severities, invalid patterns, NUL bytes, explicit nulls where unsupported,
-    and invalid timeout values.
-  - Preserve valid existing configurations.
-- [ ] Generate the configuration JSON Schema from the Rust types where
-  practical.
-  - Keep objects closed with `additionalProperties: false`.
-  - Test structural parity between typed deserialization and the schema.
-  - Document parser-only and runtime-only validation narrowly.
-- [ ] Preserve deterministic diagnostics for file and stdin configurations.
+  - Require each rule to be exactly one valid form: an include or an executable
+    check. Continue accepting legacy Git include locators until their documented
+    removal release.
+  - Reject empty checks/includes, invalid severities, invalid patterns, NUL
+    bytes, and unsupported explicit nulls.
+  - Preserve every currently valid configuration.
+  - Generate the JSON Schema from the Rust types where practical, keep objects
+    closed, and test structural parity against one fixture corpus.
+  - Keep duplicate-key parsing and complete shell/glob validation in their
+    documented authoritative layers where JSON Schema cannot express them.
+  - Exercise both file-backed and stdin loading through the public CLI.
 
-Exit gate: valid legacy configurations still load, malformed configurations
-fail before any configured command executes, and schema/runtime behavior is
-covered by one fixture corpus.
+This item is unblocked. New fields such as `skip-if` and `interactive-fix`
+must be added only by their complete runtime slices below, not speculatively.
 
-## P2 — Preserve local configuration origins
+### Supervised non-interactive command runner
 
-- [ ] Carry each rule and pattern group with its defining configuration and
-  working directory.
-- [ ] Execute skip predicates, checks, fixes, post-fix checks, patterns, and
-  referenced assets relative to the configuration that defines them.
-- [ ] Preserve ordering and inherited severity semantics across local file
-  includes.
-- [ ] Detect active include cycles deterministically and deduplicate completed
-  repeated includes.
-- [ ] Keep stdin configuration rooted at the caller's current working
-  directory.
-- [ ] Add one checked-in origin regression fixture containing a root config,
-  local include, scripts, a Brewfile, a template, and an excluded pattern.
-
-Exit gate: local composition is predictable, every asset uses the correct
-working directory, and no Git acquisition machinery is required to resolve a
-definition.
-
-## P3 — Separate interactive and headless execution
-
-- [ ] Build one supervised command runner shared by checks, fixes, and final
-  checks.
-  - Apply bounded global and optional positive per-rule timeouts.
+- [ ] Route checks, ordinary fixes, final checks, and later skip predicates
+  through one hardened runner.
+  - Give all non-interactive commands `/dev/null` as stdin.
+  - Start non-interactive commands without a controlling terminal so they
+    cannot fall back to inherited `/dev/tty` prompting.
+  - Apply a bounded global timeout and add an optional positive per-rule timeout
+    through this same runtime/schema/documentation slice.
   - Run commands in a managed process group.
   - Send `TERM`, wait a bounded grace period, then send `KILL` to the group.
-  - Continuously drain bounded stdout and stderr and preserve output emitted
+  - Continuously drain bounded stdout and stderr and retain output emitted
     before failure or timeout.
   - Distinguish spawn failure, timeout, signal termination, and ordinary
     nonzero exit.
-- [ ] Run `skip-if` through the same supervision and bounded-output machinery.
-  - Always provide `/dev/null` as stdin; skip predicates are never interactive.
-  - Preserve ordinary shell truth semantics: zero skips and every completed
-    nonzero exit continues to the check.
-  - Treat runner failures, timeouts, and signals as operational errors rather
-    than predicate results.
-- [ ] Implement headless-capable fixes.
-  - Give ordinary `fix` commands `/dev/null` as stdin regardless of terminal
-    availability.
-  - Let `--non-interactive` force this mode even when a terminal exists.
-  - Never synthesize confirmation answers or invoke `sudo`.
-  - Keep timeouts and process-group cleanup active.
-- [ ] Implement correct interactive fix terminal handling.
-  - Execute `interactive-fix` only when its check fails and terminal use is
-    available and permitted.
-  - When interactive repair is required in headless mode, execute no fix for
-    that rule and report a distinct actionable failure.
-  - Give the fix a real controlling terminal using a PTY or correct foreground
-    process-group handoff; merely inheriting a terminal file descriptor is not
-    sufficient.
-  - Restore terminal ownership and modes after success, failure, timeout, or
-    interruption.
-  - Forward or correctly route terminal signals while retaining child cleanup.
-  - Restrict terminal-backed fixes to file-backed configurations; stdin mode
-    remains non-interactive even when the Checksy process has a controlling
-    terminal.
-- [ ] Add deterministic tests for ordinary headless fixes, interactive
-  prompting, deferred terminal requirements, headless EOF, terminal absence,
-  stdin configuration, timeout escalation, descendants, bounded output,
-  signal handling, and ordinary nonzero exits.
+  - Never synthesize confirmations or invoke `sudo`.
+  - Add network-free process-tree, timeout, output-boundary, and exit-class
+    tests.
 
-Exit gate: headless provisioning cannot wait for input indefinitely, and an
-operator-run fix behaves like a normal terminal command without giving up
-timeout or descendant cleanup.
+This item is unblocked after strict configuration is in place. It must not
+change ordinary command exit/severity behavior except where explicitly
+documented.
 
-## P4 — Serialize provisioning mutations
+### Conditional checks with `skip-if`
 
-- [ ] Implement an operating-system advisory provisioning lock on macOS and
-  Linux.
-  - Acquire it for the complete `check --fix` operation, including initial
-    checks and final rechecks.
-  - Cover both file-backed and stdin configuration.
-  - Keep ordinary check-only runs lock-free.
+- [ ] Add `skip-if` as an optional executable-rule command and implement it end
+  to end.
+  - Keep rule execution linear; do not add rule IDs, `dependsOn`, dependency
+    graphs, or dependency-cycle semantics.
+  - Run it once immediately before the rule's initial check.
+  - Exit `0` means the condition succeeded: report the rule as skipped and run
+    no check, fix, interactive fix, or final check.
+  - Every completed nonzero exit means the condition was false: continue with
+    the rule's check. Do not assign special meanings to individual nonzero
+    values.
+  - Spawn failure, timeout, or signal termination is an operational error and
+    prevents the rule's check from running.
+  - Run it with `/dev/null`, the inherited environment, and the working
+    directory of the rule's defining configuration.
+  - A skipped rule is neither compliant nor failed and does not affect severity
+    thresholds.
+  - Reject empty `skip-if`, `skip-if` without `check`, and `skip-if` on an
+    include rule.
+  - Cover command-availability and environment-variable gates in file-backed
+    and stdin configurations.
+
+Blocked by strict configuration and the supervised runner.
+
+### Interactive repairs with `interactive-fix`
+
+- [ ] Add `interactive-fix` as an alternative fix command and implement it end
+  to end.
+  - A rule may define `fix` or `interactive-fix`, never both; either requires a
+    `check`.
+  - Ordinary `fix` is headless-capable and always receives `/dev/null`, whether
+    or not a terminal exists.
+  - Run `interactive-fix` only after its check fails and only when terminal use
+    is available and permitted.
+  - A passing rule with `interactive-fix` never requires a terminal.
+  - In headless mode, leave a needed interactive fix unexecuted and report a
+    distinct actionable interactive-repair requirement. Continue processing
+    other rules according to the normal severity policy.
+  - `--non-interactive` prohibits terminal use but does not prevent ordinary
+    fixes from running.
+  - `--stdin-config` implicitly selects non-interactive execution. Never open
+    `/dev/tty`, allocate a PTY, or otherwise attach a terminal for a
+    stdin-supplied configuration; an explicit `--non-interactive` is accepted
+    but redundant.
+  - For file-backed interactive fixes, provide real terminal semantics through
+    a PTY or correct foreground process-group handoff. Restore terminal state
+    after success, failure, timeout, signal, or interruption.
+  - Retain timeout and descendant cleanup while correctly routing terminal
+    signals.
+  - Add deterministic PTY tests for prompting, terminal absence, forced
+    non-interactive mode, passing interactive rules, and failed repairs.
+
+Blocked by strict configuration and the supervised runner.
+
+### Provisioning semaphore
+
+- [ ] Serialize complete `check --fix` operations with an operating-system
+  advisory lock on macOS and Linux.
+  - Use one documented provisioning namespace independent of configuration
+    source and legacy `cachePath`.
+  - Cover file-backed and stdin provisioning.
+  - Acquire before initial checks and hold through fixes, final checks, and
+    reporting.
+  - Keep check-only runs lock-free.
   - Return a distinct documented result on contention.
-  - Use a securely opened regular lock file; reject symlink and special-file
-    substitutions.
+  - Securely open a regular lock file and reject symlink, hardlink, ownership,
+    permission, and special-file substitutions.
   - Release through descriptor lifetime and process death rather than PID-file
     interpretation.
-- [ ] Add same-process and cross-process contention, release, stale-content,
-  path-integrity, and stdin-mode tests without sleeps.
+  - Test same-process and cross-process contention, release, stale contents,
+    path integrity, aliases, and stdin/file interaction without sleeps.
 
-Exit gate: two cooperating Checksy processes cannot provision through the same
-lock namespace concurrently.
+This item is unblocked after the lock namespace and location are documented.
 
-## P5 — Deprecate built-in Git acquisition
+### P0 integrated acceptance gate
 
-- [ ] Emit a clear deprecation warning for `checksy install`, `git+...`
-  locators, Git remote rules, and `cachePath`.
-- [ ] Keep deprecated behavior compatible during the documented transition
-  window; do not expand it with new authentication or state machinery.
-- [ ] Document external composition examples:
-  - Checkout or update Git content, then invoke `checksy --config`.
-  - Fetch and verify self-contained YAML, then pipe it to
-    `checksy --stdin-config`.
-  - Fetch, verify, and unpack a multi-file bundle, then invoke the local config.
-- [ ] Preserve local file includes; consider renaming `remote` to `include` only
-  in a separately planned compatibility change.
-- [ ] Remove Git acquisition, its mutable cache, and unused dependencies in the
-  planned breaking release.
+- [ ] Prove the complete core workflow through public CLI tests.
+  - A local configuration performs check, ordinary fix, and successful final
+    check.
+  - A stdin configuration performs the same flow without terminal access.
+  - `skip-if` exit `0` skips all rule work; every completed nonzero value runs
+    the check; predicate runner failures are operational errors.
+  - A passing `interactive-fix` rule succeeds headlessly without needing a
+    terminal.
+  - A needed `interactive-fix` prompts for a file-backed terminal run and is
+    left unexecuted with an actionable result in stdin or headless mode.
+  - Concurrent file-backed and stdin provisioning contend on the same lock.
+  - A hung process and its managed descendants terminate within the bound
+    while prior output is retained.
+  - Invalid configuration fails before any configured command executes.
+  - The default suite uses no public network.
 
-Exit gate: existing users receive an actionable migration path, while new
-documentation no longer recommends built-in source acquisition.
+Blocked by all preceding P0 runtime features. This gate does not replace their
+focused tests.
 
-## P6 — Harden installation and CI
+## P1 — Important
 
-- [ ] Harden `scripts/install.sh`.
-  - Avoid a mutable `main` bootstrap in the recommended command.
+### Correct local configuration origins
+
+- [ ] Preserve the defining origin of every local rule and pattern group.
+  - Execute skip predicates, checks, fixes, final checks, patterns, scripts,
+    Brewfiles, templates, and other assets relative to their defining config.
+  - Preserve local include ordering and inherited severity semantics.
+  - Detect active include cycles deterministically and deduplicate completed
+    repeated includes.
+  - Keep stdin configuration rooted at the caller's current working directory.
+  - Add one checked-in root/include fixture with distinct assets and excluded
+    patterns, plus end-to-end CLI assertions.
+
+This is unblocked after strict configuration. It is important for multi-file
+provisioning but not required for a self-contained file or stdin document.
+
+### Deprecate built-in Git acquisition
+
+- [ ] Ship a complete Git-acquisition deprecation slice.
+  - Warn for `checksy install`, `git+...` locators, Git include rules, and
+    `cachePath` without changing their existing behavior during the transition
+    window.
+  - Document the removal release and provide actionable migration diagnostics.
+  - Document external composition: checkout Git then use `--config`; fetch and
+    verify YAML then use `--stdin-config`; fetch, verify, and unpack a bundle
+    then use its local config.
+  - Preserve local file includes and avoid adding new Git authentication,
+    caching, or state behavior.
+  - Test every warning and legacy workflow without public-network access.
+
+This item is unblocked and may proceed as soon as all unblocked P0 work is
+complete.
+
+### Required continuous integration
+
+- [ ] Add a required PR/push workflow for formatting, Clippy, deterministic
+  tests, supported macOS/Linux builds, and installer smoke tests where
+  practical.
+- [ ] Gate release publishing on the required workflow and align displayed and
+  packaged versions behind one source of truth.
+
+This item is technically unblocked but follows P0 under the priority policy.
+
+## P2 — Kinda important
+
+### Harden the release installer
+
+- [ ] Harden `scripts/install.sh` end to end.
+  - Avoid recommending a bootstrap fetched from mutable `main`.
   - Use an independently pinned release key or fingerprint when verification
-    is requested.
-  - Require an exact checksum match and fail closed on verification failure.
+    is requested; never trust a key downloaded beside the artifact.
+  - Require an exact checksum match and fail closed when requested verification
+    cannot be performed.
   - Support stock macOS and Linux checksum tools.
-  - Stage and atomically replace the binary while retaining the old binary on
-    failure.
-- [ ] Add required CI for formatting, Clippy, tests without public-network
-  dependencies, supported macOS/Linux builds, and installer smoke tests.
-- [ ] Gate release publishing on the required test workflow.
-- [ ] Remove stale Go and GoReleaser documentation.
+  - Stage and atomically replace the binary while retaining/restoring the old
+    binary on failure.
+  - Add macOS/Linux integration tests and update installation documentation.
 
-## Required deterministic scenarios
+### Remove deprecated Git acquisition
 
-- [ ] A local configuration performs check, fix, and successful final check.
-- [ ] A stdin configuration performs the same flow with an ordinary fix and no
-  terminal.
-- [ ] An interactive fix can prompt through a controlling terminal.
-- [ ] A stdin configuration never opens `/dev/tty` or a PTY, even when the
-  Checksy process has a controlling terminal.
-- [ ] An ordinary headless fix receives EOF and cannot hang waiting for
-  terminal input.
-- [ ] A passing rule with `interactive-fix` succeeds headlessly without
-  requiring a terminal.
-- [ ] A failing rule with `interactive-fix` reports interactive repair is
-  required without executing that fix when headless.
-- [ ] `skip-if` exit `0` reports a skipped rule and executes no check or fix.
-- [ ] Every completed nonzero `skip-if` exit, including values greater than
-  `1`, proceeds to the check.
-- [ ] A `skip-if` predicate can gate a rule on command availability and an
-  environment variable in both file-backed and stdin configurations.
-- [ ] A timed-out, signaled, or unspawnable `skip-if` predicate is an
-  operational failure and does not run the check.
-- [ ] Concurrent file-backed and stdin provisioning contend on the same lock.
-- [ ] A hung command and its in-group descendants are terminated within the
-  configured bound while prior output is retained.
-- [ ] Unknown YAML fields and malformed rules fail before command execution.
-- [ ] Included rules and pattern assets execute from their defining local
-  directories.
-- [ ] Git acquisition paths emit the documented deprecation warning.
-- [ ] Default tests require no public network access.
+- [ ] In the documented breaking release, remove `install`, `git+...`
+  acquisition, the mutable Git cache, `cachePath`, and unused dependencies.
+  - Preserve local file includes.
+  - Add migration tests proving local and stdin provisioning remain intact.
+  - Remove stale Git-acquisition documentation and fixtures.
+
+Blocked by completion of the P1 deprecation window.
+
+### Documentation cleanup
+
+- [ ] Remove stale Go and GoReleaser references and ensure every supported CLI
+  example is exercised by a smoke test.
+
+## P3 — Not important
+
+These are deliberately optional and should remain deferred unless real usage
+justifies them.
+
+- [ ] Consider renaming the legacy local `remote` property to `include` in a
+  future major release after Git acquisition is gone.
+- [ ] Consider an optional human-readable skip reason only if rule names and
+  the standard skipped report prove insufficient.
+- [ ] Consider a configurable lock namespace/path override only if the default
+  provisioning semaphore cannot support a demonstrated workflow.
 
 ## Definition of done
 
-- Checksy provisions from either a local configuration tree or stdin.
-- Interactive and headless fixes have explicit, tested terminal semantics.
-- Provisioning mutations are serialized independently of source or cache.
-- Strict validation and origin-relative execution remain compatible with valid
+- Checksy provisions from a local configuration tree or stdin through
+  `check --fix`.
+- `skip-if`, ordinary fixes, and interactive fixes have deterministic,
+  documented execution semantics.
+- Interactive and headless modes are safe and fully tested.
+- Provisioning mutations are serialized independently of source and cache.
+- Strict validation and local origin behavior remain compatible with valid
   existing configurations.
-- Built-in Git acquisition has a documented deprecation and removal path.
+- Built-in Git acquisition has a documented migration and removal path.
 - Checksy contains no pull-agent state, remote trust, enrollment, scheduling,
   or recorded-status subsystem.
-- Formatting, lint, deterministic tests, supported builds, and installer checks
-  pass.
+- Every completed feature includes implementation, schema/config support,
+  reporting, documentation, deterministic tests, formatting, Clippy, and
+  supported builds.
