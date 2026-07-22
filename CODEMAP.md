@@ -14,13 +14,16 @@
 │   ├── cache.rs            # ~270 lines: Cache directory management
 │   ├── git.rs              # ~120 lines: Git shallow clone operations
 │   ├── check.rs            # ~450 lines: Rule execution & reporting
+│   ├── process_runner.rs   # Bounded Linux/macOS command supervision
 │   ├── schema.rs           # Strict types, validation & generated schema
 │   ├── version.rs          # ~1 line: VERSION constant
 │   └── tests/
 │       ├── provisioning_contract.rs
-│       └── strict_configuration.rs # Compiled-binary strict-loading tests
+│       ├── process_runner_contract.rs # Compiled-binary supervisor tests
+│       └── strict_configuration.rs    # Compiled-binary strict-loading tests
 │
 ├── fixtures/               # Test configurations (YAML)
+│   ├── process-runner/      # Closed command-supervision contract corpus
 │   ├── strict-config/       # Closed runtime/schema parity corpus and CLI assets
 │   ├── happy-path/         # Basic severity level tests
 │   ├── inline-check/       # Simple inline rule tests
@@ -55,7 +58,8 @@
 ### lib.rs (15 lines)
 **Role**: Module declaration and public API exports
 **Key Exports**:
-- `pub mod cache, check, cli, config, git, schema, version`
+- Public modules for cache, checks, CLI, config, Git, schema, and version
+- Private `process_runner` module used by check and CLI execution paths
 - `pub use` re-exports for convenient access
 
 ### main.rs (25 lines)
@@ -74,6 +78,7 @@
 - `run_init()`: Config file creation
 - `run_schema()`: JSON schema output
 - `check_with_fixes()`: Fix mode implementation
+- Operational-error reporting and parent-signal re-raise after cleanup
 
 **Key Types**:
 - `GlobalFlags`: `--config`, `--stdin-config`
@@ -139,7 +144,7 @@
 - Lines 1-80: Clone implementation
 - Lines 80-120: Tests (network-dependent, ignored)
 
-### check.rs (~450 lines)
+### check.rs (~650 lines)
 **Role**: Rule execution and result collection
 **Key Types**:
 - `Options { config, workdir, min_severity, fail_severity }`: Execution context
@@ -148,17 +153,40 @@
 
 **Key Functions**:
 - `diagnose()`: Main execution entry
-- `run_rule()`: Execute single rule via bash
-- `run_rule_file()`: Execute script file
+- `run_rule()`: Execute one Bash check through the supervisor
+- `run_rule_file()`: Execute a pattern script through the supervisor
+- Internal checked helpers: Preserve typed operational outcomes for the CLI
 - `expand_rule_files()`: Glob pattern expansion
 - `filter_rules()`, `filter_preconditions()`: Severity filtering
 - `min_severity()`: Severity comparison utility
 
 **Sections**:
-- Lines 1-90: Types and implementations
-- Lines 90-200: `diagnose()` and execution flow
-- Lines 200-300: Rule file pattern expansion
-- Lines 300-450: Tests
+- Lines 1-220: Result, error, report, and compatibility types
+- Lines 220-450: Supervised execution, pattern expansion, and result mapping
+- Lines 450-500: Severity filtering and threshold helpers
+- Lines 500-end: Tests
+
+### process_runner.rs
+**Role**: Private Linux/macOS supervisor for every configured non-interactive command
+
+**Key Types**:
+- `ProcessLimits`: Per-command timeout and TERM grace
+- `CompletedProcess`: Exit status plus independently captured stdout/stderr
+- `CapturedOutput`: Bounded bytes, original count, and truncation state
+- `ProcessError`: Spawn, supervision, timeout, child-signal, parent-interrupt,
+  and unsupported-platform outcomes
+
+**Behavior**:
+- Forces `/dev/null` stdin and starts a new session/process group with `setsid`
+- Polls and continuously drains nonblocking stdout/stderr pipes
+- Retains at most 1 MiB of equal head/tail output per stream
+- Uses a 15-minute default, rule-selected deadlines up to two hours, and a
+  five-second TERM-to-KILL grace
+- Waits for the full managed group even after a successful leader exits
+- Saves and restores exact signal dispositions, forwards parent termination
+  signals, escalates a second signal, and completes leader/group cleanup before
+  the CLI invokes the first signal's default action
+- Provides test-only lifecycle events for deterministic process-tree assertions
 
 ### schema.rs
 **Role**: Public data definitions, strict private projections, validation, and generated schema
@@ -171,6 +199,7 @@
 - `Severity::parse()`: String parsing
 - `Rule::is_remote()`: Check if remote rule
 - `Rule::validate_remote_only()`: Enforce remote-only constraint
+- Timeout parsing: Enforce `1ms` through `2h` executable-rule bounds
 - `configuration_schema()`: Deterministically generate Draft 7 from the strict model
 
 **Sections**:
@@ -217,6 +246,12 @@ Fixtures organized by feature/scenario:
 - `integration/`: Marker-based file, stdin, nested, fix, install, and cached-Git CLI assets
 - `README.md`: Validation-layer ownership and compatibility rules
 
+**process-runner/** (Supervised command contract)
+- `cases.yaml`: Closed fixture-to-test index
+- YAML and shell assets: EOF, timeout, signal, bounded-output, fail-fast, PTY,
+  and parent-interruption cases
+- `README.md`: Exact executable coverage and residual session-escape boundary
+
 ## Test Locations
 
 ### Unit Tests
@@ -225,12 +260,16 @@ Inline at bottom of each source file:
 - `cache.rs`: ~120 lines of tests (encoding, paths, pruning)
 - `cli.rs`: ~100 lines of tests (severity parsing, rule names)
 - `check.rs`: ~150 lines of tests (filtering, results, severity)
+- `process_runner.rs`: Process outcomes, timeouts, output bounds, signals,
+  `/dev/null`, and deterministic descendant cleanup
 
 ### Integration Tests
 - `main.rs`: Single test for help command
 - `tests/provisioning_contract.rs`: Public help, exit, and documentation contract
 - `tests/strict_configuration.rs`: Actual compiled-binary strict-loading and schema tests
+- `tests/process_runner_contract.rs`: Actual compiled-binary process-supervision tests
 - `fixtures/strict-config/`: Fully indexed strict model plus checked-in CLI assets
+- `fixtures/process-runner/`: Closed network-free command-runner scenarios
 
 ## Dependency Map
 
@@ -274,7 +313,13 @@ git.rs
   └── (std only)
 
 check.rs
-  └── schema.rs
+  ├── schema.rs
+  └── process_runner.rs
+
+process_runner.rs
+  ├── libc (temporary sigaction save/install/restore)
+  ├── rustix
+  └── signal-hook
 
 schema.rs
   ├── serde / serde_yaml
@@ -282,7 +327,7 @@ schema.rs
   └── glob
 
 lib.rs
-  └── (all modules)
+  └── (public modules plus private process_runner)
 ```
 
 ## Entry Points for Modifications
@@ -301,8 +346,11 @@ lib.rs
 
 ### Add Rule Behavior
 1. `schema.rs`: Add to `Rule` struct (if data)
-2. `check.rs`: Modify `run_rule()` (if execution)
-3. `cli.rs`: Update reporting (if output)
+2. `check.rs`: Route execution through the typed supervised path
+3. `process_runner.rs`: Change lifecycle behavior only when the rule feature
+   changes process supervision
+4. `cli.rs`: Update reporting and operational-error behavior (if output)
+5. Add strict fixtures plus compiled-binary process-runner cases
 
 ### Change Git Caching
 1. `git.rs`: Modify clone command

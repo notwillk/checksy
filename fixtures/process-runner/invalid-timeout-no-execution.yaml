@@ -1,0 +1,6 @@
+rules:
+  - name: invalid timeout must fail before execution
+    severity: error
+    timeout: 0s
+    check: |
+      : > .invalid-timeout-ran

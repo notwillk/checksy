@@ -1,0 +1,8 @@
+rules:
+  - name: TERM-resistant managed process tree
+    severity: error
+    timeout: 2h
+    check: |
+      trap '' INT TERM HUP QUIT
+      export CHECKSY_HELPER_ROLE=leader
+      exec "$CHECKSY_PROCESS_HELPER" --ignored --exact process_tree_helper --nocapture

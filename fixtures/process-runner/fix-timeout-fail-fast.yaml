@@ -1,0 +1,21 @@
+rules:
+  - name: timed out fix
+    severity: debug
+    timeout: 100ms
+    check: |
+      if [ -f .fix-started ]; then
+        : > .unexpected-recheck
+      fi
+      exit 1
+    fix: |
+      : > .fix-started
+      printf 'fix stdout before timeout\n'
+      printf 'fix stderr before timeout\n' >&2
+      while :; do
+        :
+      done
+  - name: must not run after operational failure
+    severity: error
+    timeout: 2s
+    check: |
+      : > .unexpected-later-command

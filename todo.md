@@ -91,8 +91,8 @@ must be added only by their complete runtime slices below, not speculatively.
 
 ### Supervised non-interactive command runner
 
-- [ ] Route checks, ordinary fixes, final checks, and later skip predicates
-  through one hardened runner.
+- [x] Route checks, ordinary fixes, final checks, and pattern scripts through
+  one hardened runner.
   - Give all non-interactive commands `/dev/null` as stdin.
   - Start non-interactive commands without a controlling terminal so they
     cannot fall back to inherited `/dev/tty` prompting.
@@ -108,9 +108,8 @@ must be added only by their complete runtime slices below, not speculatively.
   - Add network-free process-tree, timeout, output-boundary, and exit-class
     tests.
 
-This item is unblocked after strict configuration is in place. It must not
-change ordinary command exit/severity behavior except where explicitly
-documented.
+This item is complete. It does not change ordinary command exit/severity
+behavior except where explicitly documented.
 
 ### Conditional checks with `skip-if`
 
@@ -135,7 +134,8 @@ documented.
   - Cover command-availability and environment-variable gates in file-backed
     and stdin configurations.
 
-Blocked by strict configuration and the supervised runner.
+This item is unblocked now that strict configuration and the supervised runner
+are complete.
 
 ### Interactive repairs with `interactive-fix`
 
@@ -165,7 +165,8 @@ Blocked by strict configuration and the supervised runner.
   - Add deterministic PTY tests for prompting, terminal absence, forced
     non-interactive mode, passing interactive rules, and failed repairs.
 
-Blocked by strict configuration and the supervised runner.
+This item is unblocked now that strict configuration and the supervised runner
+are complete.
 
 ### Provisioning semaphore
 

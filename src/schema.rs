@@ -17,6 +17,12 @@ pub mod schema {
     );
 
     const NO_NUL_PATTERN: &str = r"^[^\u0000]*$";
+    const RULE_TIMEOUT_PATTERN: &str = r"^[1-9][0-9]*(ms|s|m|h)$";
+
+    pub(crate) const DEFAULT_COMMAND_TIMEOUT: std::time::Duration =
+        std::time::Duration::from_secs(15 * 60);
+    pub(crate) const MAX_COMMAND_TIMEOUT: std::time::Duration =
+        std::time::Duration::from_secs(2 * 60 * 60);
 
     fn no_nul_string_schema(_generator: &mut SchemaGenerator) -> Schema {
         schemars::json_schema!({
@@ -33,6 +39,13 @@ pub mod schema {
                 { "pattern": NO_NUL_PATTERN },
                 { "pattern": has_non_whitespace }
             ]
+        })
+    }
+
+    fn rule_timeout_schema(_generator: &mut SchemaGenerator) -> Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "pattern": RULE_TIMEOUT_PATTERN
         })
     }
 
@@ -246,6 +259,8 @@ pub mod schema {
         pub hint: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub remote: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub timeout: Option<String>,
     }
 
     #[derive(Deserialize)]
@@ -263,6 +278,8 @@ pub mod schema {
         hint: StrictOptional<StrictString>,
         #[serde(default)]
         remote: StrictOptional<StrictString>,
+        #[serde(default)]
+        timeout: StrictOptional<StrictString>,
     }
 
     impl TryFrom<RawRule> for Rule {
@@ -276,6 +293,7 @@ pub mod schema {
                 fix: raw.fix.into_option().map(StrictString::into_string),
                 hint: raw.hint.into_option().map(StrictString::into_string),
                 remote: raw.remote.into_option().map(StrictString::into_string),
+                timeout: raw.timeout.into_option().map(StrictString::into_string),
             };
             rule.validate()?;
             Ok(rule)
@@ -313,6 +331,9 @@ pub mod schema {
         fix: StrictOptional<StrictString>,
         #[serde(default)]
         hint: StrictOptional<StrictString>,
+        #[serde(default)]
+        #[schemars(schema_with = "rule_timeout_schema")]
+        timeout: StrictOptional<StrictString>,
     }
 
     impl JsonSchema for Rule {
@@ -356,6 +377,10 @@ pub mod schema {
                 return Err("executable rule requires a non-empty `check` value".to_string());
             }
 
+            if let Some(timeout) = self.timeout.as_deref() {
+                parse_rule_timeout(timeout)?;
+            }
+
             Ok(())
         }
 
@@ -366,6 +391,7 @@ pub mod schema {
                 ("fix", self.fix.as_deref()),
                 ("hint", self.hint.as_deref()),
                 ("remote", self.remote.as_deref()),
+                ("timeout", self.timeout.as_deref()),
             ] {
                 if value.is_some_and(|value| value.contains('\0')) {
                     return Err(format!("`{field}` cannot contain a NUL byte"));
@@ -401,6 +427,9 @@ pub mod schema {
             if self.hint.is_some() {
                 invalid_props.push("hint");
             }
+            if self.timeout.is_some() {
+                invalid_props.push("timeout");
+            }
 
             if invalid_props.is_empty() {
                 None
@@ -411,6 +440,52 @@ pub mod schema {
                 ))
             }
         }
+
+        pub(crate) fn effective_timeout(&self) -> Result<std::time::Duration, String> {
+            self.timeout
+                .as_deref()
+                .map(parse_rule_timeout)
+                .transpose()
+                .map(|timeout| timeout.unwrap_or(DEFAULT_COMMAND_TIMEOUT))
+        }
+    }
+
+    pub(crate) fn parse_rule_timeout(value: &str) -> Result<std::time::Duration, String> {
+        let (digits, multiplier_ms) = if let Some(digits) = value.strip_suffix("ms") {
+            (digits, 1_u64)
+        } else if let Some(digits) = value.strip_suffix('s') {
+            (digits, 1_000_u64)
+        } else if let Some(digits) = value.strip_suffix('m') {
+            (digits, 60_000_u64)
+        } else if let Some(digits) = value.strip_suffix('h') {
+            (digits, 3_600_000_u64)
+        } else {
+            return Err(format!(
+                "timeout `{value}` must match {RULE_TIMEOUT_PATTERN}"
+            ));
+        };
+
+        if digits.is_empty()
+            || digits.starts_with('0')
+            || !digits.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err(format!(
+                "timeout `{value}` must match {RULE_TIMEOUT_PATTERN}"
+            ));
+        }
+
+        let number = digits
+            .parse::<u64>()
+            .map_err(|_| format!("timeout `{value}` numeric value is too large"))?;
+        let milliseconds = number
+            .checked_mul(multiplier_ms)
+            .ok_or_else(|| format!("timeout `{value}` numeric value is too large"))?;
+        let duration = std::time::Duration::from_millis(milliseconds);
+        if duration > MAX_COMMAND_TIMEOUT {
+            return Err(format!("timeout `{value}` must not exceed 2h"));
+        }
+
+        Ok(duration)
     }
 
     #[derive(Debug, Clone, Serialize, Default)]
@@ -557,7 +632,13 @@ pub mod schema {
 
         #[test]
         fn public_configuration_types_still_round_trip_through_yaml_and_json() {
-            let yaml = "rules:\n  - name: compatible\n    check: echo ok\n    severity: warning\n";
+            let yaml = concat!(
+                "rules:\n",
+                "  - name: compatible\n",
+                "    check: echo ok\n",
+                "    severity: warning\n",
+                "    timeout: 30s\n"
+            );
             let config: Config = serde_yaml::from_str(yaml).unwrap();
             let reparsed_yaml: Config =
                 serde_yaml::from_str(&serde_yaml::to_string(&config).unwrap()).unwrap();
@@ -569,7 +650,51 @@ pub mod schema {
                 assert_eq!(reparsed.rules[0].name.as_deref(), Some("compatible"));
                 assert_eq!(reparsed.rules[0].check.as_deref(), Some("echo ok"));
                 assert_eq!(reparsed.rules[0].severity, Some(Severity::Warning));
+                assert_eq!(reparsed.rules[0].timeout.as_deref(), Some("30s"));
             }
+        }
+
+        #[test]
+        fn rule_timeouts_are_strict_bounded_and_defaulted() {
+            for (input, expected) in [
+                ("1ms", std::time::Duration::from_millis(1)),
+                ("1s", std::time::Duration::from_secs(1)),
+                ("120m", MAX_COMMAND_TIMEOUT),
+                ("2h", MAX_COMMAND_TIMEOUT),
+                ("7200000ms", MAX_COMMAND_TIMEOUT),
+            ] {
+                assert_eq!(parse_rule_timeout(input).unwrap(), expected, "{input}");
+            }
+
+            for input in [
+                "",
+                "0ms",
+                "01s",
+                "1.5s",
+                "1d",
+                " 1s",
+                "1s ",
+                "3h",
+                "121m",
+                "7201s",
+                "7200001ms",
+                "18446744073709551616ms",
+                "18446744073709551615h",
+            ] {
+                assert!(parse_rule_timeout(input).is_err(), "accepted {input:?}");
+            }
+
+            let default: Config = serde_yaml::from_str("rules:\n  - check: 'true'\n").unwrap();
+            assert_eq!(
+                default.rules[0].effective_timeout().unwrap(),
+                DEFAULT_COMMAND_TIMEOUT
+            );
+            let explicit: Config =
+                serde_yaml::from_str("rules:\n  - check: 'true'\n    timeout: 30s\n").unwrap();
+            assert_eq!(
+                explicit.rules[0].effective_timeout().unwrap(),
+                std::time::Duration::from_secs(30)
+            );
         }
 
         #[test]
@@ -584,7 +709,12 @@ pub mod schema {
                 "rules:\n  - check: '  '\n",
                 "rules:\n  - remote: '  '\n",
                 "rules:\n  - remote: nested.yaml\n    check: echo mixed\n",
+                "rules:\n  - remote: nested.yaml\n    timeout: 1s\n",
                 "rules:\n  - fix: echo fixed\n",
+                "rules:\n  - check: ok\n    timeout: null\n",
+                "rules:\n  - check: ok\n    timeout: 1\n",
+                "rules:\n  - check: ok\n    timeout: 0s\n",
+                "rules:\n  - check: ok\n    timeout: 3h\n",
             ];
 
             for yaml in rejected {
@@ -605,6 +735,7 @@ pub mod schema {
                 "rules:\n  - check: 'false'\n    fix: \"bad\\0fix\"\n",
                 "rules:\n  - check: 'false'\n    hint: \"bad\\0hint\"\n",
                 "rules:\n  - remote: \"bad\\0remote\"\n",
+                "rules:\n  - check: ok\n    timeout: \"bad\\0timeout\"\n",
                 "patterns:\n  - \"bad\\0pattern\"\n",
             ];
 
@@ -644,6 +775,14 @@ pub mod schema {
             assert!(branches[1]["properties"]["severity"]
                 .get("default")
                 .is_none());
+            assert_eq!(
+                branches[1]["properties"]["timeout"]["pattern"],
+                RULE_TIMEOUT_PATTERN
+            );
+            assert!(branches[1]["properties"]["timeout"]
+                .get("default")
+                .is_none());
+            assert!(branches[0]["properties"].get("timeout").is_none());
         }
 
         #[test]
@@ -656,6 +795,8 @@ pub mod schema {
                 json!({}),
                 json!({"rules": [{"check": "echo ok", "severity": "WaRnInG"}]}),
                 json!({"rules": [{"remote": "nested.yaml"}]}),
+                json!({"rules": [{"check": "true", "timeout": "1ms"}]}),
+                json!({"rules": [{"check": "true", "timeout": "2h"}]}),
                 json!({"patterns": ["scripts/*.sh"]}),
             ] {
                 assert!(validator.is_valid(&accepted), "rejected {accepted}");
@@ -667,13 +808,26 @@ pub mod schema {
                 json!({"rules": [{}]}),
                 json!({"rules": [{"check": " "}]}),
                 json!({"rules": [{"remote": "nested.yaml", "check": "echo mixed"}]}),
+                json!({"rules": [{"remote": "nested.yaml", "timeout": "1s"}]}),
                 json!({"rules": [{"check": "ok", "name": "bad\0name"}]}),
+                json!({"rules": [{"check": "ok", "timeout": null}]}),
+                json!({"rules": [{"check": "ok", "timeout": 1}]}),
+                json!({"rules": [{"check": "ok", "timeout": "0s"}]}),
+                json!({"rules": [{"check": "ok", "timeout": "1.5s"}]}),
+                json!({"rules": [{"check": "ok", "timeout": "1d"}]}),
+                json!({"rules": [{"check": "ok", "timeout": "bad\0timeout"}]}),
                 json!({"patterns": ["!  "]}),
             ] {
                 assert!(!validator.is_valid(&rejected), "accepted {rejected}");
             }
 
             assert!(validator.is_valid(&json!({"patterns": ["[unterminated"]})));
+            assert!(validator.is_valid(&json!({
+                "rules": [{"check": "true", "timeout": "3h"}]
+            })));
+            assert!(validator.is_valid(&json!({
+                "rules": [{"check": "true", "timeout": "18446744073709551616ms"}]
+            })));
         }
     }
 }

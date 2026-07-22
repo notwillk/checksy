@@ -1,5 +1,5 @@
 use crate::cache::CacheManager;
-use crate::check::{self, Options, Report, RuleResult};
+use crate::check::{self, DiagnoseError, Options, Report, RuleResult};
 use crate::config::{decode_config, load, parse_git_remote, resolve_path, resolve_remote_path};
 use crate::git::GitCache;
 use crate::schema::{configuration_schema, Config, Rule, Severity};
@@ -254,17 +254,15 @@ fn run_check(
     let report = if apply_fixes {
         match check_with_fixes(opts, stdout, stderr) {
             Ok(r) => r,
-            Err(e) => {
-                writeln!(stderr, "check failed: {}", e).ok();
-                return 2;
+            Err(mut e) => {
+                return report_check_error(&mut e, stdout, stderr);
             }
         }
     } else {
-        match check::diagnose(opts) {
+        match check::diagnose_supervised(opts) {
             Ok(r) => r,
-            Err(e) => {
-                writeln!(stderr, "check failed: {}", e).ok();
-                return 2;
+            Err(mut e) => {
+                return report_check_error(&mut e, stdout, stderr);
             }
         }
     };
@@ -832,17 +830,65 @@ fn summarize_report(report: &Report, no_fail: bool, stdout: &mut dyn Write) -> i
     3
 }
 
+fn report_check_error(
+    error: &mut DiagnoseError,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> i32 {
+    if let Some(execution) = error.execution() {
+        let command_name = execution.command_name();
+        let command_stdout = execution.stdout();
+        let command_stderr = execution.stderr();
+        if !command_stdout.is_empty() {
+            let _ = writeln!(stderr, "{} stdout:\n{}", command_name, command_stdout);
+        }
+        if !command_stderr.is_empty() {
+            let _ = writeln!(stderr, "{} stderr:\n{}", command_name, command_stderr);
+        }
+    }
+
+    let _ = writeln!(stderr, "check failed: {}", error);
+
+    if let Some(signal) = error
+        .execution()
+        .and_then(|execution| execution.interrupted_signal())
+    {
+        let _ = stdout.flush();
+        let _ = stderr.flush();
+        if let Some(execution) = error.execution_mut() {
+            let _ = execution.restore_signal_handlers();
+        }
+        return reraise_parent_signal(signal);
+    }
+
+    2
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn reraise_parent_signal(signal: i32) -> i32 {
+    // The runner has already dropped its temporary handlers before returning.
+    // Invoke the default action only after caller-visible diagnostics have
+    // been flushed so the invoking shell observes conventional signal status.
+    // signal-hook deliberately leaves its dispatcher installed after the last
+    // registration is removed. Emulate the platform default so the parent
+    // observes signal termination instead of an ordinary Checksy exit code.
+    let _ = signal_hook::low_level::emulate_default_handler(signal);
+    2
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn reraise_parent_signal(_signal: i32) -> i32 {
+    2
+}
+
 fn check_with_fixes(
     opts: Options,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
-) -> Result<Report, String> {
-    if opts.config.rules.is_empty() && opts.config.preconditions.is_empty() {
-        return Ok(Report {
-            rules: vec![],
-            fail_severity: opts.fail_severity,
-        });
-    }
+) -> Result<Report, DiagnoseError> {
+    opts.config
+        .validate()
+        .map_err(DiagnoseError::Configuration)?;
 
     let workdir = if opts.workdir.is_empty() {
         "."
@@ -853,7 +899,7 @@ fn check_with_fixes(
 
     let preconditions = check::filter_preconditions(&opts.config, opts.min_severity);
     for rule in preconditions {
-        let result = check::run_rule(rule.clone(), workdir);
+        let result = check::run_rule_supervised(rule.clone(), workdir)?;
         if result.success() {
             print_rule_success(&result, stdout, stderr);
             results.push(result);
@@ -871,12 +917,13 @@ fn check_with_fixes(
         let fix_rule = Rule {
             name: Some(format!("{} fix", rule_display_name(&rule))),
             check: Some(rule.fix.clone().unwrap_or_default()),
-            severity: rule.severity.clone(),
+            severity: rule.severity,
             fix: None,
             hint: rule.hint.clone(),
             remote: None,
+            timeout: rule.timeout.clone(),
         };
-        let fix_result = check::run_rule(fix_rule, workdir);
+        let fix_result = check::run_rule_supervised(fix_rule, workdir)?;
         if !fix_result.success() {
             print_rule_failure(&fix_result, stdout, stderr);
             print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
@@ -886,14 +933,14 @@ fn check_with_fixes(
 
         print_rule_success(&fix_result, stdout, stderr);
 
-        let result = check::run_rule(rule, workdir);
+        let result = check::run_rule_supervised(rule, workdir)?;
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }
 
     let rules = check::filter_rules(&opts.config, opts.min_severity);
     for rule in rules {
-        let result = check::run_rule(rule.clone(), workdir);
+        let result = check::run_rule_supervised(rule.clone(), workdir)?;
         if result.success() {
             print_rule_success(&result, stdout, stderr);
             results.push(result);
@@ -911,12 +958,13 @@ fn check_with_fixes(
         let fix_rule = Rule {
             name: Some(format!("{} fix", rule_display_name(&rule))),
             check: Some(rule.fix.clone().unwrap_or_default()),
-            severity: rule.severity.clone(),
+            severity: rule.severity,
             fix: None,
             hint: rule.hint.clone(),
             remote: None,
+            timeout: rule.timeout.clone(),
         };
-        let fix_result = check::run_rule(fix_rule, workdir);
+        let fix_result = check::run_rule_supervised(fix_rule, workdir)?;
         if !fix_result.success() {
             print_rule_failure(&fix_result, stdout, stderr);
             print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
@@ -926,14 +974,15 @@ fn check_with_fixes(
 
         print_rule_success(&fix_result, stdout, stderr);
 
-        let result = check::run_rule(rule, workdir);
+        let result = check::run_rule_supervised(rule, workdir)?;
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }
 
-    let file_paths = check::expand_rule_files(workdir, &opts.config.patterns)?;
+    let file_paths = check::expand_rule_files(workdir, &opts.config.patterns)
+        .map_err(DiagnoseError::Configuration)?;
     for rel_path in file_paths {
-        let result = check::run_rule_file(workdir, &rel_path);
+        let result = check::run_rule_file_supervised(workdir, &rel_path)?;
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }
@@ -1112,6 +1161,7 @@ mod tests {
             fix: None,
             hint: None,
             remote: None,
+            timeout: None,
         };
         assert!(rule_display_name(&rule).contains("echo hi"));
 
@@ -1122,6 +1172,7 @@ mod tests {
             fix: None,
             hint: None,
             remote: None,
+            timeout: None,
         };
         assert_eq!(rule_display_name(&rule), "custom");
     }

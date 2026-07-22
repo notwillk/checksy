@@ -21,18 +21,21 @@ Configured checks and fixes are trusted arbitrary Bash executed with the
 invoking user's authority. They are not sandboxed. Checksy does not invoke
 `sudo`, cannot transactionally roll back shell mutations, and may leave partial
 machine changes when a fix fails. Correct and idempotent fixes remain the
-configuration author's responsibility.
+configuration author's responsibility. Process supervision adds no CPU,
+memory, filesystem, network, or disk quota. A command that deliberately creates
+a different session is outside the managed-descendant guarantee.
 
 ## Normative P0 execution contract
 
-This section defines target behavior before implementation. At the current
-HEAD, `interactive-fix`, `--non-interactive`, hardened process supervision, and
-the provisioning lock do not yet exist.
+This section records both implemented behavior and the remaining target. At the
+current HEAD, hardened non-interactive process supervision exists;
+`interactive-fix`, `--non-interactive`, and the provisioning lock do not.
 
 ### Interaction modes
 
-- Checks, pattern scripts, ordinary fixes, final checks, and future `skip-if`
-  predicates are non-interactive and receive `/dev/null` as stdin.
+- Checks, pattern scripts, ordinary fixes, and final checks are non-interactive,
+  receive `/dev/null` as stdin, and run in a detached session without a
+  controlling terminal. Future `skip-if` predicates will use the same runner.
 - `interactive-fix` is the only terminal-capable command. It is considered only
   after its check fails; a passing rule never requires a terminal.
 - `--non-interactive` prohibits terminal use without disabling ordinary fixes.
@@ -41,6 +44,47 @@ the provisioning lock do not yet exist.
 - If a failed rule needs an interactive fix but terminal use is unavailable or
   prohibited, the fix is not run. The rule remains failed at its configured
   severity and reporting continues normally.
+
+### Supervised command lifecycle
+
+The private Linux/macOS runner starts every configured non-interactive command
+as the leader of a new session and process group. It supervises nonblocking
+stdout and stderr pipes on a monotonic clock with no supervision interval
+longer than 25 milliseconds. Stdin is always `/dev/null`; because the session
+has no controlling terminal, opening `/dev/tty` also fails.
+
+Executable rules use a `15m` compiled default or an optional `timeout` matching
+`^[1-9][0-9]*(ms|s|m|h)$` in the inclusive range `1ms` through `2h`. A rule gets
+a fresh timeout for its initial check, ordinary fix, and final recheck. Pattern
+scripts use `15m`. The complete configuration is validated before execution,
+including rejection of malformed, null, overflowing, over-limit, or
+include-rule timeouts.
+
+At a deadline the runner sends `TERM` to the whole managed group, permits a
+five-second grace, sends `KILL` if anything remains, then permits five more
+seconds for final reap and pipe cleanup. A cleanup guard remains armed on error
+paths. Stdout and stderr are continuously drained and independently retain at
+most 1 MiB. Truncated streams preserve equal head and tail halves separated by
+`... N bytes omitted from bounded process output ...`, while the discarded
+middle is still drained so a writer cannot block supervision. Reaping a
+successful leader is insufficient while its managed group still exists;
+in-group descendants remain subject to the same command deadline and cleanup.
+
+Temporary handlers cover `SIGINT`, `SIGTERM`, `SIGHUP`, and `SIGQUIT`. The first
+parent signal is forwarded to the group and starts the same grace period; a
+second termination signal forces immediate `KILL`. Checksy finishes group and
+leader cleanup and flushes retained diagnostics while its temporary handlers
+remain active. It then restores the exact saved signal dispositions and
+emulates the first signal's platform-default action so its parent observes the
+conventional signal status.
+
+Completed nonzero exits are compliance results and continue through severity,
+fix, final-check, and `--no-fail` policy. Spawn, timeout, child-signal, and
+supervision failures are operational: no fix, recheck, or later configured
+command runs, retained output is reported, and the CLI returns `2` regardless
+of severity or `--no-fail`. Pattern-only configurations execute their scripts;
+only a definition with no executable rules or matching patterns is empty.
+Legacy Git subprocesses are unchanged and remain outside this runner.
 
 ### Provisioning-lock identity
 
@@ -80,8 +124,8 @@ contents, and rely on descriptor close or process death for release.
 
 `--no-fail` affects only exit `3`. It does not convert argument, configuration,
 process, state, platform, or contention failures to success. Process spawn,
-timeout, and signal failures will become operational exit `2` when the hardened
-runner is implemented; current runner behavior is not yet fully classified.
+timeout, child-signal, and supervision failures are implemented operational
+exit `2`; parent interruption is cleaned up and re-raised instead.
 
 ## Architectural priorities
 
@@ -101,7 +145,9 @@ auto-discovered files, nested local files, cached legacy Git files, stdin,
 `check --fix`, and the local include graph inspected by `install`. The decoder
 rejects unknown and duplicate fields, unsupported nulls and scalar coercions,
 invalid rule unions, blank checks/includes, invalid severities and globs, and
-NUL in any configuration string before command execution.
+NUL in any configuration string before command execution. Executable-rule
+timeouts use the documented syntax and `1ms` through `2h` runtime bound;
+include rules cannot declare them.
 
 `Config` and `Rule` remain the public compatibility types. Private raw types
 express omission without accepting explicit null and project into those public
@@ -116,7 +162,8 @@ documents remain parser-layer errors because they do not yield a unique JSON
 instance; complete `glob::Pattern` syntax remains a runtime layer beyond
 standard JSON Schema. The
 [strict configuration corpus](fixtures/strict-config/README.md) freezes those
-narrow boundaries and exercises the compiled binary without a public network.
+narrow boundaries, including structural and runtime-only timeout validation,
+and exercises the compiled binary without a public network.
 
 ## Component Responsibilities
 
@@ -158,17 +205,25 @@ narrow boundaries and exercises the compiled binary without a public network.
 - **Network required**: All operations need network access
 
 ### check.rs (Execution Engine)
-- **Rule runner**: Executes shell commands via `std::process::Command`
+- **Rule orchestration**: Routes checks, ordinary fixes, final rechecks, and
+  pattern scripts through the private supervisor
 - **Result collection**: `RuleResult` contains stdout, stderr, exit status
 - **Filtering**: `filter_rules()`, `filter_preconditions()` by severity
 - **Pattern expansion**: Glob matching for script files (`tests/*.sh`)
 - **Reporting**: `Report` aggregates results, calculates failures
 
+### process_runner.rs (Process Supervisor)
+- **Isolation**: `/dev/null` stdin plus a new session/process group
+- **Deadlines**: Monotonic timeout, five-second TERM grace, bounded KILL/reap
+- **Capture**: Continuously drained 1 MiB head/tail limit per output stream
+- **Signals**: Temporary parent-signal forwarding, escalation, and cleanup
+- **Errors**: Typed completion, timeout, signal, spawn, and supervision outcomes
+
 ### schema.rs (Data Definitions)
 - **Domain types**: Public `Config`, `Rule`, and `Severity` compatibility types
 - **Strict projection**: Closed private raw types reject nulls, coercion, and malformed rule unions
 - **Custom serialization**: `Severity` maps to strings ("warn", "error", etc.)
-- **Validation**: String, rule-form, and full glob validation before execution
+- **Validation**: String, rule-form, timeout-bound, and full glob validation before execution
 - **Schema generation**: Deterministic Draft 7 output through Schemars
 - **CamelCase mapping**: Config fields use camelCase in YAML
 
@@ -190,8 +245,9 @@ main.rs
       → Options { config, workdir, min_severity, fail_severity }
       → diagnose() [check.rs]          # Execute checks
         → run_preconditions()           # Filter & run
-        → run rules                     # Filter & run
-        → expand_rule_files()           # Glob patterns
+        → run rules                     # Filter & supervise
+        → expand_rule_files()           # Glob patterns, including pattern-only configs
+        → process_runner::run()          # Session, deadline, signals, bounded output
       → print_report_results() [cli.rs] # Print ✓/⚠/✗
       → summarize_report()              # Exit code
 ```
@@ -222,6 +278,21 @@ run_install() [cli.rs]
 - All strict-loading integration paths are network-free. Temporary legacy Git
   cache layouts and a sentinel `git` executable cover compatibility behavior.
 
+### Process-supervision test coverage
+
+- Unit tests exercise exact and bounded output, ordinary exit status, spawn and
+  child-signal classification, timeout escalation, `/dev/null`, simultaneous
+  stream draining, and default versus per-rule deadlines.
+- The compiled [process-runner contract tests](src/tests/process_runner_contract.rs)
+  map to the closed [process-runner fixture
+  corpus](fixtures/process-runner/README.md). They cover checks, fixes, final
+  rechecks, pattern-only definitions, output retained on timeout, fail-fast
+  operational errors, a real controlling PTY, and parent interruption.
+- The isolated process-tree harness uses readiness handshakes, descendant-held
+  advisory locks, and bounded watchdogs to prove TERM-resistant leaders,
+  children, and grandchildren terminate and the leader is reaped without a
+  public network.
+
 ## External Dependencies & Integrations
 
 ### Required External Tools
@@ -234,6 +305,9 @@ run_install() [cli.rs]
 - **serde_json**: Deterministic JSON output
 - **schemars**: Draft 7 schema generation from the strict Rust model
 - **glob**: Pattern matching for rule files
+- **rustix**: Session/process-group, nonblocking pipe, polling, signal, and PTY primitives
+- **signal-hook**: Portable signal constants and default-action emulation
+- **libc**: Exact save/install/restore of native signal dispositions
 - **jsonschema**: Draft 7 metaschema and fixture parity tests (dev dependency)
 - **tempfile**: Test utilities (dev dependency)
 
@@ -269,13 +343,19 @@ cli.rs
   ├── schema.rs (Config, Rule, Severity)
   └── version.rs (VERSION)
 
+process_runner.rs
+  ├── libc (exact temporary signal dispositions)
+  ├── rustix (setsid, process groups, pipes, poll)
+  └── signal-hook (signal constants and default-action emulation)
+
 config.rs
   ├── cache.rs (CacheManager, GitRemote)
   ├── schema.rs (Config, Severity)
   └── check.rs (uncertain: may have circularity, check carefully)
 
 check.rs
-  └── schema.rs (Config, Rule, Severity)
+  ├── schema.rs (Config, Rule, Severity, timeout)
+  └── process_runner.rs (supervised command execution)
 
 cache.rs
   └── (self-contained, only std)

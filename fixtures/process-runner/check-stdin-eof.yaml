@@ -1,0 +1,9 @@
+rules:
+  - name: check receives EOF
+    timeout: 2s
+    check: |
+      if IFS= read -r unexpected; then
+        printf 'unexpected check stdin: %s\n' "$unexpected" >&2
+        exit 91
+      fi
+      : > .check-eof

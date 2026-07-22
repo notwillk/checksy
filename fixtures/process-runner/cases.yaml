@@ -1,0 +1,68 @@
+schemaVersion: 1
+cases:
+  - id: check-stdin-eof
+    fixture: check-stdin-eof.yaml
+    assets: []
+    test: non_interactive_command_classes_receive_eof
+    expectedExit: 0
+  - id: fix-recheck-stdin-eof
+    fixture: fix-recheck-stdin-eof.yaml
+    assets: []
+    test: non_interactive_command_classes_receive_eof
+    expectedExit: 0
+  - id: pattern-only-stdin-eof
+    fixture: pattern-only-stdin-eof.yaml
+    assets:
+      - scripts/eof-pattern.sh
+    test: non_interactive_command_classes_receive_eof
+    expectedExit: 0
+  - id: ordinary-nonzero
+    fixture: ordinary-nonzero.yaml
+    assets: []
+    test: ordinary_nonzero_remains_a_compliance_result
+    expectedExit: 3
+  - id: spawn-failure
+    fixture: spawn-failure.yaml
+    assets: []
+    test: operational_failures_are_exit_two_even_when_no_fail_is_set
+    expectedExit: 2
+  - id: timeout-partial-output
+    fixture: timeout-partial-output.yaml
+    assets: []
+    test: operational_failures_are_exit_two_even_when_no_fail_is_set
+    expectedExit: 2
+  - id: child-signal
+    fixture: child-signal.yaml
+    assets: []
+    test: operational_failures_are_exit_two_even_when_no_fail_is_set
+    expectedExit: 2
+  - id: fix-timeout-fail-fast
+    fixture: fix-timeout-fail-fast.yaml
+    assets: []
+    test: fix_timeout_prevents_recheck_and_later_commands
+    expectedExit: 2
+  - id: leader-exit-lingering-descendant
+    fixture: leader-exit-lingering-descendant.yaml
+    assets: []
+    test: leader_exit_waits_for_lingering_managed_descendant
+    expectedExit: 2
+  - id: maximum-plus-one-output
+    fixture: maximum-plus-one-output.yaml
+    assets: []
+    test: maximum_plus_one_output_is_head_tail_bounded
+    expectedExit: 3
+  - id: invalid-timeout-no-execution
+    fixture: invalid-timeout-no-execution.yaml
+    assets: []
+    test: invalid_timeout_executes_no_command
+    expectedExit: 2
+  - id: parent-interrupt-process-tree
+    fixture: parent-interrupt-process-tree.yaml
+    assets: []
+    test: ctrl_c_cleans_the_managed_tree_and_resignals_checksy
+    expectedExit: 130
+  - id: controlling-tty-isolation
+    fixture: controlling-tty-isolation.yaml
+    assets: []
+    test: runner_detaches_from_a_real_controlling_tty
+    expectedExit: 0

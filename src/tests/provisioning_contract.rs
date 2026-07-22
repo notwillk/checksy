@@ -122,20 +122,24 @@ fn public_cli_preserves_the_stable_implemented_exit_classes() {
 }
 
 #[test]
-fn documentation_freezes_the_target_contract_without_claiming_implementation() {
+fn documentation_distinguishes_the_runner_from_the_remaining_target() {
     for expected in [
         "checksy provisions the current machine",
         "`checksy check --fix` is Checksy's only provisioning lifecycle",
         "Checksy intentionally executes arbitrary Bash",
         "Fetching, updating, authenticating,",
-        "`interactive-fix`, `--non-interactive`,",
-        "are not available at the current HEAD",
+        "`interactive-fix`",
+        "`--non-interactive`",
+        "provisioning lock are not available",
         "<account-home>/.local/state/checksy/provision.lock",
         "<account-home>/Library/Application Support/checksy/provision.lock",
         "/var/lib/checksy/provision.lock",
         "/Library/Application Support/checksy/provision.lock",
         "| `4` | Provisioning lock contention; reserved until locking is implemented |",
         "`--no-fail` masks only rule-compliance exit `3`",
+        "### Command supervision",
+        "process-runner fixture",
+        "Rules without `timeout` use `15m`",
     ] {
         assert!(README.contains(expected), "README omitted: {expected}");
     }
@@ -144,12 +148,14 @@ fn documentation_freezes_the_target_contract_without_claiming_implementation() {
         "checksy is a CLI provisioner",
         "## Security and mutation boundary",
         "## Normative P0 execution contract",
-        "This section defines target behavior before implementation",
+        "This section records both implemented behavior and the remaining target",
         "The lock namespace is `checksy-provision`, keyed only by effective UID",
         "this is not a cross-UID machine-global",
         "| `4` | Provisioning lock contention; reserved until the lock is implemented |",
         "`--no-fail` affects only exit `3`",
-        "current runner behavior is not yet fully classified",
+        "timeout, child-signal, and supervision failures are implemented operational",
+        "### Supervised command lifecycle",
+        "### Process-supervision test coverage",
     ] {
         assert!(
             ARCHITECTURE.contains(expected),

@@ -1,0 +1,8 @@
+rules:
+  - name: child terminates by signal
+    severity: debug
+    timeout: 2s
+    check: |
+      printf 'stdout before child signal\n'
+      printf 'stderr before child signal\n' >&2
+      kill -TERM "$$"

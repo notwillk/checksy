@@ -1,0 +1,12 @@
+rules:
+  - name: successful leader cannot abandon a managed descendant
+    severity: error
+    timeout: 300ms
+    check: |
+      bash -c 'trap "" TERM; exec "$@"' checksy-term-resistant \
+        "$CHECKSY_PROCESS_HELPER" --ignored --exact process_tree_helper --nocapture \
+          >/dev/null 2>&1 &
+      while [ ! -f "$CHECKSY_HELPER_DIR/lingering.ready" ]; do
+        :
+      done
+      exit 0

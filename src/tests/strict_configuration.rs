@@ -224,7 +224,10 @@ fn corpus_index_is_closed_unique_and_has_exact_layer_exceptions() {
         .filter(|case| case.validation_layer == "runtime-only")
         .map(|case| case.id.as_str())
         .collect();
-    assert_eq!(runtime_only, BTreeSet::from(["invalid-glob"]));
+    assert_eq!(
+        runtime_only,
+        BTreeSet::from(["invalid-glob", "timeout-over-limit", "timeout-overflow"])
+    );
 }
 
 #[test]

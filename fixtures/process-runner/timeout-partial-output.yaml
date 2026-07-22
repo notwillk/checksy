@@ -1,0 +1,17 @@
+rules:
+  - name: timeout preserves output
+    severity: debug
+    timeout: 100ms
+    check: |
+      printf 'stdout before timeout\n'
+      printf 'stderr before timeout\n' >&2
+      while :; do
+        :
+      done
+    fix: |
+      : > .unexpected-timeout-fix
+  - name: must not run after timed out check
+    severity: error
+    timeout: 2s
+    check: |
+      : > .unexpected-after-timeout

@@ -21,14 +21,17 @@ with the permissions of the invoking user. Commands are not sandboxed, fixes may
 partially mutate the machine before failing, and Checksy cannot transactionally
 undo those mutations. Checksy never invokes `sudo` automatically.
 
-The following interaction and locking rules are the normative P0 contract. They
-are documented before implementation; `interactive-fix`, `--non-interactive`,
-and the provisioning lock are not available at the current HEAD.
+The following interaction and locking rules are the normative P0 contract. The
+supervised non-interactive runner is implemented. `interactive-fix`,
+`--non-interactive`, and the provisioning lock are not available at the current
+HEAD.
 
 ### Interaction modes
 
-- Checks, pattern scripts, ordinary `fix` commands, final checks, and future
-  `skip-if` predicates are non-interactive and receive `/dev/null` as stdin.
+- Checks, pattern scripts, ordinary `fix` commands, and final checks are
+  non-interactive. They receive `/dev/null` as stdin and run in a new session
+  without a controlling terminal, so they cannot fall back to `/dev/tty` for
+  input. Future `skip-if` predicates will use the same runner.
 - Only the future `interactive-fix` command may use a terminal. It runs only
   after its rule fails its check.
 - A missing terminal is relevant only when a failed rule needs its
@@ -40,6 +43,48 @@ and the provisioning lock are not available at the current HEAD.
   configuration never opens `/dev/tty` or receives a PTY.
 - When a needed interactive repair cannot run, the rule remains failed at its
   configured severity and Checksy continues normal reporting.
+
+### Command supervision
+
+Every check and ordinary fix runs through the same Linux/macOS process
+supervisor. An executable rule may set `timeout` to a positive duration matching
+`^[1-9][0-9]*(ms|s|m|h)$`, from `1ms` through `2h`. The default is `15m`. A
+rule's timeout applies independently to its initial check, fix, and final
+recheck; pattern scripts always use `15m`.
+
+Each command becomes the leader of its own session and managed process group.
+At the deadline Checksy sends `TERM` to the group, waits up to five seconds,
+then sends `KILL` and allows up to five more seconds for final process and pipe
+cleanup. Checksy continuously drains stdout and stderr. Each stream retains at
+most 1 MiB as equal head and tail halves, with
+`... N bytes omitted from bounded process output ...` between them when output
+was truncated. A successful Bash leader is not complete while another process
+remains in its managed group; lingering descendants are supervised through the
+same deadline and escalation.
+
+While a command is active, Checksy catches `SIGINT`, `SIGTERM`, `SIGHUP`, and
+`SIGQUIT`. It forwards the first signal to the managed group, escalates after
+the same five-second grace, and sends `KILL` immediately after a second
+termination signal. After cleanup and captured diagnostics, Checksy restores
+conventional termination behavior and re-raises the first signal so the
+invoking shell observes the usual signal status. Internally, each command saves
+the exact incoming signal dispositions and restores them before returning. For
+an interruption they remain installed through diagnostic flushing, are then
+restored, and signal-hook's platform-default action is emulated before control
+can return.
+
+An ordinary nonzero command exit remains a compliance result governed by rule
+severity, fixes, and `--no-fail`. Spawn, timeout, child-signal, and supervision
+failures are operational exit `2`, stop the run immediately, and cannot be
+masked by `--no-fail`. A configuration containing only `patterns` still runs
+matching scripts; a definition with no executable rules or matching patterns
+completes without starting a command. The network-free [process-runner fixture
+corpus](fixtures/process-runner/README.md) exercises these guarantees through
+the compiled binary. Supervision is not a sandbox: trusted Bash keeps the
+invoker's filesystem, network, and process authority; Checksy applies no CPU,
+memory, or disk quota; and a command that deliberately creates another session
+can escape the managed-descendant guarantee. Legacy Git commands used by
+`install` are not routed through this configured-command runner.
 
 ### Provisioning lock
 
@@ -96,6 +141,7 @@ src/
   cli.rs               # Argument parsing and command wiring
   config.rs            # Shared strict configuration loading
   check.rs             # Check execution and reporting helpers
+  process_runner.rs    # Bounded non-interactive process supervision
   git.rs               # Git operations for caching remotes
   schema.rs            # Strict types and generated Draft 7 schema
   version.rs           # Centralized version string
@@ -136,7 +182,12 @@ checksy schema > dist/config.schema.json
 checksy check --check-severity warn --fail-severity error
 ```
 
-The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command deterministically generates the Draft 7 JSON Schema from the same strict Rust model used at runtime.
+The `check` command executes each configured rule, printing ✅/⚠️/❌ for every
+check, forwarding any failing command output to stderr, and returning a non-zero
+exit code when something breaks. Passing `--fix` attempts to run each rule's
+optional `fix` script to resolve issues before re-running the check. The
+`schema` command deterministically generates the Draft 7 JSON Schema from the
+same strict Rust model used at runtime.
 
 Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. When omitted, checks currently run at every severity and the command only fails for error-level rules. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but do not make the run fail.
 
@@ -210,7 +261,7 @@ Every rule is exactly one of these forms:
 
 - An include with one nonblank `remote` field and no other fields.
 - An executable rule with a nonblank `check` plus optional `name`, `severity`,
-  `fix`, and `hint` fields.
+  `fix`, `hint`, and `timeout` fields.
 
 Stdin documents must be self-contained; includes require a filesystem context
 and are rejected for `--stdin-config` and `--config -`. Shell commands remain
@@ -218,7 +269,15 @@ opaque trusted Bash. Duplicate-key and multi-document rejection belongs to the
 YAML parser, while complete glob grammar is checked by the runtime after the
 generated schema validates its structural constraints. The checked-in
 [strict configuration corpus](fixtures/strict-config/README.md) exercises all
-three validation layers and the compiled CLI.
+three validation layers and the compiled CLI, including timeout syntax,
+type/null rejection, the `2h` ceiling, and rejection of timeouts on includes.
+
+`timeout` accepts only `^[1-9][0-9]*(ms|s|m|h)$`, with an inclusive runtime
+range from `1ms` through `2h`. Numeric overflow and the upper bound are runtime
+validation constraints because Draft 7 cannot compute a mixed-unit duration.
+Rules without `timeout` use `15m`. The same timeout starts afresh for the
+initial check, an ordinary fix, and its final recheck; pattern scripts use
+`15m` and do not have per-pattern overrides.
 
 Commands currently execute relative to the selected root configuration's
 directory; preserving the defining directory of every nested local include is
@@ -227,8 +286,8 @@ a separate origin-correctness milestone.
 ### Inline rules, preconditions, and patterns
 
 - **`preconditions`** — An array of rule objects that run **before** the main rules. They follow the same failure/fix behavior as regular rules. Useful for checks that must pass before proceeding (e.g., verifying dependencies).
-- **`rules`** — An array of rule objects, each with `name`, `check`, optional `severity`, `fix`, and `hint`. These run first in config order.
-- **`patterns`** — An array of glob-style patterns that select script files to run as rules (e.g. `tests/*.sh`). Success and failure are determined by the script's exit code, same as inline rules. There is no fix step for file-based rules; they run after inline rules in a deterministic order (alphabetically by file path). Patterns are resolved relative to the config file directory. You can use **positive** patterns (any match is included) and **negated** patterns (prefix with `!` to exclude). A file is included only if it matches at least one positive pattern and no negative pattern.
+- **`rules`** — An array of rule objects, each with `name`, `check`, optional `severity`, `fix`, `hint`, and `timeout`. These run first in config order.
+- **`patterns`** — An array of glob-style patterns that select script files to run as rules (e.g. `tests/*.sh`). Success and failure are determined by the script's exit code, same as inline rules. There is no fix step or timeout override for file-based rules; they use the 15-minute default and run after inline rules in a deterministic order (alphabetically by file path). Pattern-only configurations execute normally. Patterns are resolved relative to the config file directory. You can use **positive** patterns (any match is included) and **negated** patterns (prefix with `!` to exclude). A file is included only if it matches at least one positive pattern and no negative pattern.
 
 ### Remote Config References
 

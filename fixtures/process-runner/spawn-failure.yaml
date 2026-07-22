@@ -1,0 +1,5 @@
+rules:
+  - name: Bash cannot be spawned
+    severity: debug
+    timeout: 2s
+    check: "true"

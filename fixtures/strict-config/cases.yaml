@@ -52,6 +52,18 @@ cases:
     fixture: valid/precondition-include.yaml
     expected: accept
     validationLayer: structural
+  - id: timeout-default
+    fixture: valid/timeout-default.yaml
+    expected: accept
+    validationLayer: structural
+  - id: timeout-minimum
+    fixture: valid/timeout-minimum.yaml
+    expected: accept
+    validationLayer: structural
+  - id: timeout-maximum
+    fixture: valid/timeout-maximum.yaml
+    expected: accept
+    validationLayer: structural
 
   - id: unknown-top-level
     fixture: invalid/unknown-top-level.yaml
@@ -65,11 +77,6 @@ cases:
     errorContains: unknown field
   - id: unknown-include-field
     fixture: invalid/unknown-include-field.yaml
-    expected: reject
-    validationLayer: structural
-    errorContains: unknown field
-  - id: future-timeout
-    fixture: invalid/future-timeout.yaml
     expected: reject
     validationLayer: structural
     errorContains: unknown field
@@ -149,6 +156,57 @@ cases:
     expected: reject
     validationLayer: structural
     errorContains: non-empty `remote`
+
+  - id: timeout-type
+    fixture: invalid/timeout-type.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: timeout-null
+    fixture: invalid/timeout-null.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: timeout-leading-zero
+    fixture: invalid/timeout-leading-zero.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: must match
+  - id: timeout-zero
+    fixture: invalid/timeout-zero.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: must match
+  - id: timeout-fraction
+    fixture: invalid/timeout-fraction.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: must match
+  - id: timeout-unit
+    fixture: invalid/timeout-unit.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: must match
+  - id: timeout-overflow
+    fixture: invalid/timeout-overflow.yaml
+    expected: reject
+    validationLayer: runtime-only
+    errorContains: numeric value is too large
+  - id: timeout-over-limit
+    fixture: invalid/timeout-over-limit.yaml
+    expected: reject
+    validationLayer: runtime-only
+    errorContains: must not exceed 2h
+  - id: timeout-nul
+    fixture: invalid/timeout-nul.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: timeout-on-include
+    fixture: invalid/timeout-on-include.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: cannot have properties
 
   - id: invalid-top-level-severity
     fixture: invalid/invalid-top-level-severity.yaml

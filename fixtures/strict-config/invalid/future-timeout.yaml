@@ -1,3 +1,0 @@
-rules:
-  - check: sleep 1
-    timeout: 1s

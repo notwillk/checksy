@@ -374,6 +374,7 @@ mod tests {
                     fix: None,
                     hint: None,
                     remote: None,
+                    timeout: None,
                 },
                 Rule {
                     name: None,
@@ -382,6 +383,7 @@ mod tests {
                     fix: None,
                     hint: None,
                     remote: None,
+                    timeout: None,
                 },
             ],
             patterns: vec![],

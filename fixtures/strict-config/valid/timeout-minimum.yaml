@@ -1,0 +1,5 @@
+checkSeverity: error
+rules:
+  - check: 'true'
+    severity: debug
+    timeout: 1ms
