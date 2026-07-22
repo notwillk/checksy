@@ -1,0 +1,3 @@
+unexpectedInstallField: true
+rules:
+  - remote: git+https://example.invalid/checks.git#main:checks.yaml

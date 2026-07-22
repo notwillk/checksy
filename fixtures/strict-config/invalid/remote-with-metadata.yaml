@@ -1,0 +1,6 @@
+rules:
+  - remote: nested.yaml
+    name: Mixed include
+    severity: warn
+    fix: echo fixed
+    hint: Includes cannot carry metadata

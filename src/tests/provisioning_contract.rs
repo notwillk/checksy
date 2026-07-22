@@ -4,6 +4,7 @@ use std::process::{Command, Output};
 
 const README: &str = include_str!("../../README.md");
 const ARCHITECTURE: &str = include_str!("../../ARCHITECTURE.md");
+const STRICT_FIXTURES: &str = include_str!("../../fixtures/strict-config/README.md");
 
 fn checksy() -> Command {
     Command::new(env!("CARGO_BIN_EXE_checksy"))
@@ -33,6 +34,7 @@ fn public_help_describes_the_provisioning_cli() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("provision the current machine"));
     assert!(stdout.contains("check      Run checks; add --fix to provision the machine"));
+    assert!(stdout.contains("schema     Print the generated Draft 7 configuration schema"));
     for command in ["check", "diagnose", "install", "init", "schema", "version"] {
         assert!(stdout.contains(command), "help omitted {command}");
     }
@@ -43,6 +45,44 @@ fn public_help_describes_the_provisioning_cli() {
         env!("CARGO_PKG_DESCRIPTION"),
         "Provision the current machine from trusted configuration"
     );
+}
+
+#[test]
+fn documentation_describes_the_implemented_strict_configuration_boundary() {
+    for expected in [
+        "strictly decodes the complete",
+        "Top-level and rule objects are closed",
+        "Every rule is exactly one of these forms",
+        "Stdin documents must be self-contained",
+        "strict configuration corpus",
+    ] {
+        assert!(README.contains(expected), "README omitted: {expected}");
+    }
+
+    for expected in [
+        "## Configuration boundary",
+        "All configuration entry paths share one strict typed decoder",
+        "generate a deterministic Draft 7 schema",
+        "strict configuration corpus",
+        "### Configuration test coverage",
+    ] {
+        assert!(
+            ARCHITECTURE.contains(expected),
+            "architecture omitted: {expected}"
+        );
+    }
+
+    for expected in [
+        "structural",
+        "yaml-parser",
+        "runtime-only",
+        "The two supported rule forms are deliberately exact",
+    ] {
+        assert!(
+            STRICT_FIXTURES.contains(expected),
+            "strict fixture README omitted: {expected}"
+        );
+    }
 }
 
 #[test]

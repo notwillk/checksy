@@ -1,8 +1,8 @@
 use crate::cache::CacheManager;
 use crate::check::{self, Options, Report, RuleResult};
-use crate::config::{load, parse_git_remote, resolve_path};
+use crate::config::{decode_config, load, parse_git_remote, resolve_path, resolve_remote_path};
 use crate::git::GitCache;
-use crate::schema::{Config, Rule, Severity};
+use crate::schema::{configuration_schema, Config, Rule, Severity};
 use crate::version::VERSION;
 use std::collections::HashSet;
 use std::io::Write;
@@ -614,10 +614,7 @@ fn run_install(
 /// Load config without expanding remote references
 fn load_without_remote_expansion(path: &std::path::Path) -> Result<Config, String> {
     let data = std::fs::read_to_string(path).map_err(|e| format!("read config: {}", e))?;
-
-    let cfg: Config = serde_yaml::from_str(&data).map_err(|e| format!("decode config: {}", e))?;
-
-    Ok(cfg)
+    decode_config(&data)
 }
 
 /// Collect all git remotes recursively from a config
@@ -656,34 +653,20 @@ fn collect_from_config(
             if let Some(git_remote) = parse_git_remote(remote_path) {
                 remotes.push((git_remote.repo.clone(), git_remote.ref_.clone()));
             } else {
-                // Regular file remote - check if it points to another config that might have git remotes
-                let resolved = config_dir.join(remote_path);
-                if resolved.exists() && resolved.is_file() {
-                    let canonical = resolved.canonicalize().ok();
-                    if let Some(path) = canonical {
-                        if !visited.contains(&path) {
-                            visited.insert(path.clone());
-                            // Load this remote config and recurse
-                            match load_without_remote_expansion(&path) {
-                                Ok(remote_cfg) => {
-                                    let remote_dir = path
-                                        .parent()
-                                        .map(|p| p.to_path_buf())
-                                        .unwrap_or_else(|| config_dir.to_path_buf());
-                                    collect_from_config(
-                                        &remote_cfg,
-                                        &remote_dir,
-                                        cache_path,
-                                        remotes,
-                                        visited,
-                                    )?;
-                                }
-                                Err(_) => {
-                                    // Ignore configs we can't parse
-                                }
-                            }
-                        }
-                    }
+                let path = resolve_remote_path(config_dir, cache_path.as_deref(), remote_path)?;
+                if visited.insert(path.clone()) {
+                    let remote_cfg = load_without_remote_expansion(&path).map_err(|error| {
+                        format!(
+                            "failed to load nested config '{}': {}",
+                            path.display(),
+                            error
+                        )
+                    })?;
+                    let remote_dir = path
+                        .parent()
+                        .map(|parent| parent.to_path_buf())
+                        .unwrap_or_else(|| config_dir.to_path_buf());
+                    collect_from_config(&remote_cfg, &remote_dir, cache_path, remotes, visited)?;
                 }
             }
         }
@@ -692,102 +675,27 @@ fn collect_from_config(
     Ok(())
 }
 
-fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Write) -> i32 {
-    let schema_json = r#"{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "checksy configuration",
-  "type": "object",
-  "properties": {
-    "cachePath": {
-      "type": "string",
-      "description": "Path to cache directory for git-based remotes (defaults to .checksy-cache)",
-      "default": ".checksy-cache"
-    },
-    "checkSeverity": {
-      "type": "string",
-      "enum": ["debug", "info", "warn", "error"]
-    },
-    "failSeverity": {
-      "type": "string",
-      "enum": ["debug", "info", "warn", "error"]
-    },
-    "preconditions": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "oneOf": [
-          {
-            "description": "Remote rule - only 'remote' property allowed. Supports file paths or git+https:// URLs (requires 'checksy install' first)",
-            "required": ["remote"],
-            "properties": {
-              "remote": { 
-                "type": "string", 
-                "description": "Relative path to another config file, or git+URL#ref:path for git-based remotes (e.g., git+https://github.com/org/repo.git#main:.checksy.yaml)"
-              }
-            },
-            "additionalProperties": false
-          },
-          {
-            "description": "Inline rule - requires 'check' property",
-            "required": ["check"],
-            "properties": {
-              "name": { "type": "string" },
-              "check": { "type": "string" },
-              "severity": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "error" },
-              "fix": { "type": "string" },
-              "hint": { "type": "string" },
-              "remote": { "type": "string" }
-            },
-            "additionalProperties": false
-          }
-        ]
-      }
-    },
-    "rules": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "oneOf": [
-          {
-            "description": "Remote rule - only 'remote' property allowed. Supports file paths or git+https:// URLs (requires 'checksy install' first)",
-            "required": ["remote"],
-            "properties": {
-              "remote": { 
-                "type": "string", 
-                "description": "Relative path to another config file, or git+URL#ref:path for git-based remotes (e.g., git+https://github.com/org/repo.git#main:.checksy.yaml)"
-              }
-            },
-            "additionalProperties": false
-          },
-          {
-            "description": "Inline rule - requires 'check' property",
-            "required": ["check"],
-            "properties": {
-              "name": { "type": "string" },
-              "check": { "type": "string" },
-              "severity": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "error" },
-              "fix": { "type": "string" },
-              "hint": { "type": "string" },
-              "remote": { "type": "string" }
-            },
-            "additionalProperties": false
-          }
-        ]
-      }
-    },
-    "patterns": {
-      "type": "array",
-      "items": { "type": "string" }
-    }
-  },
-  "required": ["rules"],
-  "additionalProperties": false
-}"#;
+fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    let mut output = match serde_json::to_vec_pretty(&configuration_schema()) {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = writeln!(
+                stderr,
+                "failed to serialize configuration schema: {}",
+                error
+            );
+            return 2;
+        }
+    };
+    output.push(b'\n');
 
-    writeln!(stdout, "{}", schema_json).ok();
+    if let Err(error) = stdout.write_all(&output).and_then(|_| stdout.flush()) {
+        let _ = writeln!(stderr, "failed to write configuration schema: {}", error);
+        return 2;
+    }
+
     0
 }
-
 fn print_usage(stdout: &mut dyn Write) {
     let _ = writeln!(
         stdout,
@@ -817,7 +725,7 @@ fn print_usage(stdout: &mut dyn Write) {
     let _ = writeln!(stdout, "  init       Create a starter configuration file");
     let _ = writeln!(
         stdout,
-        "  schema     Print the JSON schema for configuration file"
+        "  schema     Print the generated Draft 7 configuration schema"
     );
     let _ = writeln!(stdout, "  version    Print the current build version");
     let _ = writeln!(stdout, "  help       Show this message");
@@ -1048,6 +956,7 @@ fn rule_display_name(rule: &Rule) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io;
 
     fn invoke(args: &[&str]) -> (i32, String, String) {
         let mut stdout = Vec::new();
@@ -1064,6 +973,34 @@ mod tests {
         )
     }
 
+    struct WriteFailure;
+
+    impl Write for WriteFailure {
+        fn write(&mut self, _buffer: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "write failed"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct FlushFailure {
+        bytes: Vec<u8>,
+    }
+
+    impl Write for FlushFailure {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            self.bytes.extend_from_slice(buffer);
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "flush failed"))
+        }
+    }
+
     #[test]
     fn help_describes_the_provisioning_cli() {
         let (code, stdout, stderr) = invoke(&["help"]);
@@ -1076,6 +1013,43 @@ mod tests {
             assert!(stdout.contains(command), "help omitted {command}");
         }
         assert!(!stdout.contains("apply"));
+    }
+
+    #[test]
+    fn schema_command_matches_direct_generation_and_is_deterministic() {
+        let (first_code, first_stdout, first_stderr) = invoke(&["schema"]);
+        let (second_code, second_stdout, second_stderr) = invoke(&["schema"]);
+
+        assert_eq!(first_code, 0);
+        assert_eq!(second_code, 0);
+        assert!(first_stderr.is_empty());
+        assert!(second_stderr.is_empty());
+        assert_eq!(first_stdout, second_stdout);
+
+        let mut expected = serde_json::to_vec_pretty(&configuration_schema()).unwrap();
+        expected.push(b'\n');
+        assert_eq!(first_stdout.as_bytes(), expected);
+        assert!(first_stdout.ends_with('\n'));
+        assert!(!first_stdout.ends_with("\n\n"));
+    }
+
+    #[test]
+    fn schema_command_reports_write_and_flush_failures() {
+        for (mut stdout, expected_message) in [
+            (Box::new(WriteFailure) as Box<dyn Write>, "write failed"),
+            (
+                Box::new(FlushFailure::default()) as Box<dyn Write>,
+                "flush failed",
+            ),
+        ] {
+            let mut stderr = Vec::new();
+            let code = run(vec!["schema".to_string()], stdout.as_mut(), &mut stderr);
+
+            assert_eq!(code, 2);
+            let stderr = String::from_utf8(stderr).unwrap();
+            assert!(stderr.contains("failed to write configuration schema"));
+            assert!(stderr.contains(expected_message));
+        }
     }
 
     #[test]

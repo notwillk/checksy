@@ -1,0 +1,3 @@
+rules:
+  - remote: nested.yaml
+    check: echo mixed

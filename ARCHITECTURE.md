@@ -94,6 +94,30 @@ runner is implemented; current runner behavior is not yet fully classified.
 - **Local composition**: Preserve file includes without turning them into a
   source-management subsystem.
 
+## Configuration boundary
+
+All configuration entry paths share one strict typed decoder: explicit and
+auto-discovered files, nested local files, cached legacy Git files, stdin,
+`check --fix`, and the local include graph inspected by `install`. The decoder
+rejects unknown and duplicate fields, unsupported nulls and scalar coercions,
+invalid rule unions, blank checks/includes, invalid severities and globs, and
+NUL in any configuration string before command execution.
+
+`Config` and `Rule` remain the public compatibility types. Private raw types
+express omission without accepting explicit null and project into those public
+types only after validation. Rules form a closed union between a remote-only
+include and an executable check. Stdin configurations are required to be
+self-contained and cannot include another definition.
+
+`checksy schema` uses Schemars to generate a deterministic Draft 7 schema from
+that same strict model. Structural fixture cases must agree between generated
+schema validation and typed deserialization. YAML duplicate keys and multiple
+documents remain parser-layer errors because they do not yield a unique JSON
+instance; complete `glob::Pattern` syntax remains a runtime layer beyond
+standard JSON Schema. The
+[strict configuration corpus](fixtures/strict-config/README.md) freezes those
+narrow boundaries and exercises the compiled binary without a public network.
+
 ## Component Responsibilities
 
 ### main.rs (Entry Point)
@@ -107,14 +131,15 @@ runner is implemented; current runner behavior is not yet fully classified.
   - `check`: Load config, run checks, print results, return exit code
   - `install`: Cache git remotes with spinner UI
   - `init`: Create starter config file
-  - `schema`: Output JSON schema
+  - `schema`: Generate the Draft 7 configuration schema
   - `version`: Output version string
 - **Fix mode**: Implements fix/retry logic for failed checks
 - **Global flags**: `--config`, `--stdin-config` parsing
 
 ### config.rs (Configuration Layer)
 - **Path resolution**: Auto-detect `.checksy.yaml` or explicit path
-- **YAML parsing**: Deserialize with serde_yaml
+- **Strict YAML parsing**: One decoder for root, nested, stdin, fix, and install paths
+- **Stream validation**: Reject duplicate keys and multiple YAML documents
 - **Remote expansion**: Recursive config inclusion (file & git)
 - **Circular detection**: HashSet<PathBuf> tracks visited configs
 - **Default application**: Applies inherited severity defaults
@@ -140,9 +165,11 @@ runner is implemented; current runner behavior is not yet fully classified.
 - **Reporting**: `Report` aggregates results, calculates failures
 
 ### schema.rs (Data Definitions)
-- **Domain types**: `Config`, `Rule`, `Severity` with serde derives
+- **Domain types**: Public `Config`, `Rule`, and `Severity` compatibility types
+- **Strict projection**: Closed private raw types reject nulls, coercion, and malformed rule unions
 - **Custom serialization**: `Severity` maps to strings ("warn", "error", etc.)
-- **Validation**: `Rule::validate_remote_only()` enforces remote-only constraint
+- **Validation**: String, rule-form, and full glob validation before execution
+- **Schema generation**: Deterministic Draft 7 output through Schemars
 - **CamelCase mapping**: Config fields use camelCase in YAML
 
 ### version.rs
@@ -156,7 +183,7 @@ main.rs
   → cli::run()
     → run_check() [cli.rs]
       → resolve_path() [config.rs]      # Find config file
-      → load() [config.rs]              # Parse & expand
+      → load() [config.rs]              # Strictly decode & expand
         → load_with_context()           # Recursive loading
           → expand_remotes()            # Replace remote rules
             → resolve_remote_path()     # File or git cache path
@@ -172,13 +199,28 @@ main.rs
 ### 2. Install Command Flow
 ```
 run_install() [cli.rs]
-  → load_without_remote_expansion()    # Parse only, don't expand
+  → load_without_remote_expansion()    # Strict decode, don't expand
   → collect_git_remotes_recursive()    # Walk config tree
     → parse_git_remote()               # Identify git URLs
   → GitCache::shallow_clone() [git.rs] # Clone each unique (repo, ref)
     → Command::new("git")...           # Execute git CLI
   → (optional) CacheManager::prune()    # Remove unused
 ```
+
+### Configuration test coverage
+
+- Unit tests validate the strict projection, exact rule union, runtime glob
+  layer, generated schema shape, deterministic schema output, and stdout
+  write/flush failures.
+- The [compiled strict-configuration tests](src/tests/strict_configuration.rs)
+  invoke `checksy` for file, auto-discovery, both stdin spellings, nested local
+  files, cached legacy Git files, `check --fix`, `install`, `init`, and
+  `schema`.
+- The indexed fixture corpus is closed: every YAML document under its `valid/`
+  and `invalid/` trees is represented exactly once, with explicit structural,
+  YAML-parser, or runtime-only ownership.
+- All strict-loading integration paths are network-free. Temporary legacy Git
+  cache layouts and a sentinel `git` executable cover compatibility behavior.
 
 ## External Dependencies & Integrations
 
@@ -189,8 +231,10 @@ run_install() [cli.rs]
 ### Rust Dependencies (Cargo.toml)
 - **serde**: Serialization framework
 - **serde_yaml**: YAML config parsing
-- **serde_json**: JSON schema output
+- **serde_json**: Deterministic JSON output
+- **schemars**: Draft 7 schema generation from the strict Rust model
 - **glob**: Pattern matching for rule files
+- **jsonschema**: Draft 7 metaschema and fixture parity tests (dev dependency)
 - **tempfile**: Test utilities (dev dependency)
 
 ### File System Interactions
@@ -240,7 +284,9 @@ git.rs
   └── cache.rs (CacheManager)
 
 schema.rs
-  └── (self-contained, only serde)
+  ├── serde / serde_yaml
+  ├── schemars
+  └── glob
 
 lib.rs
   └── (exports from all modules)

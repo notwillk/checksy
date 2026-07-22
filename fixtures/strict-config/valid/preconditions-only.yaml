@@ -1,0 +1,4 @@
+preconditions:
+  - name: Only precondition
+    check: 'true'
+    severity: error

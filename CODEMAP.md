@@ -6,18 +6,22 @@
 /workspaces/checksy/
 ├── src/                    # Rust source code
 │   ├── Cargo.toml          # Package manifest
-│   ├── Cargo.lock          # Dependency lock (uncertain if present)
+│   ├── Cargo.lock          # Pinned dependency lock
 │   ├── lib.rs              # Library exports
 │   ├── main.rs             # Binary entry point
 │   ├── cli.rs              # ~950 lines: Command parsing & orchestration
-│   ├── config.rs           # ~575 lines: Config loading & remote expansion
+│   ├── config.rs           # Strict loading & remote expansion
 │   ├── cache.rs            # ~270 lines: Cache directory management
 │   ├── git.rs              # ~120 lines: Git shallow clone operations
 │   ├── check.rs            # ~450 lines: Rule execution & reporting
-│   ├── schema.rs           # ~160 lines: Data structures & serialization
-│   └── version.rs          # ~1 line: VERSION constant
+│   ├── schema.rs           # Strict types, validation & generated schema
+│   ├── version.rs          # ~1 line: VERSION constant
+│   └── tests/
+│       ├── provisioning_contract.rs
+│       └── strict_configuration.rs # Compiled-binary strict-loading tests
 │
 ├── fixtures/               # Test configurations (YAML)
+│   ├── strict-config/       # Closed runtime/schema parity corpus and CLI assets
 │   ├── happy-path/         # Basic severity level tests
 │   ├── inline-check/       # Simple inline rule tests
 │   ├── preconditions/      # Precondition execution tests
@@ -83,11 +87,12 @@
 - Lines 560-750: Fix mode logic
 - Lines 750-950: Helper functions, tests
 
-### config.rs (~575 lines)
-**Role**: Configuration loading and remote expansion
+### config.rs
+**Role**: Shared strict configuration loading and remote expansion
 **Key Functions**:
 - `resolve_path()`: Config file discovery
 - `load()`: Main entry for config loading
+- `decode_config()`: Closed typed decoder shared by CLI ingestion paths
 - `load_with_context()`: Recursive loader with circular detection
 - `expand_remotes()`: Remote rule expansion
 - `parse_git_remote()`: Git URL parser
@@ -155,8 +160,8 @@
 - Lines 200-300: Rule file pattern expansion
 - Lines 300-450: Tests
 
-### schema.rs (~160 lines)
-**Role**: Data definitions with serde
+### schema.rs
+**Role**: Public data definitions, strict private projections, validation, and generated schema
 **Key Types**:
 - `Severity`: Enum with custom serialization (Error/Warning/Info/Debug)
 - `Rule`: Struct with optional fields, validation
@@ -166,11 +171,14 @@
 - `Severity::parse()`: String parsing
 - `Rule::is_remote()`: Check if remote rule
 - `Rule::validate_remote_only()`: Enforce remote-only constraint
+- `configuration_schema()`: Deterministically generate Draft 7 from the strict model
 
 **Sections**:
-- Lines 1-70: Severity enum
-- Lines 70-130: Rule struct and validation
-- Lines 130-160: Config struct
+- Strict optional/string wrappers and reusable schema constraints
+- Severity compatibility and schema definition
+- Exact include/executable rule union
+- Closed top-level config projection and runtime validation
+- Generated-schema and structural-parity unit tests
 
 ### version.rs (1 line)
 **Role**: Single constant
@@ -203,6 +211,12 @@ Fixtures organized by feature/scenario:
 - `rule-files/`: Tests glob pattern matching
 - `preconditions/`: Tests preconditions execution order
 
+**strict-config/** (Strict configuration contract)
+- `cases.yaml`: Closed index of accepted/rejected structural, YAML-parser, and runtime-only cases
+- `valid/` and `invalid/`: Runtime/generated-schema parity documents
+- `integration/`: Marker-based file, stdin, nested, fix, install, and cached-Git CLI assets
+- `README.md`: Validation-layer ownership and compatibility rules
+
 ## Test Locations
 
 ### Unit Tests
@@ -214,7 +228,9 @@ Inline at bottom of each source file:
 
 ### Integration Tests
 - `main.rs`: Single test for help command
-- `fixtures/`: Real config scenarios tested manually or via CI
+- `tests/provisioning_contract.rs`: Public help, exit, and documentation contract
+- `tests/strict_configuration.rs`: Actual compiled-binary strict-loading and schema tests
+- `fixtures/strict-config/`: Fully indexed strict model plus checked-in CLI assets
 
 ## Dependency Map
 
@@ -261,7 +277,9 @@ check.rs
   └── schema.rs
 
 schema.rs
-  └── (serde only)
+  ├── serde / serde_yaml
+  ├── schemars
+  └── glob
 
 lib.rs
   └── (all modules)
@@ -270,9 +288,11 @@ lib.rs
 ## Entry Points for Modifications
 
 ### Add Config Field
-1. `schema.rs`: Add to `Config` struct
-2. `config.rs`: Use in loading if needed
-3. `cli.rs`: Update JSON schema in `run_schema()`
+1. Implement the field's complete runtime behavior; do not add dormant fields.
+2. `schema.rs`: Add it to the public type and strict raw projection with validation.
+3. Update `fixtures/strict-config/cases.yaml` and positive/negative fixtures.
+4. Add compiled-binary coverage for every ingestion path the field affects.
+5. `checksy schema` updates automatically from the Rust model; assert parity rather than editing JSON.
 
 ### Add Command
 1. `cli.rs`: Add to `run()` match
@@ -291,7 +311,6 @@ lib.rs
 
 ## Uncertain Areas
 
-1. **Exact dependency versions**: Check `Cargo.toml` for precise versions
-2. **CI/CD details**: `.github/workflows/release.yml` specifics not examined
-3. **Cross-compilation**: `justfile` recipes for cross-comp not detailed
-4. **Windows support**: Uncertain if fully tested (paths use `/` separator)
+1. **CI/CD details**: `.github/workflows/release.yml` specifics not examined
+2. **Cross-compilation**: `justfile` recipes for cross-comp not detailed
+3. **Windows support**: Native Windows is outside the current product boundary

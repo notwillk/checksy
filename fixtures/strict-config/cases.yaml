@@ -1,0 +1,372 @@
+schemaVersion: 1
+cases:
+  - id: empty-config
+    fixture: valid/empty.yaml
+    expected: accept
+    validationLayer: structural
+  - id: explicit-empty-collections
+    fixture: valid/explicit-empty-collections.yaml
+    expected: accept
+    validationLayer: structural
+  - id: complete-config
+    fixture: valid/complete.yaml
+    expected: accept
+    validationLayer: structural
+  - id: nested-config
+    fixture: valid/nested.yaml
+    expected: accept
+    validationLayer: structural
+  - id: preconditions-only
+    fixture: valid/preconditions-only.yaml
+    expected: accept
+    validationLayer: structural
+  - id: pattern-only
+    fixture: valid/pattern-only.yaml
+    expected: accept
+    validationLayer: structural
+  - id: warning-alias
+    fixture: valid/warning-alias.yaml
+    expected: accept
+    validationLayer: structural
+  - id: mixed-case-severity
+    fixture: valid/mixed-case-severity.yaml
+    expected: accept
+    validationLayer: structural
+  - id: empty-optionals
+    fixture: valid/empty-optionals.yaml
+    expected: accept
+    validationLayer: structural
+  - id: multiline-shell
+    fixture: valid/multiline-shell.yaml
+    expected: accept
+    validationLayer: structural
+  - id: quoted-scalar
+    fixture: valid/quoted-scalar.yaml
+    expected: accept
+    validationLayer: structural
+  - id: legacy-git-include
+    fixture: valid/legacy-git-include.yaml
+    expected: accept
+    validationLayer: structural
+  - id: precondition-include
+    fixture: valid/precondition-include.yaml
+    expected: accept
+    validationLayer: structural
+
+  - id: unknown-top-level
+    fixture: invalid/unknown-top-level.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: unknown field
+  - id: unknown-rule-field
+    fixture: invalid/unknown-rule-field.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: unknown field
+  - id: unknown-include-field
+    fixture: invalid/unknown-include-field.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: unknown field
+  - id: future-timeout
+    fixture: invalid/future-timeout.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: unknown field
+  - id: future-skip-if
+    fixture: invalid/future-skip-if.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: unknown field
+  - id: future-interactive-fix
+    fixture: invalid/future-interactive-fix.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: unknown field
+
+  - id: empty-rule
+    fixture: invalid/empty-rule.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: exactly one
+  - id: name-without-check
+    fixture: invalid/name-without-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: exactly one
+  - id: severity-without-check
+    fixture: invalid/severity-without-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: exactly one
+  - id: hint-without-check
+    fixture: invalid/hint-without-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: exactly one
+  - id: fix-without-check
+    fixture: invalid/fix-without-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: without `check`
+  - id: remote-with-check
+    fixture: invalid/remote-with-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: cannot have properties
+  - id: remote-with-metadata
+    fixture: invalid/remote-with-metadata.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: cannot have properties
+  - id: empty-check
+    fixture: invalid/empty-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: non-empty `check`
+  - id: whitespace-check
+    fixture: invalid/whitespace-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: non-empty `check`
+  - id: unicode-whitespace-check
+    fixture: invalid/unicode-whitespace-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: non-empty `check`
+  - id: empty-remote
+    fixture: invalid/empty-remote.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: non-empty `remote`
+  - id: whitespace-remote
+    fixture: invalid/whitespace-remote.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: non-empty `remote`
+  - id: unicode-whitespace-remote
+    fixture: invalid/unicode-whitespace-remote.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: non-empty `remote`
+
+  - id: invalid-top-level-severity
+    fixture: invalid/invalid-top-level-severity.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: unknown variant
+  - id: invalid-rule-severity
+    fixture: invalid/invalid-rule-severity.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: unknown variant
+
+  - id: root-sequence
+    fixture: invalid/root-sequence.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: cache-path-number
+    fixture: invalid/cache-path-number.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: top-level-severity-number
+    fixture: invalid/top-level-severity-number.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: rules-mapping
+    fixture: invalid/rules-mapping.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: rule-scalar
+    fixture: invalid/rule-scalar.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: name-boolean
+    fixture: invalid/name-boolean.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: check-number
+    fixture: invalid/check-number.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: fix-sequence
+    fixture: invalid/fix-sequence.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: remote-number
+    fixture: invalid/remote-number.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: patterns-scalar
+    fixture: invalid/patterns-scalar.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: pattern-number
+    fixture: invalid/pattern-number.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+
+  - id: null-cache-path
+    fixture: invalid/null-cache-path.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: null-check-severity
+    fixture: invalid/null-check-severity.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: null-fail-severity
+    fixture: invalid/null-fail-severity.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: null-preconditions
+    fixture: invalid/null-preconditions.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: null-rules
+    fixture: invalid/null-rules.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: null-patterns
+    fixture: invalid/null-patterns.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: null-name
+    fixture: invalid/null-name.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: null-check
+    fixture: invalid/null-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: null-rule-severity
+    fixture: invalid/null-rule-severity.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: null-fix
+    fixture: invalid/null-fix.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: null-hint
+    fixture: invalid/null-hint.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: null-remote
+    fixture: invalid/null-remote.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: null-pattern-item
+    fixture: invalid/null-pattern-item.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+
+  - id: nul-cache-path
+    fixture: invalid/nul-cache-path.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: nul-name
+    fixture: invalid/nul-name.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: nul-check
+    fixture: invalid/nul-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: nul-fix
+    fixture: invalid/nul-fix.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: nul-hint
+    fixture: invalid/nul-hint.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: nul-remote
+    fixture: invalid/nul-remote.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: nul-pattern
+    fixture: invalid/nul-pattern.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: nul-severity
+    fixture: invalid/nul-severity.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+
+  - id: empty-pattern
+    fixture: invalid/empty-pattern.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: must not be empty
+  - id: whitespace-pattern
+    fixture: invalid/whitespace-pattern.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: must not be empty
+  - id: negation-only-pattern
+    fixture: invalid/negation-only-pattern.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: must not be empty
+  - id: unicode-negation-only-pattern
+    fixture: invalid/unicode-negation-only-pattern.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: must not be empty
+  - id: invalid-glob
+    fixture: invalid/invalid-glob.yaml
+    expected: reject
+    validationLayer: runtime-only
+    errorContains: is invalid
+
+  - id: duplicate-top-level-key
+    fixture: invalid/duplicate-top-level-key.yaml
+    expected: reject
+    validationLayer: yaml-parser
+    errorContains: duplicate
+  - id: duplicate-rule-key
+    fixture: invalid/duplicate-rule-key.yaml
+    expected: reject
+    validationLayer: yaml-parser
+    errorContains: duplicate
+  - id: duplicate-remote-key
+    fixture: invalid/duplicate-remote-key.yaml
+    expected: reject
+    validationLayer: yaml-parser
+    errorContains: duplicate
+  - id: multiple-documents
+    fixture: invalid/multiple-documents.yaml
+    expected: reject
+    validationLayer: yaml-parser
+    errorContains: more than one document

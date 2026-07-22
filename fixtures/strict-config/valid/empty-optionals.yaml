@@ -1,0 +1,6 @@
+cachePath: ''
+rules:
+  - name: ''
+    check: 'true'
+    fix: ''
+    hint: ''

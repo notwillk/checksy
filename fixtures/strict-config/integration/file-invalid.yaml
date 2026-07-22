@@ -1,0 +1,4 @@
+unexpected: true
+rules:
+  - name: Must not execute
+    check: 'test -n "$CHECKSY_TEST_MARKER" && printf invalid > "$CHECKSY_TEST_MARKER"'

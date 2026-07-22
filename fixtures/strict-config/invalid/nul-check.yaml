@@ -1,0 +1,2 @@
+rules:
+  - check: "printf ok\0"

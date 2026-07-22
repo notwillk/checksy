@@ -1,0 +1,3 @@
+rules:
+  - name: "bad\0name"
+    check: echo typed

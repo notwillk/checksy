@@ -1,0 +1,2 @@
+rules:
+  - remote: git+https://example.invalid/checks.git#main:remote.yaml

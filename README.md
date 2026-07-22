@@ -94,10 +94,10 @@ src/
   main.rs              # CLI entry point
   cache.rs             # Git remote cache management
   cli.rs               # Argument parsing and command wiring
-  config.rs            # Configuration loading
+  config.rs            # Shared strict configuration loading
   check.rs             # Check execution and reporting helpers
   git.rs               # Git operations for caching remotes
-  schema.rs            # Configuration schema definitions
+  schema.rs            # Strict types and generated Draft 7 schema
   version.rs           # Centralized version string
 ```
 
@@ -136,7 +136,7 @@ checksy schema > dist/config.schema.json
 checksy check --check-severity warn --fail-severity error
 ```
 
-The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command outputs the current machine-readable JSON Schema; generating that schema from strict runtime types is a separate P0 milestone.
+The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command deterministically generates the Draft 7 JSON Schema from the same strict Rust model used at runtime.
 
 Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. When omitted, checks currently run at every severity and the command only fails for error-level rules. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but do not make the run fail.
 
@@ -192,10 +192,34 @@ rules:
 
 ## Configuration
 
-`checksy --config=path/to/workspace.yaml check` loads the provided YAML and
-aborts if it cannot be deserialized. Strict runtime/schema parity is the next P0
-configuration milestone. When the flag is omitted, the command automatically
-looks for `.checksy.yaml` or `.checksy.yml` in the current working directory.
+`checksy --config=path/to/workspace.yaml check` strictly decodes the complete
+configuration before any configured command runs. The same decoder is used for
+explicit and auto-discovered root files, nested local files, cached legacy Git
+files, stdin, `check --fix`, and the local include graph inspected by
+`install`. When the flag is omitted, Checksy looks for `.checksy.yaml` or
+`.checksy.yml` in the current working directory.
+
+Top-level and rule objects are closed: unknown fields, duplicate YAML keys,
+explicit nulls, scalar-to-string coercion, malformed rule forms, blank checks
+or includes, invalid severities, invalid globs, and NUL-containing strings are
+rejected. `rules` and the other top-level collections may be omitted or empty.
+Severity input remains ASCII case-insensitive and accepts both `warn` and
+`warning`.
+
+Every rule is exactly one of these forms:
+
+- An include with one nonblank `remote` field and no other fields.
+- An executable rule with a nonblank `check` plus optional `name`, `severity`,
+  `fix`, and `hint` fields.
+
+Stdin documents must be self-contained; includes require a filesystem context
+and are rejected for `--stdin-config` and `--config -`. Shell commands remain
+opaque trusted Bash. Duplicate-key and multi-document rejection belongs to the
+YAML parser, while complete glob grammar is checked by the runtime after the
+generated schema validates its structural constraints. The checked-in
+[strict configuration corpus](fixtures/strict-config/README.md) exercises all
+three validation layers and the compiled CLI.
+
 Commands currently execute relative to the selected root configuration's
 directory; preserving the defining directory of every nested local include is
 a separate origin-correctness milestone.

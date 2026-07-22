@@ -1,0 +1,4 @@
+rules:
+  - name: Root command must wait for complete validation
+    check: 'test -n "$CHECKSY_TEST_MARKER" && printf root > "$CHECKSY_TEST_MARKER"'
+  - remote: invalid.yaml

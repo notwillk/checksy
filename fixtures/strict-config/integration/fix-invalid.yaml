@@ -1,0 +1,5 @@
+unexpected: true
+rules:
+  - name: Neither check nor fix may execute
+    check: 'test -n "$CHECKSY_TEST_CHECK_MARKER" && printf check > "$CHECKSY_TEST_CHECK_MARKER"; false'
+    fix: 'test -n "$CHECKSY_TEST_FIX_MARKER" && printf fix > "$CHECKSY_TEST_FIX_MARKER"'

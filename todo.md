@@ -72,7 +72,7 @@ This item is unblocked and prevents another architecture drift.
 
 ### Strict configuration and generated schema
 
-- [ ] Implement strict configuration loading end to end.
+- [x] Implement strict configuration loading end to end.
   - Reject unknown and duplicate fields.
   - Require each rule to be exactly one valid form: an include or an executable
     check. Continue accepting legacy Git include locators until their documented

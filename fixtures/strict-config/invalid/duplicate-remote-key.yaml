@@ -1,0 +1,3 @@
+rules:
+  - remote: first.yaml
+    remote: second.yaml
