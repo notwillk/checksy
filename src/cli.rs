@@ -2,11 +2,12 @@ use crate::cache::CacheManager;
 use crate::check::{self, DiagnoseError, Options, Report, RuleResult};
 use crate::config::{decode_config, load, parse_git_remote, resolve_path, resolve_remote_path};
 use crate::git::GitCache;
+use crate::provision_lock::{ProvisioningLock, ProvisioningLockError};
 use crate::schema::{configuration_schema, Config, Rule, Severity};
 use crate::version::VERSION;
 use std::collections::HashSet;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const DEFAULT_INIT_CONFIG_FILENAME: &str = ".checksy.config.yaml";
 const DEFAULT_INIT_CONFIG_TEMPLATE: &str = r#"# checksy configuration
@@ -18,6 +19,16 @@ rules:
 "#;
 
 pub fn run(args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    let mut acquire_lock = ProvisioningLock::acquire;
+    run_with_lock_acquirer(args, stdout, stderr, &mut acquire_lock)
+}
+
+fn run_with_lock_acquirer(
+    args: Vec<String>,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+    acquire_lock: &mut dyn FnMut() -> Result<ProvisioningLock, ProvisioningLockError>,
+) -> i32 {
     if args.is_empty() || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
         print_usage(stdout);
         return if args.is_empty() { 1 } else { 0 };
@@ -40,8 +51,8 @@ pub fn run(args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write) ->
     let cmd_args = &remaining[1..];
 
     match cmd.as_str() {
-        "check" => run_check(cmd_args.to_vec(), globals, stdout, stderr),
-        "diagnose" => run_diagnose(cmd_args.to_vec(), globals, stdout, stderr),
+        "check" => run_check(cmd_args.to_vec(), globals, stdout, stderr, acquire_lock),
+        "diagnose" => run_diagnose(cmd_args.to_vec(), globals, stdout, stderr, acquire_lock),
         "init" => run_init(cmd_args.to_vec(), globals, stdout, stderr),
         "install" => run_install(cmd_args.to_vec(), globals, stdout, stderr),
         "schema" => run_schema(cmd_args.to_vec(), stdout, stderr),
@@ -115,12 +126,13 @@ fn run_diagnose(
     globals: GlobalFlags,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
+    acquire_lock: &mut dyn FnMut() -> Result<ProvisioningLock, ProvisioningLockError>,
 ) -> i32 {
     let _ = writeln!(
         stderr,
         "⚠️  \"checksy diagnose\" is deprecated, please use \"checksy check\" instead"
     );
-    run_check(args, globals, stdout, stderr)
+    run_check(args, globals, stdout, stderr, acquire_lock)
 }
 
 fn run_check(
@@ -128,6 +140,7 @@ fn run_check(
     globals: GlobalFlags,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
+    acquire_lock: &mut dyn FnMut() -> Result<ProvisioningLock, ProvisioningLockError>,
 ) -> i32 {
     let mut config_path = None;
     let mut no_fail = false;
@@ -214,41 +227,80 @@ fn run_check(
         }
     };
 
-    let cfg = match load_with_fix(&abs_config_path, apply_fixes, stdout, stderr) {
-        Ok(c) => c,
+    let check_severity_override = match check_severity.as_deref() {
+        Some(value) => match parse_severity(value) {
+            Ok(severity) => Some(severity),
+            Err(error) => {
+                writeln!(stderr, "{}", error).ok();
+                return 2;
+            }
+        },
+        None => None,
+    };
+    let fail_severity_override = match fail_severity.as_deref() {
+        Some(value) => match parse_severity(value) {
+            Ok(severity) => Some(severity),
+            Err(error) => {
+                writeln!(stderr, "{}", error).ok();
+                return 2;
+            }
+        },
+        None => None,
+    };
+
+    let prepared = match prepare_config(&abs_config_path, apply_fixes) {
+        Ok(prepared) => prepared,
         Err(e) => {
             writeln!(stderr, "failed to load config '{}': {}", abs_config_path, e).ok();
             return 2;
         }
     };
 
-    let check_severity = if let Some(ref s) = check_severity {
-        match parse_severity(s) {
-            Ok(sev) => sev,
-            Err(e) => {
-                writeln!(stderr, "{}", e).ok();
+    let provisioning_lock = if apply_fixes {
+        match acquire_lock() {
+            Ok(lock) => Some(lock),
+            Err(ProvisioningLockError::Held) => {
+                let _ = writeln!(
+                    stderr,
+                    "provisioning lock held: another checksy check --fix is already running for this user"
+                );
+                return 4;
+            }
+            Err(ProvisioningLockError::State(error)) => {
+                let _ = writeln!(stderr, "unable to acquire provisioning lock: {error}");
+                return 2;
+            }
+            Err(ProvisioningLockError::UnsupportedPlatform) => {
+                let _ = writeln!(
+                    stderr,
+                    "unable to acquire provisioning lock: unsupported platform"
+                );
                 return 2;
             }
         }
-    } else if let Some(s) = cfg.check_severity {
-        s
     } else {
-        Severity::Debug
+        None
     };
 
-    let fail_severity = if let Some(ref s) = fail_severity {
-        match parse_severity(s) {
-            Ok(sev) => sev,
-            Err(e) => {
-                writeln!(stderr, "{}", e).ok();
-                return 2;
-            }
+    let cfg = match finish_prepared_config(prepared, &abs_config_path, stdout) {
+        Ok(config) => config,
+        Err(error) => {
+            writeln!(
+                stderr,
+                "failed to load config '{}': {}",
+                abs_config_path, error
+            )
+            .ok();
+            return 2;
         }
-    } else if let Some(s) = cfg.fail_severity {
-        s
-    } else {
-        Severity::Error
     };
+
+    let check_severity = check_severity_override
+        .or(cfg.check_severity)
+        .unwrap_or(Severity::Debug);
+    let fail_severity = fail_severity_override
+        .or(cfg.fail_severity)
+        .unwrap_or(Severity::Error);
 
     let min_severity = check::min_severity(check_severity, fail_severity);
 
@@ -291,73 +343,94 @@ fn run_check(
         print_report_results(&report, stdout, stderr);
     }
 
-    summarize_report(&report, no_fail, stdout)
+    let exit = summarize_report(&report, no_fail, stdout);
+    drop(provisioning_lock);
+    exit
 }
 
-/// Load config, optionally fixing missing git remotes
-fn load_with_fix(
-    abs_config_path: &str,
-    apply_fixes: bool,
-    stdout: &mut dyn Write,
-    _stderr: &mut dyn Write,
-) -> Result<Config, String> {
+enum PreparedConfig {
+    Ready(Config),
+    NeedsLegacyGit {
+        config_dir: PathBuf,
+        cache_path: Option<String>,
+        remotes: Vec<(String, String)>,
+    },
+}
+
+/// Validate every locally available definition without mutating the legacy Git cache.
+fn prepare_config(abs_config_path: &str, apply_fixes: bool) -> Result<PreparedConfig, String> {
     match load(abs_config_path) {
-        Ok(c) => Ok(c),
+        Ok(config) => Ok(PreparedConfig::Ready(config)),
         Err(e) => {
-            // Check if this is a "not cached" error and --fix is enabled
             if !apply_fixes || !e.contains("git remote not cached") {
                 return Err(e);
             }
 
-            // Need to cache git remotes
-            writeln!(stdout, "🔧 Caching missing git remotes...").ok();
-
             let config_dir = if abs_config_path == "-" {
-                std::path::PathBuf::from(".")
+                PathBuf::from(".")
             } else {
-                std::path::Path::new(abs_config_path)
+                Path::new(abs_config_path)
                     .parent()
                     .map(|p| p.to_path_buf())
-                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .unwrap_or_else(|| PathBuf::from("."))
             };
 
-            // Load config without expanding to collect git remotes
-            let cfg = match load_without_remote_expansion(std::path::Path::new(abs_config_path)) {
-                Ok(c) => c,
-                Err(e2) => {
-                    return Err(format!("{} (and failed to parse for fix: {})", e, e2));
-                }
-            };
+            let config = load_without_remote_expansion(Path::new(abs_config_path))
+                .map_err(|error| format!("{e} (and failed to parse for fix: {error})"))?;
+            let remotes =
+                collect_git_remotes_recursive(&config, &config_dir, &config.cache_path)
+                    .map_err(|error| format!("{e} (and failed to collect remotes: {error})"))?;
 
-            // Collect all git remotes
-            let git_remotes =
-                match collect_git_remotes_recursive(&cfg, &config_dir, &cfg.cache_path) {
-                    Ok(remotes) => remotes,
-                    Err(e2) => {
-                        return Err(format!("{} (and failed to collect remotes: {})", e, e2));
-                    }
-                };
-
-            if git_remotes.is_empty() {
-                return Err(e); // No git remotes to fix, return original error
+            if remotes.is_empty() {
+                return Err(e);
             }
 
-            // Cache each remote
-            let cache_mgr = CacheManager::new(&config_dir, cfg.cache_path.as_deref());
+            Ok(PreparedConfig::NeedsLegacyGit {
+                config_dir,
+                cache_path: config.cache_path,
+                remotes,
+            })
+        }
+    }
+}
 
-            for (i, (repo, ref_)) in git_remotes.iter().enumerate() {
+/// Complete legacy missing-cache acquisition after the provisioning lock is held.
+fn finish_prepared_config(
+    prepared: PreparedConfig,
+    abs_config_path: &str,
+    stdout: &mut dyn Write,
+) -> Result<Config, String> {
+    match prepared {
+        PreparedConfig::Ready(config) => Ok(config),
+        PreparedConfig::NeedsLegacyGit { .. } => {
+            // Re-read under the semaphore: another completed run may have
+            // filled the cache, or the local definition may have changed while
+            // this invocation was acquiring the lock.
+            let (config_dir, cache_path, remotes) = match prepare_config(abs_config_path, true)? {
+                PreparedConfig::Ready(config) => return Ok(config),
+                PreparedConfig::NeedsLegacyGit {
+                    config_dir,
+                    cache_path,
+                    remotes,
+                } => (config_dir, cache_path, remotes),
+            };
+
+            let cache_mgr = CacheManager::new(&config_dir, cache_path.as_deref());
+            if remotes
+                .iter()
+                .all(|(repo, ref_)| cache_mgr.is_cached(repo, ref_))
+            {
+                return load(abs_config_path);
+            }
+
+            writeln!(stdout, "🔧 Caching missing git remotes...").ok();
+
+            for (i, (repo, ref_)) in remotes.iter().enumerate() {
                 if cache_mgr.is_cached(repo, ref_) {
                     continue;
                 }
 
-                let _ = write!(
-                    stdout,
-                    "  [{}/{}] {}#{} ",
-                    i + 1,
-                    git_remotes.len(),
-                    repo,
-                    ref_
-                );
+                let _ = write!(stdout, "  [{}/{}] {}#{} ", i + 1, remotes.len(), repo, ref_);
 
                 let dest = cache_mgr.ref_cache_path(repo, ref_);
                 match GitCache::shallow_clone(repo, ref_, &dest) {
@@ -372,8 +445,6 @@ fn load_with_fix(
             }
 
             writeln!(stdout, "✅ Git remotes cached, retrying...").ok();
-
-            // Retry loading the config
             load(abs_config_path)
         }
     }
@@ -1249,6 +1320,195 @@ mod tests {
         ]);
         assert_eq!(code, 2);
         assert!(stderr.contains("Unknown flag"));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn fix_lock_failures_are_distinct_fail_fast_and_not_masked() {
+        let _serial = crate::provision_lock::test_guard();
+        let directory = tempfile::tempdir().unwrap();
+        let lock_directory = directory.path().join("lock");
+        let uid = rustix::process::geteuid().as_raw();
+        let held = ProvisioningLock::acquire_at(&lock_directory, uid).unwrap();
+        let marker = directory.path().join("must-not-run");
+        let config = directory.path().join("config.yaml");
+        std::fs::write(
+            &config,
+            format!("rules:\n  - check: 'touch \"{}\"'\n", marker.display()),
+        )
+        .unwrap();
+        let config = config.to_string_lossy().into_owned();
+
+        for extra in [&[][..], &["--no-fail"][..]] {
+            let mut arguments = vec![
+                "--config".to_string(),
+                config.clone(),
+                "check".to_string(),
+                "--fix".to_string(),
+            ];
+            arguments.extend(extra.iter().map(|value| (*value).to_string()));
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            let mut acquire = || ProvisioningLock::acquire_at(&lock_directory, uid);
+            let code = run_with_lock_acquirer(arguments, &mut stdout, &mut stderr, &mut acquire);
+
+            assert_eq!(code, 4);
+            assert!(stdout.is_empty());
+            assert_eq!(
+                String::from_utf8(stderr).unwrap(),
+                concat!(
+                    "provisioning lock held: another checksy check --fix is already running ",
+                    "for this user\n"
+                )
+            );
+            assert!(!marker.exists());
+        }
+
+        drop(held);
+        let mut acquire = || {
+            Err(ProvisioningLockError::State(
+                "integrity sentinel".to_string(),
+            ))
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = run_with_lock_acquirer(
+            vec![
+                "--config".to_string(),
+                config,
+                "check".to_string(),
+                "--fix".to_string(),
+                "--no-fail".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+            &mut acquire,
+        );
+        assert_eq!(code, 2);
+        assert!(stdout.is_empty());
+        assert!(String::from_utf8(stderr)
+            .unwrap()
+            .contains("unable to acquire provisioning lock: integrity sentinel"));
+        assert!(!marker.exists());
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn validation_and_check_only_execution_do_not_acquire_the_lock() {
+        let _serial = crate::provision_lock::test_guard();
+        let directory = tempfile::tempdir().unwrap();
+        let valid = directory.path().join("valid.yaml");
+        std::fs::write(&valid, "rules:\n  - check: 'true'\n").unwrap();
+        let invalid = directory.path().join("invalid.yaml");
+        std::fs::write(
+            &invalid,
+            "rules:\n  - check: 'true'\n    unknownProvisioningField: true\n",
+        )
+        .unwrap();
+
+        let calls = std::cell::Cell::new(0_u8);
+        let mut acquire = || {
+            calls.set(calls.get() + 1);
+            Err(ProvisioningLockError::Held)
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = run_with_lock_acquirer(
+            vec![
+                "--config".to_string(),
+                valid.to_string_lossy().into_owned(),
+                "check".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+            &mut acquire,
+        );
+        assert_eq!(code, 0);
+        assert_eq!(calls.get(), 0);
+
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = run_with_lock_acquirer(
+            vec![
+                "--config".to_string(),
+                invalid.to_string_lossy().into_owned(),
+                "check".to_string(),
+                "--fix".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+            &mut acquire,
+        );
+        assert_eq!(code, 2);
+        assert_eq!(calls.get(), 0);
+        assert!(!String::from_utf8(stderr)
+            .unwrap()
+            .contains("provisioning lock held"));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    struct ReportingLockProbe {
+        bytes: Vec<u8>,
+        lock_directory: std::path::PathBuf,
+        uid: u32,
+        observed_contention: bool,
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    impl Write for ReportingLockProbe {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            self.bytes.extend_from_slice(buffer);
+            if !self.observed_contention
+                && self
+                    .bytes
+                    .windows(b"All rules validated".len())
+                    .any(|window| window == b"All rules validated")
+            {
+                self.observed_contention = matches!(
+                    ProvisioningLock::acquire_at(&self.lock_directory, self.uid),
+                    Err(ProvisioningLockError::Held)
+                );
+            }
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn provisioning_lock_is_held_through_summary_reporting_then_released() {
+        let _serial = crate::provision_lock::test_guard();
+        let directory = tempfile::tempdir().unwrap();
+        let lock_directory = directory.path().join("lock");
+        let uid = rustix::process::geteuid().as_raw();
+        let config = directory.path().join("config.yaml");
+        std::fs::write(&config, "rules:\n  - check: 'true'\n").unwrap();
+        let mut stdout = ReportingLockProbe {
+            bytes: Vec::new(),
+            lock_directory: lock_directory.clone(),
+            uid,
+            observed_contention: false,
+        };
+        let mut stderr = Vec::new();
+        let mut acquire = || ProvisioningLock::acquire_at(&lock_directory, uid);
+        let code = run_with_lock_acquirer(
+            vec![
+                "--config".to_string(),
+                config.to_string_lossy().into_owned(),
+                "check".to_string(),
+                "--fix".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+            &mut acquire,
+        );
+
+        assert_eq!(code, 0);
+        assert!(stderr.is_empty());
+        assert!(stdout.observed_contention);
     }
 
     #[test]

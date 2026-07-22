@@ -1,0 +1,6 @@
+rules:
+  - name: hold the provisioning semaphore
+    check: |
+      printf 'check\n' >> "$CHECKSY_PROVISION_TRACE"
+      test -f "$CHECKSY_PROVISION_FIXED"
+    fix: bash scripts/blocking-fix.sh

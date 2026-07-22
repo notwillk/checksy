@@ -23,8 +23,8 @@ undo those mutations. Checksy never invokes `sudo` automatically.
 
 The following interaction and locking rules are the normative P0 contract.
 Supervised non-interactive commands, `interactive-fix`, and
-`--non-interactive` are implemented. The provisioning lock is not available at
-the current HEAD; `skip-if` is also pending.
+`--non-interactive`, and the provisioning lock are implemented. `skip-if`
+remains pending.
 
 ### Interaction modes
 
@@ -107,8 +107,8 @@ these PTY and headless contracts through the compiled binary.
 
 ### Provisioning lock
 
-Every future `check --fix` invocation will take one nonblocking advisory lock
-for its effective user. The namespace is independent of the configuration path,
+Every `check --fix` invocation takes one nonblocking advisory lock for its
+effective user. The namespace is independent of the configuration path,
 working directory, stdin versus file input, includes, and legacy `cachePath`.
 
 | Platform and effective user | Lock file |
@@ -122,8 +122,27 @@ The account home is resolved from the operating-system account database, not
 from `$HOME` or XDG environment variables. File-backed, auto-discovered, and
 stdin provisioning under the same effective UID therefore contend on the same
 lock; root and non-root users intentionally use separate namespaces. Check-only
-runs remain lock-free. Lock contents are never interpreted, and descriptor
-lifetime—not PID text or file removal—determines ownership.
+runs and `install` remain lock-free.
+
+Checksy validates the invocation and locally available configuration before
+locking. It then acquires the lock before any missing legacy Git cache is
+materialized, progress is printed, or configured command starts, and holds it
+through initial checks, repairs, final checks, and reporting. Contention fails
+immediately with exit `4`; `--no-fail` cannot mask it.
+
+The Checksy-owned lock directory is `0700` and `provision.lock` is a persistent
+`0600` regular, single-link file owned by the effective UID. Checksy opens it
+without following links, rejects ownership, mode, type, hardlink, and pathname
+substitution, and prevents the descriptor from reaching configured commands.
+Lock contents are never interpreted or rewritten. Descriptor lifetime—not PID
+text or file removal—determines ownership, so close or process death releases
+the lock and stale contents do not block a later run. The closed, network-free
+[provisioning-lock fixture corpus](fixtures/provisioning-lock/README.md)
+exercises the CLI and filesystem contract.
+
+This is cooperative serialization for Checksy itself, not a machine-wide
+security boundary. Trusted commands and unrelated programs can mutate the host
+without participating in the advisory lock.
 
 ### Exit status
 
@@ -133,7 +152,7 @@ lifetime—not PID text or file removal—determines ownership.
 | `1` | Existing no-command usage fallback |
 | `2` | Invalid invocation/configuration or an operational failure |
 | `3` | Unmasked rule-compliance failure |
-| `4` | Provisioning lock contention; reserved until locking is implemented |
+| `4` | Provisioning lock contention |
 
 `--no-fail` masks only rule-compliance exit `3`. It never masks an operational
 failure or lock contention.
@@ -161,6 +180,7 @@ src/
   config.rs            # Shared strict configuration loading
   check.rs             # Check execution and reporting helpers
   process_runner.rs    # Bounded headless and PTY process supervision
+  provision_lock.rs    # Per-effective-user provisioning semaphore
   git.rs               # Git operations for caching remotes
   schema.rs            # Strict types and generated Draft 7 schema
   version.rs           # Centralized version string

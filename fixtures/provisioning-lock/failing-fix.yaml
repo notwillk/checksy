@@ -1,0 +1,8 @@
+rules:
+  - name: completed repair failure releases the semaphore
+    check: |
+      printf 'check\n' >> "$CHECKSY_PROVISION_TRACE"
+      false
+    fix: |
+      printf 'failed-fix\n' >> "$CHECKSY_PROVISION_TRACE"
+      exit 23

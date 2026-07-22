@@ -1,0 +1,8 @@
+rules:
+  - name: passing check still provisions under the semaphore
+    check: |
+      printf 'pass\n' >> "$CHECKSY_PROVISION_TRACE"
+      true
+    fix: |
+      printf 'unexpected-fix\n' >> "$CHECKSY_PROVISION_TRACE"
+      exit 91

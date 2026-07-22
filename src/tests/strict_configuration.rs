@@ -8,6 +8,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+mod support;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StrictConfigCorpus {
@@ -54,6 +56,9 @@ fn run(args: &[&str]) -> Output {
 }
 
 fn run_with_path_env(args: &[&str], variables: &[(&str, &Path)]) -> Output {
+    let _provisioning_guard = args
+        .contains(&"--fix")
+        .then(support::provisioning_test_guard);
     let mut command = checksy();
     command.args(args);
     for (name, value) in variables {
@@ -67,6 +72,9 @@ fn run_with_stdin(args: &[&str], input: &[u8]) -> Output {
 }
 
 fn run_with_stdin_and_path_env(args: &[&str], input: &[u8], variables: &[(&str, &Path)]) -> Output {
+    let _provisioning_guard = args
+        .contains(&"--fix")
+        .then(support::provisioning_test_guard);
     let mut command = checksy();
     command.args(args);
     for (name, value) in variables {

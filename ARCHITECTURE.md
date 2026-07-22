@@ -28,8 +28,8 @@ a different session is outside the managed-descendant guarantee.
 ## Normative P0 execution contract
 
 This section records both implemented behavior and the remaining target. At the
-current HEAD, hardened non-interactive supervision, `interactive-fix`, and
-`--non-interactive` exist; `skip-if` and the provisioning lock do not.
+current HEAD, hardened non-interactive supervision, `interactive-fix`,
+`--non-interactive`, and the provisioning lock exist; `skip-if` does not.
 
 ### Interaction modes
 
@@ -136,12 +136,27 @@ than environment variables. All file-backed, auto-discovered, and stdin
 intentionally have separate namespaces; this is not a cross-UID machine-global
 lock.
 
-Lock acquisition is nonblocking and occurs after invocation and configuration
-validation but before any configured command starts. The descriptor is held
-through initial checks, fixes, final checks, and reporting. Check-only runs do
-not lock. The future implementation will use a private owner-only directory and
-file, reject link/type/ownership/mode substitution, never interpret lock-file
-contents, and rely on descriptor close or process death for release.
+Lock acquisition is nonblocking. Arguments and locally available configuration
+are validated first; the lock is then acquired before missing legacy Git cache
+materialization, progress output, or any configured command. The descriptor is
+held through initial checks, fixes, final checks, and reporting. Check-only
+runs and `install` do not lock.
+
+The final Checksy directory has exact mode `0700`. The persistent
+`provision.lock` has exact mode `0600`, is owned by the effective UID, is opened
+without following links, and must remain a regular single-link file whose
+pathname still identifies the opened inode. A process-local device/inode
+registry makes a second acquisition in one process contend consistently with a
+separate process. The descriptor is close-on-exec, so configured descendants do
+not extend lock ownership. Checksy never reads, writes, truncates, or unlinks
+the lock file; descriptor close or process death releases the kernel lock and
+stale contents are irrelevant.
+
+Path, account lookup, ownership, permission, type, and other integrity failures
+are operational exit `2`. Only a held advisory lock is exit `4`, reported as
+`provisioning lock held: another checksy check --fix is already running for this user`.
+Neither result can be hidden by `--no-fail`. Unsupported native platforms fail
+closed for `check --fix` before a configured command starts.
 
 ### Stable exit classes
 
@@ -151,7 +166,7 @@ contents, and rely on descriptor close or process death for release.
 | `1` | Existing no-command usage fallback only |
 | `2` | Invalid arguments/configuration or operational failure |
 | `3` | Unmasked rule-compliance failure |
-| `4` | Provisioning lock contention; reserved until the lock is implemented |
+| `4` | Provisioning lock contention |
 
 `--no-fail` affects only exit `3`. It does not convert argument, configuration,
 process, state, platform, or contention failures to success. Process spawn,
@@ -343,6 +358,20 @@ run_install() [cli.rs]
   `--non-interactive`, both stdin spellings, stdin diagnostic precedence,
   ordinary fixes, continued reporting, severity policy, and `--no-fail`.
 
+### Provisioning-lock test coverage
+
+- Focused primitive tests cover platform path selection, account-database home
+  lookup, exact modes and ownership, same-process and cross-process contention,
+  release, stale contents, close-on-exec, and link/type/path substitution.
+- The compiled provisioning-lock tests map to the closed, network-free
+  [provisioning-lock fixture corpus](fixtures/provisioning-lock/README.md).
+  File-backed, auto-discovered, aliased, and stdin provisioning contend in one
+  per-EUID namespace, while check-only invocations remain usable.
+- FIFO readiness and bounded subprocess watchdogs prove contention and
+  process-death release without sleeps. Marker cases prove that contention and
+  integrity failures occur before configured commands and that the descriptor
+  remains held through reporting.
+
 ## External Dependencies & Integrations
 
 ### Required External Tools
@@ -355,8 +384,8 @@ run_install() [cli.rs]
 - **serde_json**: Deterministic JSON output
 - **schemars**: Draft 7 schema generation from the strict Rust model
 - **glob**: Pattern matching for rule files
-- **rustix**: Session/process-group, nonblocking pipe, polling, signal, PTY, and
-  terminal-state primitives
+- **rustix**: Session/process-group, nonblocking pipe, polling, signal, PTY,
+  terminal-state, descriptor-relative filesystem, and advisory-lock primitives
 - **signal-hook**: Portable signal constants and default-action emulation
 - **libc**: Exact save/install/restore of native signal dispositions
 - **jsonschema**: Draft 7 metaschema and fixture parity tests (dev dependency)

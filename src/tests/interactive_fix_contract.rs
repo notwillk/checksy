@@ -24,6 +24,8 @@ use std::thread;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::time::{Duration, Instant};
 
+mod support;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct InteractiveFixCorpus {
@@ -259,6 +261,10 @@ fn dup_cloexec<Fd: rustix::fd::AsFd>(fd: Fd) -> std::os::fd::OwnedFd {
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn run_headless(args: &[String], stdin: Option<&[u8]>, env: &[(&str, &Path)]) -> Output {
+    let _provisioning_guard = args
+        .iter()
+        .any(|argument| argument == "--fix")
+        .then(support::provisioning_test_guard);
     let mut command = shell_command(args, None);
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     if stdin.is_some() {
@@ -330,6 +336,7 @@ enum PtyRead {
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 struct PtyProcess {
+    _provisioning_guard: File,
     pid: rustix::process::Pid,
     writer: File,
     slave: Option<std::os::fd::OwnedFd>,
@@ -350,6 +357,7 @@ struct PtyResult {
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 impl PtyProcess {
     fn spawn(mut command: Command) -> Self {
+        let provisioning_guard = support::provisioning_test_guard();
         let master =
             rustix::pty::openpt(rustix::pty::OpenptFlags::RDWR | rustix::pty::OpenptFlags::NOCTTY)
                 .unwrap();
@@ -419,6 +427,7 @@ impl PtyProcess {
         });
 
         Self {
+            _provisioning_guard: provisioning_guard,
             pid,
             writer: File::from(master),
             slave: Some(observer),
@@ -1240,12 +1249,12 @@ fn interactive_job_control_suspension_is_operational() {
     let case = case(&corpus, "interactive-suspension");
     let copy = writable_fixture_copy();
     let unexpected = copy.path().join("unexpected-later");
-    let started_at = Instant::now();
     let process = spawn_config_pty(
         &copy.path().join(&case.fixture),
         &["--fix"],
         &[("CHECKSY_UNEXPECTED_LATER_COMMAND", &unexpected)],
     );
+    let started_at = Instant::now();
     let result = process.finish(Duration::from_secs(12));
     assert_pty_exit(case, &result);
     assert_terminal_restored(&result);

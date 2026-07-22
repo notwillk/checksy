@@ -170,7 +170,7 @@ does not change ordinary headless `fix` behavior.
 
 ### Provisioning semaphore
 
-- [ ] Serialize complete `check --fix` operations with an operating-system
+- [x] Serialize complete `check --fix` operations with an operating-system
   advisory lock on macOS and Linux.
   - Use one documented provisioning namespace independent of configuration
     source and legacy `cachePath`.
@@ -186,7 +186,9 @@ does not change ordinary headless `fix` behavior.
   - Test same-process and cross-process contention, release, stale contents,
     path integrity, aliases, and stdin/file interaction without sleeps.
 
-This item is unblocked after the lock namespace and location are documented.
+This item is complete. The semaphore is per effective UID, covers every
+configuration-ingestion form, and remains a cooperative Checksy boundary rather
+than a sandbox or cross-UID machine-global lock.
 
 ### P0 integrated acceptance gate
 

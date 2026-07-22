@@ -4,6 +4,7 @@ pub mod cli;
 pub mod config;
 pub mod git;
 mod process_runner;
+mod provision_lock;
 pub mod schema;
 pub mod version;
 

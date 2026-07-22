@@ -1,0 +1,3 @@
+cachePath: .fixture-cache-that-must-not-name-the-lock
+rules:
+  - remote: included-passing.yaml

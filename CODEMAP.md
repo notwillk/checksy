@@ -15,17 +15,20 @@
 │   ├── git.rs              # ~120 lines: Git shallow clone operations
 │   ├── check.rs            # ~450 lines: Rule execution & reporting
 │   ├── process_runner.rs   # Bounded Linux/macOS command supervision
+│   ├── provision_lock.rs   # Per-EUID advisory provisioning semaphore
 │   ├── schema.rs           # Strict types, validation & generated schema
 │   ├── version.rs          # ~1 line: VERSION constant
 │   └── tests/
 │       ├── interactive_fix_contract.rs # Compiled-binary PTY/headless tests
 │       ├── provisioning_contract.rs
+│       ├── provisioning_lock_contract.rs # Compiled-binary semaphore tests
 │       ├── process_runner_contract.rs # Compiled-binary supervisor tests
 │       └── strict_configuration.rs    # Compiled-binary strict-loading tests
 │
 ├── fixtures/               # Test configurations (YAML)
 │   ├── interactive-fix/     # Closed terminal-repair contract corpus
 │   ├── process-runner/      # Closed command-supervision contract corpus
+│   ├── provisioning-lock/   # Closed per-EUID semaphore contract corpus
 │   ├── strict-config/       # Closed runtime/schema parity corpus and CLI assets
 │   ├── happy-path/         # Basic severity level tests
 │   ├── inline-check/       # Simple inline rule tests
@@ -61,7 +64,7 @@
 **Role**: Module declaration and public API exports
 **Key Exports**:
 - Public modules for cache, checks, CLI, config, Git, schema, and version
-- Private `process_runner` module used by check and CLI execution paths
+- Private `process_runner` and `provision_lock` modules used by CLI execution
 - `pub use` re-exports for convenient access
 
 ### main.rs (25 lines)
@@ -81,6 +84,7 @@
 - `run_schema()`: JSON schema output
 - Fix workflow: Ordinary and interactive repair, final recheck, and unavailable
   terminal reporting
+- Provisioning-lock acquisition and exit `4` handling for every `--fix` path
 - Operational-error reporting and parent-signal re-raise after cleanup
 
 **Key Types**:
@@ -196,6 +200,25 @@
   restores exact outer terminal attributes
 - Provides test-only lifecycle events for deterministic process-tree assertions
 
+### provision_lock.rs
+**Role**: Private Linux/macOS provisioning semaphore shared by every `check --fix`
+
+**Key Types**:
+- `ProvisioningLock`: Non-cloneable RAII owner of the retained lock descriptor
+- `ProvisioningLockError`: Held, state/integrity, and unsupported-platform
+  outcomes
+
+**Behavior**:
+- Selects one documented lock path from platform and effective UID, resolving
+  non-root homes through the operating-system account database
+- Creates an owner-only `0700` Checksy directory and persistent `0600` lock
+  file, then verifies ownership, regular-file type, link count, and pathname
+  identity without following links
+- Uses a nonblocking exclusive advisory lock plus a process-local device/inode
+  registry for consistent same-process contention
+- Keeps the descriptor close-on-exec, ignores file contents, and releases by
+  descriptor lifetime or process death
+
 ### schema.rs
 **Role**: Public data definitions, strict private projections, validation, and generated schema
 **Key Types**:
@@ -268,6 +291,14 @@ Fixtures organized by feature/scenario:
   suspension, and parent interruption
 - `README.md`: Interaction lifecycle, test mapping, and terminal boundary
 
+**provisioning-lock/** (Provisioning semaphore contract)
+- `cases.yaml`: Closed fixture-to-test index for file, auto-discovered, stdin,
+  alias, passing, failure, and contention paths
+- YAML and shell assets: Marker order, FIFO readiness, cache-path independence,
+  invalid preflight, and stale lock-file content
+- `README.md`: Per-EUID namespace, lifecycle, filesystem boundary, and residual
+  advisory-lock risk
+
 ## Test Locations
 
 ### Unit Tests
@@ -278,6 +309,8 @@ Inline at bottom of each source file:
 - `check.rs`: ~150 lines of tests (filtering, results, severity)
 - `process_runner.rs`: Process outcomes, timeouts, output bounds, signals,
   `/dev/null`, and deterministic descendant cleanup
+- `provision_lock.rs`: Path selection, integrity checks, same/cross-process
+  contention, descriptor inheritance, and release
 
 ### Integration Tests
 - `main.rs`: Single test for help command
@@ -286,9 +319,19 @@ Inline at bottom of each source file:
 - `tests/process_runner_contract.rs`: Actual compiled-binary process-supervision tests
 - `tests/interactive_fix_contract.rs`: Actual compiled-binary PTY/headless
   interactive-repair tests
+- `tests/provisioning_lock_contract.rs`: Actual compiled-binary provisioning
+  semaphore tests
 - `fixtures/strict-config/`: Fully indexed strict model plus checked-in CLI assets
 - `fixtures/process-runner/`: Closed network-free command-runner scenarios
 - `fixtures/interactive-fix/`: Closed network-free interactive-repair scenarios
+- `fixtures/provisioning-lock/`: Closed network-free semaphore scenarios
+
+Provisioning-lock unit tests cover path derivation, exact modes and ownership,
+same-process and cross-process contention, stale contents, close-on-exec,
+descriptor-lifetime release, and malicious filesystem entries. The compiled
+contract tests exercise file-backed, auto-discovered, aliased, and stdin
+provisioning with FIFO readiness and command markers, plus lock-free check-only
+runs and fail-fast exits `2` and `4`.
 
 ## Dependency Map
 
@@ -299,6 +342,8 @@ Config YAML
 Config struct
   ↓ (remote expansion)
 Expanded Config
+  ↓ (provision_lock.rs for --fix)
+Per-EUID provisioning lock
   ↓ (Options creation)
 Options
   ↓ (diagnose execution)
@@ -317,6 +362,7 @@ cli.rs
   ├── check.rs
   ├── config.rs
   ├── git.rs
+  ├── provision_lock.rs
   ├── schema.rs
   └── version.rs
 
@@ -340,13 +386,17 @@ process_runner.rs
   ├── rustix (process, poll, PTY, and terminal primitives)
   └── signal-hook
 
+provision_lock.rs
+  ├── libc (effective-user account lookup)
+  └── rustix (descriptor-relative filesystem and advisory-lock primitives)
+
 schema.rs
   ├── serde / serde_yaml
   ├── schemars
   └── glob
 
 lib.rs
-  └── (public modules plus private process_runner)
+  └── (public modules plus private process_runner and provision_lock)
 ```
 
 ## Entry Points for Modifications

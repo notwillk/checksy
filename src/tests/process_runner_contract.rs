@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
+mod support;
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::fd::{AsRawFd, BorrowedFd};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -87,6 +89,9 @@ fn config_args(path: &Path, extra: &[&str]) -> Vec<String> {
 }
 
 fn run_config(path: &Path, extra: &[&str]) -> Output {
+    let _provisioning_guard = extra
+        .contains(&"--fix")
+        .then(support::provisioning_test_guard);
     checksy().args(config_args(path, extra)).output().unwrap()
 }
 
