@@ -1,0 +1,49 @@
+rules:
+  - name: skip all work
+    timeout: 2s
+    skip-if: |
+      printf 'skip-predicate\n' >> "$CHECKSY_P0_TRACE"
+      printf 'hidden skip predicate stdout\n'
+      printf 'hidden skip predicate stderr\n' >&2
+      exit 0
+    check: |
+      printf 'unexpected-skip-check\n' >> "$CHECKSY_P0_TRACE"
+      exit 81
+    fix: |
+      printf 'unexpected-skip-fix\n' >> "$CHECKSY_P0_TRACE"
+      exit 82
+  - name: completed nonzero provisions
+    timeout: 2s
+    skip-if: |
+      printf 'exit-1-predicate\n' >> "$CHECKSY_P0_TRACE"
+      printf 'hidden exit one stdout\n'
+      printf 'hidden exit one stderr\n' >&2
+      exit 1
+    check: |
+      printf 'ordinary-check\n' >> "$CHECKSY_P0_TRACE"
+      test -f "$CHECKSY_P0_FIXED"
+    fix: |
+      printf 'ordinary-fix\n' >> "$CHECKSY_P0_TRACE"
+      : > "$CHECKSY_P0_FIXED"
+  - name: exit twenty-three still checks
+    timeout: 2s
+    skip-if: |
+      printf 'exit-23-predicate\n' >> "$CHECKSY_P0_TRACE"
+      printf 'hidden exit twenty-three stdout\n'
+      printf 'hidden exit twenty-three stderr\n' >&2
+      exit 23
+    check: printf 'exit-23-check\n' >> "$CHECKSY_P0_TRACE"
+  - name: shell exit one-twenty-seven still checks
+    timeout: 2s
+    skip-if: |
+      printf 'exit-127-predicate\n' >> "$CHECKSY_P0_TRACE"
+      printf 'hidden exit one-twenty-seven stdout\n'
+      printf 'hidden exit one-twenty-seven stderr\n' >&2
+      "$CHECKSY_P0_MISSING_COMMAND"
+    check: printf 'exit-127-check\n' >> "$CHECKSY_P0_TRACE"
+  - name: passing interactive stays headless
+    timeout: 2s
+    check: printf 'interactive-pass-check\n' >> "$CHECKSY_P0_TRACE"
+    interactive-fix: |
+      printf 'unexpected-interactive-fix\n' >> "$CHECKSY_P0_TRACE"
+      exit 83

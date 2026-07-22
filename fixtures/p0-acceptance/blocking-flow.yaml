@@ -1,0 +1,20 @@
+rules:
+  - name: provisioning semaphore holder
+    timeout: 10s
+    check: |
+      if [ "${CHECKSY_P0_LOCK_HOLDER:-0}" = 1 ]; then
+        printf 'holder-check\n' >> "$CHECKSY_P0_LOCK_TRACE"
+      else
+        printf 'contender-check\n' >> "$CHECKSY_P0_LOCK_TRACE"
+      fi
+      test -f "$CHECKSY_P0_LOCK_FIXED"
+    fix: |
+      if [ "${CHECKSY_P0_LOCK_HOLDER:-0}" = 1 ]; then
+        printf 'ready\n' > "$CHECKSY_P0_LOCK_READY_FIFO"
+        IFS= read -r release < "$CHECKSY_P0_LOCK_RELEASE_FIFO"
+        printf 'holder-fix\n' >> "$CHECKSY_P0_LOCK_TRACE"
+        : > "$CHECKSY_P0_LOCK_FIXED"
+      else
+        printf 'contender-fix\n' >> "$CHECKSY_P0_LOCK_TRACE"
+        exit 91
+      fi

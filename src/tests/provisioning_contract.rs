@@ -125,7 +125,7 @@ fn public_cli_preserves_the_stable_implemented_exit_classes() {
 }
 
 #[test]
-fn documentation_distinguishes_the_runner_from_the_remaining_target() {
+fn documentation_records_the_completed_p0_contract() {
     for expected in [
         "checksy provisions the current machine",
         "`checksy check --fix` is Checksy's only provisioning lifecycle",
@@ -142,6 +142,9 @@ fn documentation_distinguishes_the_runner_from_the_remaining_target() {
         "`--no-fail` masks only rule-compliance exit `3`",
         "### Command supervision",
         "process-runner fixture",
+        "### Integrated P0 acceptance coverage",
+        "fixtures/p0-acceptance/README.md",
+        "contracts compose end to end",
         "Rules without `timeout` use `15m`",
     ] {
         assert!(README.contains(expected), "README omitted: {expected}");
@@ -151,7 +154,7 @@ fn documentation_distinguishes_the_runner_from_the_remaining_target() {
         "checksy is a CLI provisioner",
         "## Security and mutation boundary",
         "## Normative P0 execution contract",
-        "This section records both implemented behavior and the remaining target",
+        "This section records the implemented P0 execution contract",
         "The lock namespace is `checksy-provision`, keyed only by effective UID",
         "this is not a cross-UID machine-global",
         "| `4` | Provisioning lock contention |",
@@ -159,6 +162,9 @@ fn documentation_distinguishes_the_runner_from_the_remaining_target() {
         "timeout, child-signal, and supervision failures are implemented operational",
         "### Supervised command lifecycle",
         "### Process-supervision test coverage",
+        "### Integrated P0 acceptance coverage",
+        "src/tests/p0_acceptance.rs",
+        "fixtures/p0-acceptance/README.md",
     ] {
         assert!(
             ARCHITECTURE.contains(expected),

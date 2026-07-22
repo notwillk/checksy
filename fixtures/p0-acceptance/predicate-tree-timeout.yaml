@@ -1,0 +1,12 @@
+rules:
+  - name: timed out prerequisite tree
+    timeout: 3s
+    skip-if: |
+      printf 'predicate tree retained stdout\n'
+      printf 'predicate tree retained stderr\n' >&2
+      trap '' INT TERM HUP QUIT
+      exec "$CHECKSY_P0_TREE_HELPER" --ignored --exact p0_acceptance_tree_helper --nocapture
+    check: ': > "$CHECKSY_P0_TREE_UNEXPECTED_CHECK"'
+  - name: must not run after prerequisite timeout
+    timeout: 2s
+    check: ': > "$CHECKSY_P0_TREE_UNEXPECTED_LATER"'

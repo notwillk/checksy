@@ -193,7 +193,7 @@ than a sandbox or cross-UID machine-global lock.
 
 ### P0 integrated acceptance gate
 
-- [ ] Prove the complete core workflow through public CLI tests.
+- [x] Prove the complete core workflow through public CLI tests.
   - A local configuration performs check, ordinary fix, and successful final
     check.
   - A stdin configuration performs the same flow without terminal access.
@@ -209,8 +209,9 @@ than a sandbox or cross-UID machine-global lock.
   - Invalid configuration fails before any configured command executes.
   - The default suite uses no public network.
 
-This gate is now unblocked. It does not replace the focused tests for each P0
-runtime feature.
+This gate is complete. Its closed, network-free corpus proves the combined
+public-CLI lifecycle; focused tests remain authoritative for each P0 runtime
+feature's edge cases.
 
 ## P1 — Important
 

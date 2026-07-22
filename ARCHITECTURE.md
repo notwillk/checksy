@@ -27,9 +27,10 @@ a different session is outside the managed-descendant guarantee.
 
 ## Normative P0 execution contract
 
-This section records both implemented behavior and the remaining target. At the
-current HEAD, hardened non-interactive supervision, `skip-if`,
-`interactive-fix`, `--non-interactive`, and the provisioning lock exist.
+This section records the implemented P0 execution contract. Hardened
+non-interactive supervision, `skip-if`, `interactive-fix`,
+`--non-interactive`, and the provisioning lock are covered individually and by
+one integrated public-CLI acceptance gate.
 
 ### Interaction modes
 
@@ -416,6 +417,19 @@ run_install() [cli.rs]
   process-death release without sleeps. Marker cases prove that contention and
   integrity failures occur before configured commands and that the descriptor
   remains held through reporting.
+
+### Integrated P0 acceptance coverage
+
+- The compiled [P0 acceptance tests](src/tests/p0_acceptance.rs) map to the
+  closed, network-free [P0 acceptance fixture
+  corpus](fixtures/p0-acceptance/README.md).
+- The suite composes file and stdin repair/recheck, skip predicates, passing and
+  needed interactive repairs, headless and PTY execution, cross-ingestion lock
+  contention, predicate timeout with descendant cleanup, and strict preflight
+  before commands or lock acquisition.
+- Focused feature corpora remain authoritative for edge conditions. This suite
+  proves the complete P0 contract through the public CLI rather than replacing
+  those narrower tests.
 
 ## External Dependencies & Integrations
 

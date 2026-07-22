@@ -20,6 +20,7 @@
 │   ├── version.rs          # ~1 line: VERSION constant
 │   └── tests/
 │       ├── interactive_fix_contract.rs # Compiled-binary PTY/headless tests
+│       ├── p0_acceptance.rs        # Integrated public-CLI P0 acceptance gate
 │       ├── provisioning_contract.rs
 │       ├── provisioning_lock_contract.rs # Compiled-binary semaphore tests
 │       ├── process_runner_contract.rs # Compiled-binary supervisor tests
@@ -28,6 +29,7 @@
 │
 ├── fixtures/               # Test configurations (YAML)
 │   ├── interactive-fix/     # Closed terminal-repair contract corpus
+│   ├── p0-acceptance/       # Closed integrated public-CLI P0 corpus
 │   ├── process-runner/      # Closed command-supervision contract corpus
 │   ├── provisioning-lock/   # Closed per-EUID semaphore contract corpus
 │   ├── skip-if/             # Closed conditional-rule contract corpus
@@ -314,6 +316,14 @@ Fixtures organized by feature/scenario:
   states, fix suppression, workdir/timeout behavior, and operational failures
 - `README.md`: Exact predicate, reporting, and process-supervision contract
 
+**p0-acceptance/** (Integrated P0 acceptance contract)
+- `cases.yaml`: Closed index of the complete public-CLI provisioning scenarios
+- YAML configurations: File/stdin repair, skip predicates, interactive
+  lifecycle, provisioning contention, bounded descendant cleanup, and strict
+  preflight; PTY, FIFO, and process-tree helpers live in the compiled test
+- `README.md`: End-to-end expectations and mapping to the compiled acceptance
+  tests; focused feature corpora remain authoritative for edge cases
+
 ## Test Locations
 
 ### Unit Tests
@@ -334,11 +344,14 @@ Inline at bottom of each source file:
 - `tests/process_runner_contract.rs`: Actual compiled-binary process-supervision tests
 - `tests/interactive_fix_contract.rs`: Actual compiled-binary PTY/headless
   interactive-repair tests
+- `tests/p0_acceptance.rs`: Integrated, network-free public-CLI P0 acceptance
+  gate
 - `tests/provisioning_lock_contract.rs`: Actual compiled-binary provisioning
   semaphore tests
 - `tests/skip_if_contract.rs`: Actual compiled-binary conditional-rule tests
 - `fixtures/strict-config/`: Fully indexed strict model plus checked-in CLI assets
 - `fixtures/process-runner/`: Closed network-free command-runner scenarios
+- `fixtures/p0-acceptance/`: Closed network-free integrated P0 scenarios
 - `fixtures/skip-if/`: Closed network-free conditional-rule scenarios
 - `fixtures/interactive-fix/`: Closed network-free interactive-repair scenarios
 - `fixtures/provisioning-lock/`: Closed network-free semaphore scenarios

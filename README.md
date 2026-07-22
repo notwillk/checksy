@@ -170,6 +170,16 @@ This is cooperative serialization for Checksy itself, not a machine-wide
 security boundary. Trusted commands and unrelated programs can mutate the host
 without participating in the advisory lock.
 
+### Integrated P0 acceptance coverage
+
+The closed, network-free [P0 acceptance fixture
+corpus](fixtures/p0-acceptance/README.md) exercises the complete provisioning
+lifecycle through the compiled public CLI. It combines local and stdin ordinary
+repairs, skip predicates, terminal and headless interactive repairs, semaphore
+contention, bounded descendant cleanup, and invalid-configuration preflight.
+The focused fixture corpora above remain authoritative for each feature's edge
+cases; the P0 corpus proves that those contracts compose end to end.
+
 ### Exit status
 
 | Exit | Meaning |

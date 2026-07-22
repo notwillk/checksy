@@ -1,0 +1,38 @@
+schemaVersion: 1
+cases:
+  - id: core-flow
+    fixture: core-flow.yaml
+    assets: []
+    modes:
+      - file-non-interactive
+      - stdin-config
+    test: core_workflow_proves_headless_file_and_stdin_provisioning
+  - id: interactive-lifecycle
+    fixture: interactive-flow.yaml
+    assets: []
+    modes:
+      - file-pty
+      - file-headless
+      - stdin-with-pty
+    test: interactive_lifecycle_distinguishes_pty_headless_and_stdin
+  - id: file-stdin-lock-contention
+    fixture: blocking-flow.yaml
+    assets: []
+    modes:
+      - file-holder-stdin-contender
+      - stdin-holder-file-contender
+    test: file_and_stdin_provisioning_contend_on_the_same_semaphore
+  - id: predicate-tree-timeout
+    fixture: predicate-tree-timeout.yaml
+    assets: []
+    modes:
+      - file-no-fail-timeout
+    test: predicate_timeout_cleans_managed_descendants
+  - id: invalid-preflight
+    fixture: invalid-preflight.yaml
+    assets: []
+    modes:
+      - file-invalid
+      - stdin-invalid
+      - file-invalid-lock-held
+    test: invalid_configuration_precedes_commands_and_lock
