@@ -18,12 +18,17 @@ The two supported rule forms are deliberately exact:
 
 - An include has one nonblank `remote` string and no other properties.
 - An executable rule has one nonblank `check` string and may also have `name`,
-  `severity`, `fix`, `hint`, and `timeout`.
+  `severity`, one of `fix` or `interactive-fix`, `hint`, and `timeout`.
 
 Legacy `git+...` include locators remain strings accepted by decoding. Their
 cache resolution is separate from structural validation. Includes cannot set a
-command timeout. Future `skip-if` and `interactive-fix` fields remain rejection
-cases until their complete runtime slices land.
+command timeout. The future `skip-if` field remains a rejection case until its
+complete runtime slice lands.
+
+`interactive-fix` is an optional nonblank, NUL-free string on executable rules.
+It is mutually exclusive with `fix`; it cannot appear without `check` or on an
+include rule. Runtime terminal behavior is covered by the separate interactive
+repair corpus.
 
 Executable-rule timeouts use a positive integer followed immediately by `ms`,
 `s`, `m`, or `h`. They range from `1ms` through `2h`; omission selects the

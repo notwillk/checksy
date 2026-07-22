@@ -18,11 +18,13 @@
 │   ├── schema.rs           # Strict types, validation & generated schema
 │   ├── version.rs          # ~1 line: VERSION constant
 │   └── tests/
+│       ├── interactive_fix_contract.rs # Compiled-binary PTY/headless tests
 │       ├── provisioning_contract.rs
 │       ├── process_runner_contract.rs # Compiled-binary supervisor tests
 │       └── strict_configuration.rs    # Compiled-binary strict-loading tests
 │
 ├── fixtures/               # Test configurations (YAML)
+│   ├── interactive-fix/     # Closed terminal-repair contract corpus
 │   ├── process-runner/      # Closed command-supervision contract corpus
 │   ├── strict-config/       # Closed runtime/schema parity corpus and CLI assets
 │   ├── happy-path/         # Basic severity level tests
@@ -77,7 +79,8 @@
 - `run_install()`: Git remote caching with spinner UI
 - `run_init()`: Config file creation
 - `run_schema()`: JSON schema output
-- `check_with_fixes()`: Fix mode implementation
+- Fix workflow: Ordinary and interactive repair, final recheck, and unavailable
+  terminal reporting
 - Operational-error reporting and parent-signal re-raise after cleanup
 
 **Key Types**:
@@ -167,7 +170,7 @@
 - Lines 500-end: Tests
 
 ### process_runner.rs
-**Role**: Private Linux/macOS supervisor for every configured non-interactive command
+**Role**: Private Linux/macOS supervisor for non-interactive commands and PTY-backed interactive repairs
 
 **Key Types**:
 - `ProcessLimits`: Per-command timeout and TERM grace
@@ -175,6 +178,8 @@
 - `CapturedOutput`: Bounded bytes, original count, and truncation state
 - `ProcessError`: Spawn, supervision, timeout, child-signal, parent-interrupt,
   and unsupported-platform outcomes
+- Interactive terminal context: Validated outer `/dev/tty`, inner PTY, and
+  restoration guard
 
 **Behavior**:
 - Forces `/dev/null` stdin and starts a new session/process group with `setsid`
@@ -186,6 +191,9 @@
 - Saves and restores exact signal dispositions, forwards parent termination
   signals, escalates a second signal, and completes leader/group cleanup before
   the CLI invokes the first signal's default action
+- Lazily validates a foreground controlling terminal, relays an inner PTY
+  bidirectionally, forwards window changes, streams merged output live, and
+  restores exact outer terminal attributes
 - Provides test-only lifecycle events for deterministic process-tree assertions
 
 ### schema.rs
@@ -199,6 +207,7 @@
 - `Severity::parse()`: String parsing
 - `Rule::is_remote()`: Check if remote rule
 - `Rule::validate_remote_only()`: Enforce remote-only constraint
+- Repair validation: Require exactly zero or one of `fix` and `interactive-fix`
 - Timeout parsing: Enforce `1ms` through `2h` executable-rule bounds
 - `configuration_schema()`: Deterministically generate Draft 7 from the strict model
 
@@ -252,6 +261,13 @@ Fixtures organized by feature/scenario:
   and parent-interruption cases
 - `README.md`: Exact executable coverage and residual session-escape boundary
 
+**interactive-fix/** (Terminal repair contract)
+- `cases.yaml`: Closed fixture-to-test index for PTY and headless modes
+- YAML and shell assets: Prompting, stdin prohibition, explicit
+  non-interactive operation, fix outcomes, terminal restoration, timeout,
+  suspension, and parent interruption
+- `README.md`: Interaction lifecycle, test mapping, and terminal boundary
+
 ## Test Locations
 
 ### Unit Tests
@@ -268,8 +284,11 @@ Inline at bottom of each source file:
 - `tests/provisioning_contract.rs`: Public help, exit, and documentation contract
 - `tests/strict_configuration.rs`: Actual compiled-binary strict-loading and schema tests
 - `tests/process_runner_contract.rs`: Actual compiled-binary process-supervision tests
+- `tests/interactive_fix_contract.rs`: Actual compiled-binary PTY/headless
+  interactive-repair tests
 - `fixtures/strict-config/`: Fully indexed strict model plus checked-in CLI assets
 - `fixtures/process-runner/`: Closed network-free command-runner scenarios
+- `fixtures/interactive-fix/`: Closed network-free interactive-repair scenarios
 
 ## Dependency Map
 
@@ -317,8 +336,8 @@ check.rs
   └── process_runner.rs
 
 process_runner.rs
-  ├── libc (temporary sigaction save/install/restore)
-  ├── rustix
+  ├── libc (temporary sigaction save/install/restore and terminal ioctls)
+  ├── rustix (process, poll, PTY, and terminal primitives)
   └── signal-hook
 
 schema.rs
@@ -350,7 +369,7 @@ lib.rs
 3. `process_runner.rs`: Change lifecycle behavior only when the rule feature
    changes process supervision
 4. `cli.rs`: Update reporting and operational-error behavior (if output)
-5. Add strict fixtures plus compiled-binary process-runner cases
+5. Add strict fixtures plus the feature's closed compiled-binary contract cases
 
 ### Change Git Caching
 1. `git.rs`: Modify clone command

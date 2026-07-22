@@ -1,0 +1,18 @@
+rules:
+  - name: completed nonzero interactive repair below failure threshold
+    severity: warn
+    timeout: 2s
+    check: |
+      if [ -f .failed-interactive-started ]; then
+        : > .unexpected-recheck
+      fi
+      exit 1
+    interactive-fix: |
+      : > .failed-interactive-started
+      printf 'failed interactive repair stdout sentinel\n'
+      printf 'failed interactive repair stderr sentinel\n' >&2
+      exit 23
+  - name: later rule still runs
+    severity: error
+    timeout: 2s
+    check: ': > "$CHECKSY_LATER_RULE_MARKER"'

@@ -1,0 +1,11 @@
+preconditions:
+  - name: interactive precondition repair succeeds
+    severity: error
+    timeout: 5s
+    check: test -f .interactive-fixed
+    interactive-fix: exec scripts/prompt-repair.sh
+rules:
+  - name: rule runs after repaired precondition
+    severity: error
+    timeout: 2s
+    check: ': > "$CHECKSY_LATER_RULE_MARKER"'

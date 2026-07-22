@@ -28,6 +28,25 @@ rules:
     check: npm test
 ```
 
+### Interactive Repair
+
+Use a terminal-capable repair only when the command genuinely needs user input.
+It is mutually exclusive with ordinary `fix` and is considered only after the
+check fails during `check --fix`:
+
+```yaml
+rules:
+  - name: Local environment configured
+    severity: error
+    check: test -f .env.local
+    interactive-fix: '${EDITOR:-vi} .env.local'
+    timeout: 30m
+```
+
+`checksy check --fix --non-interactive` still runs ordinary fixes but leaves a
+needed interactive repair as a normal rule failure. Stdin configurations are
+always non-interactive.
+
 ### Config with All Features
 
 ```yaml
@@ -61,6 +80,12 @@ rules:
     check: npm run lint
     fix: npm run lint:fix
 
+  - name: Local environment configured
+    severity: error
+    check: test -f .env.local
+    interactive-fix: '${EDITOR:-vi} .env.local'
+    timeout: 30m
+
   # Remote config
   - remote: shared/team-checks.yaml
 
@@ -83,6 +108,7 @@ This example shows a full `.checksy.yaml` for a Node.js project with:
 - Multiple rule types (inline, remote, patterns)
 - Severity levels
 - Auto-fixes
+- Interactive terminal repair where user input is required
 - Git-based remote configs
 
 ```yaml

@@ -8,7 +8,8 @@ checksy is a Rust CLI tool for running health checks in development environments
 - Hierarchical severity levels (debug → info → warn → error)
 - Remote config inclusion via file paths or git repositories
 - Git-based remote caching with shallow clones
-- Fix mode: auto-attempt repairs for failed checks
+- Fix mode: ordinary headless repairs or explicit terminal-capable repairs for
+  failed checks
 - Pattern-based rule files (glob matching)
 
 ## Core Domain Model
@@ -29,11 +30,13 @@ struct Config {
 ```rust
 struct Rule {
     name: Option<String>,
-    check: Option<String>,      // Shell command to execute
-    severity: Option<Severity>, // Default: Error
-    fix: Option<String>,        // Auto-fix command
-    hint: Option<String>,       // Failure message hint
-    remote: Option<String>,     // Config file to include
+    check: Option<String>,           // Shell command to execute
+    severity: Option<Severity>,      // Default: Error
+    fix: Option<String>,             // Non-interactive repair command
+    interactive_fix: Option<String>, // YAML: interactive-fix; mutually exclusive with fix
+    hint: Option<String>,            // Failure message hint
+    remote: Option<String>,          // Config file to include
+    timeout: Option<String>,         // 1ms through 2h; default 15m
 }
 ```
 
@@ -41,7 +44,13 @@ struct Rule {
 - **File remote**: `remote: path/to/config.yaml` - Relative path
 - **Git remote**: `git+<url>#<ref>:<path>` - e.g., `git+https://github.com/org/repo.git#main:.checksy.yaml`
 
-**Important:** Remote rules can ONLY have the `remote` property set (no name, check, severity, fix, hint allowed).
+**Important:** Remote rules can ONLY have the `remote` property set (no name,
+check, severity, fix, interactive-fix, hint, or timeout allowed).
+
+An executable rule may declare `fix` or `interactive-fix`, never both. An
+interactive repair is considered only after a failed check during
+`check --fix`; `--non-interactive` and stdin configuration prohibit terminal
+use without disabling ordinary fixes.
 
 ### Severity (Enum)
 - `Debug` (0) - Lowest, for verbose output
@@ -109,7 +118,8 @@ fixtures/           # Test configurations
 ## Critical Invariants / Rules
 
 ### 1. Remote Rule Validation
-Remote rules MUST only have `remote` property. Any other property (name, check, severity, fix, hint) causes error.
+Remote rules MUST only have `remote` property. Any other property (name, check,
+severity, fix, interactive-fix, hint, timeout) causes error.
 
 ### 2. Circular Reference Prevention
 Remote configs tracked via `visited: HashSet<PathBuf>` during expansion. Re-visiting same canonical path returns empty config (graceful skip).

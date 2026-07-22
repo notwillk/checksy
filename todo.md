@@ -139,7 +139,7 @@ are complete.
 
 ### Interactive repairs with `interactive-fix`
 
-- [ ] Add `interactive-fix` as an alternative fix command and implement it end
+- [x] Add `interactive-fix` as an alternative fix command and implement it end
   to end.
   - A rule may define `fix` or `interactive-fix`, never both; either requires a
     `check`.
@@ -165,8 +165,8 @@ are complete.
   - Add deterministic PTY tests for prompting, terminal absence, forced
     non-interactive mode, passing interactive rules, and failed repairs.
 
-This item is unblocked now that strict configuration and the supervised runner
-are complete.
+This item is complete. It does not make stdin configuration interactive and it
+does not change ordinary headless `fix` behavior.
 
 ### Provisioning semaphore
 

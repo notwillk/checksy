@@ -1,0 +1,6 @@
+rules:
+  - name: interactive repair succeeds
+    severity: error
+    timeout: 5s
+    check: test -f .interactive-fixed
+    interactive-fix: exec scripts/prompt-repair.sh

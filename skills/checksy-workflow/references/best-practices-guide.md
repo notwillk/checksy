@@ -161,6 +161,22 @@ just generate-schema  # Or: checksy schema > .checksy.schema.json
 
 ## Fix Script Best Practices
 
+Use `fix` for commands that can run with `/dev/null` as stdin. Use
+`interactive-fix` only when the repair genuinely requires a terminal, such as
+opening an editor. A rule may not define both:
+
+```yaml
+rules:
+  - name: Local environment configured
+    check: test -f .env.local
+    interactive-fix: '${EDITOR:-vi} .env.local'
+```
+
+Run automation as `checksy check --fix --non-interactive`. Ordinary fixes still
+run, while a needed interactive repair remains a severity-governed failure
+instead of prompting. Configuration supplied through stdin is always
+non-interactive.
+
 ### Idempotent fixes
 
 Fixes should be safe to run multiple times:

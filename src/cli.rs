@@ -63,6 +63,13 @@ struct GlobalFlags {
     stdin_config: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InteractionMode {
+    Permitted,
+    Prohibited,
+    Stdin,
+}
+
 fn parse_global_flags(args: &[String]) -> Result<(GlobalFlags, Vec<String>), String> {
     let mut globals = GlobalFlags::default();
     let mut remaining = vec![];
@@ -127,6 +134,7 @@ fn run_check(
     let mut check_severity = None;
     let mut fail_severity = None;
     let mut apply_fixes = false;
+    let mut non_interactive = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -163,6 +171,10 @@ fn run_check(
                 apply_fixes = true;
                 i += 1;
             }
+            "--non-interactive" => {
+                non_interactive = true;
+                i += 1;
+            }
             _ => {
                 writeln!(stderr, "Unknown flag: {}", args[i]).ok();
                 return 2;
@@ -189,7 +201,8 @@ fn run_check(
         }
     };
 
-    let abs_config_path = if resolved == "-" {
+    let stdin_config = resolved == "-";
+    let abs_config_path = if stdin_config {
         "-".to_string()
     } else {
         match std::fs::canonicalize(&resolved) {
@@ -252,7 +265,14 @@ fn run_check(
     };
 
     let report = if apply_fixes {
-        match check_with_fixes(opts, stdout, stderr) {
+        let interaction = if stdin_config {
+            InteractionMode::Stdin
+        } else if non_interactive {
+            InteractionMode::Prohibited
+        } else {
+            InteractionMode::Permitted
+        };
+        match check_with_fixes(opts, interaction, stdout, stderr) {
             Ok(r) => r,
             Err(mut e) => {
                 return report_check_error(&mut e, stdout, stderr);
@@ -727,6 +747,16 @@ fn print_usage(stdout: &mut dyn Write) {
     );
     let _ = writeln!(stdout, "  version    Print the current build version");
     let _ = writeln!(stdout, "  help       Show this message");
+    let _ = writeln!(stdout);
+    let _ = writeln!(stdout, "Check Flags:");
+    let _ = writeln!(
+        stdout,
+        "  --fix                run configured repairs and final checks"
+    );
+    let _ = writeln!(
+        stdout,
+        "  --non-interactive    prohibit interactive-fix terminal use"
+    );
 }
 
 fn parse_severity(value: &str) -> Result<Severity, String> {
@@ -883,6 +913,7 @@ fn reraise_parent_signal(_signal: i32) -> i32 {
 
 fn check_with_fixes(
     opts: Options,
+    interaction: InteractionMode,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> Result<Report, DiagnoseError> {
@@ -898,85 +929,16 @@ fn check_with_fixes(
     let mut results = vec![];
 
     let preconditions = check::filter_preconditions(&opts.config, opts.min_severity);
-    for rule in preconditions {
-        let result = check::run_rule_supervised(rule.clone(), workdir)?;
-        if result.success() {
-            print_rule_success(&result, stdout, stderr);
-            results.push(result);
-            continue;
-        }
-
-        if rule.fix.as_ref().map(|s| s.trim()).unwrap_or("").is_empty() {
-            print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-            results.push(result);
-            continue;
-        }
-
-        print_rule_status(&result, "⚠️ ", false, stdout, stderr);
-
-        let fix_rule = Rule {
-            name: Some(format!("{} fix", rule_display_name(&rule))),
-            check: Some(rule.fix.clone().unwrap_or_default()),
-            severity: rule.severity,
-            fix: None,
-            hint: rule.hint.clone(),
-            remote: None,
-            timeout: rule.timeout.clone(),
-        };
-        let fix_result = check::run_rule_supervised(fix_rule, workdir)?;
-        if !fix_result.success() {
-            print_rule_failure(&fix_result, stdout, stderr);
-            print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-            results.push(result);
-            continue;
-        }
-
-        print_rule_success(&fix_result, stdout, stderr);
-
-        let result = check::run_rule_supervised(rule, workdir)?;
-        print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-        results.push(result);
-    }
-
     let rules = check::filter_rules(&opts.config, opts.min_severity);
-    for rule in rules {
-        let result = check::run_rule_supervised(rule.clone(), workdir)?;
-        if result.success() {
-            print_rule_success(&result, stdout, stderr);
-            results.push(result);
-            continue;
-        }
-
-        if rule.fix.as_ref().map(|s| s.trim()).unwrap_or("").is_empty() {
-            print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-            results.push(result);
-            continue;
-        }
-
-        print_rule_status(&result, "⚠️ ", false, stdout, stderr);
-
-        let fix_rule = Rule {
-            name: Some(format!("{} fix", rule_display_name(&rule))),
-            check: Some(rule.fix.clone().unwrap_or_default()),
-            severity: rule.severity,
-            fix: None,
-            hint: rule.hint.clone(),
-            remote: None,
-            timeout: rule.timeout.clone(),
-        };
-        let fix_result = check::run_rule_supervised(fix_rule, workdir)?;
-        if !fix_result.success() {
-            print_rule_failure(&fix_result, stdout, stderr);
-            print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-            results.push(result);
-            continue;
-        }
-
-        print_rule_success(&fix_result, stdout, stderr);
-
-        let result = check::run_rule_supervised(rule, workdir)?;
-        print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-        results.push(result);
+    for rule in preconditions.into_iter().chain(rules) {
+        results.push(run_rule_with_fixes(
+            rule,
+            workdir,
+            opts.fail_severity,
+            interaction,
+            stdout,
+            stderr,
+        )?);
     }
 
     let file_paths = check::expand_rule_files(workdir, &opts.config.patterns)
@@ -991,6 +953,110 @@ fn check_with_fixes(
         rules: results,
         fail_severity: opts.fail_severity,
     })
+}
+
+fn run_rule_with_fixes(
+    rule: Rule,
+    workdir: &str,
+    fail_severity: Severity,
+    interaction: InteractionMode,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<RuleResult, DiagnoseError> {
+    let original = check::run_rule_supervised(rule.clone(), workdir)?;
+    if original.success() {
+        print_rule_success(&original, stdout, stderr);
+        return Ok(original);
+    }
+
+    if let Some(fix) = rule
+        .fix
+        .as_deref()
+        .filter(|command| !command.trim().is_empty())
+    {
+        print_rule_status(&original, "⚠️ ", false, stdout, stderr);
+        let fix_result = check::run_rule_supervised(repair_rule(&rule, fix), workdir)?;
+        if !fix_result.success() {
+            print_rule_failure(&fix_result, stdout, stderr);
+            print_rule_outcome(&original, fail_severity, stdout, stderr);
+            return Ok(original);
+        }
+
+        print_rule_success(&fix_result, stdout, stderr);
+        let final_result = check::run_rule_supervised(rule, workdir)?;
+        print_rule_outcome(&final_result, fail_severity, stdout, stderr);
+        return Ok(final_result);
+    }
+
+    let Some(interactive_fix) = rule.interactive_fix.as_deref() else {
+        print_rule_outcome(&original, fail_severity, stdout, stderr);
+        return Ok(original);
+    };
+
+    if interaction != InteractionMode::Permitted {
+        print_rule_outcome(&original, fail_severity, stdout, stderr);
+        print_interactive_repair_required(&rule, interaction, stderr);
+        return Ok(original);
+    }
+
+    let _ = stdout.flush();
+    let _ = stderr.flush();
+    let repair = repair_rule(&rule, interactive_fix);
+    let fix_result = match check::run_rule_interactive_supervised(repair, workdir) {
+        Ok(result) => result,
+        Err(check::InteractiveExecutionError::Unavailable) => {
+            print_interactive_repair_required(&rule, InteractionMode::Permitted, stderr);
+            print_rule_outcome(&original, fail_severity, stdout, stderr);
+            return Ok(original);
+        }
+        Err(check::InteractiveExecutionError::Execution(error)) => return Err(error.into()),
+    };
+
+    if !fix_result.success() {
+        print_rule_failure(&fix_result, stdout, stderr);
+        print_rule_outcome(&original, fail_severity, stdout, stderr);
+        return Ok(original);
+    }
+
+    print_rule_success(&fix_result, stdout, stderr);
+    let final_result = check::run_rule_supervised(rule, workdir)?;
+    print_rule_outcome(&final_result, fail_severity, stdout, stderr);
+    Ok(final_result)
+}
+
+fn repair_rule(rule: &Rule, command: &str) -> Rule {
+    Rule {
+        name: Some(format!("{} fix", rule_display_name(rule))),
+        check: Some(command.to_string()),
+        severity: rule.severity,
+        fix: None,
+        interactive_fix: None,
+        hint: rule.hint.clone(),
+        remote: None,
+        timeout: rule.timeout.clone(),
+    }
+}
+
+fn print_interactive_repair_required(
+    rule: &Rule,
+    interaction: InteractionMode,
+    stderr: &mut dyn Write,
+) {
+    let name = rule_display_name(rule);
+    let reason = match interaction {
+        InteractionMode::Stdin => concat!(
+            "stdin configuration is always non-interactive; save it to a local file and ",
+            "rerun check --fix from a terminal"
+        ),
+        InteractionMode::Prohibited => concat!(
+            "--non-interactive prohibits terminal use; rerun without --non-interactive ",
+            "from a terminal"
+        ),
+        InteractionMode::Permitted => {
+            "no usable controlling terminal is available; rerun check --fix from a terminal"
+        }
+    };
+    let _ = writeln!(stderr, "{name}: interactive repair required, but {reason}");
 }
 
 fn rule_display_name(rule: &Rule) -> String {
@@ -1061,6 +1127,8 @@ mod tests {
         for command in ["check", "diagnose", "install", "init", "schema", "version"] {
             assert!(stdout.contains(command), "help omitted {command}");
         }
+        assert!(stdout.contains("--non-interactive"));
+        assert!(stdout.contains("interactive-fix"));
         assert!(!stdout.contains("apply"));
     }
 
@@ -1153,12 +1221,44 @@ mod tests {
     }
 
     #[test]
+    fn non_interactive_is_a_bare_check_flag_and_does_not_imply_fix() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("passing.yaml");
+        std::fs::write(
+            &config,
+            concat!(
+                "rules:\n",
+                "  - check: 'true'\n",
+                "    interactive-fix: 'exit 99'\n"
+            ),
+        )
+        .unwrap();
+        let config = config.to_string_lossy();
+
+        let (code, stdout, stderr) =
+            invoke(&["--config", config.as_ref(), "check", "--non-interactive"]);
+        assert_eq!(code, 0);
+        assert!(stdout.contains("All rules validated"));
+        assert!(stderr.is_empty());
+
+        let (code, _, stderr) = invoke(&[
+            "--config",
+            config.as_ref(),
+            "check",
+            "--non-interactive=true",
+        ]);
+        assert_eq!(code, 2);
+        assert!(stderr.contains("Unknown flag"));
+    }
+
+    #[test]
     fn test_rule_display_name() {
         let rule = Rule {
             name: None,
             check: Some("echo hi".to_string()),
             severity: None,
             fix: None,
+            interactive_fix: None,
             hint: None,
             remote: None,
             timeout: None,
@@ -1170,6 +1270,7 @@ mod tests {
             check: Some("echo hi".to_string()),
             severity: None,
             fix: None,
+            interactive_fix: None,
             hint: None,
             remote: None,
             timeout: None,

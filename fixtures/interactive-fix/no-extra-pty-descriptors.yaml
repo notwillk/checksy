@@ -1,0 +1,20 @@
+rules:
+  - name: interactive repair inherits only standard terminal descriptors
+    severity: error
+    timeout: 2s
+    check: test -f .interactive-fixed
+    interactive-fix: |
+      if [[ -n $(trap -p TSTP TTIN TTOU) ]]; then
+        printf 'interactive child inherited a nondefault job-control disposition\n' >&2
+        exit 25
+      fi
+      for descriptor in /dev/fd/*; do
+        fd=${descriptor##*/}
+        [[ $fd =~ ^[0-9]+$ ]] || continue
+        ((fd <= 2)) && continue
+        if [[ -t $fd ]]; then
+          printf 'unexpected inherited terminal descriptor: %s\n' "$fd" >&2
+          exit 24
+        fi
+      done
+      : > .interactive-fixed

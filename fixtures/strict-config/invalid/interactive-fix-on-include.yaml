@@ -1,3 +1,4 @@
 rules:
-  - check: 'false'
+  - remote: nested.yaml
     interactive-fix: read -r answer
+

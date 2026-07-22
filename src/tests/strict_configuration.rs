@@ -326,6 +326,23 @@ fn checked_in_invalid_file_and_stdin_fixtures_are_preflighted_even_with_no_fail(
 }
 
 #[test]
+fn invalid_interactive_fix_shape_is_preflighted_before_any_command() {
+    let temp = tempfile::tempdir().unwrap();
+    let marker = temp.path().join("interactive-fix-must-not-run");
+    let config = fixture_root().join("invalid/both-fix-forms.yaml");
+    let output = run_with_path_env(
+        &["--config", config.to_str().unwrap(), "check", "--no-fail"],
+        &[("CHECKSY_TEST_MARKER", &marker)],
+    );
+
+    assert_eq!(exit_code(&output), 2, "{}", output_context(&output));
+    assert!(
+        !marker.exists(),
+        "a command ran before interactive-fix validation completed"
+    );
+}
+
+#[test]
 fn invalid_nested_config_prevents_root_commands() {
     let temp = tempfile::tempdir().unwrap();
     let marker = temp.path().join("root-must-not-run");

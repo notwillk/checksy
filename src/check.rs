@@ -149,6 +149,12 @@ pub(crate) enum DiagnoseError {
     Execution(ExecutionError),
 }
 
+#[derive(Debug)]
+pub(crate) enum InteractiveExecutionError {
+    Unavailable,
+    Execution(ExecutionError),
+}
+
 impl DiagnoseError {
     pub(crate) fn execution(&self) -> Option<&ExecutionError> {
         match self {
@@ -333,6 +339,49 @@ pub(crate) fn run_rule_supervised(rule: Rule, workdir: &str) -> Result<RuleResul
     Ok(completed_rule_result(rule, output))
 }
 
+pub(crate) fn run_rule_interactive_supervised(
+    rule: Rule,
+    workdir: &str,
+) -> Result<RuleResult, InteractiveExecutionError> {
+    let script = rule.check.clone().unwrap_or_else(|| "true".to_string());
+    let script = if script.ends_with('\n') {
+        script
+    } else {
+        format!("{}\n", script)
+    };
+
+    let command_name = rule
+        .name
+        .clone()
+        .unwrap_or_else(|| rule.check.clone().unwrap_or_default());
+    let timeout = rule.effective_timeout().map_err(|error| {
+        InteractiveExecutionError::Execution(ExecutionError::invalid_timeout(
+            command_name.clone(),
+            error,
+        ))
+    })?;
+    let mut command = Command::new("bash");
+    command.current_dir(workdir).arg("-c").arg(&script);
+
+    let output = process_runner::run_interactive(
+        command,
+        ProcessLimits {
+            timeout,
+            ..ProcessLimits::default()
+        },
+    )
+    .map_err(|error| match error {
+        process_runner::InteractiveRunError::Unavailable(_) => {
+            InteractiveExecutionError::Unavailable
+        }
+        process_runner::InteractiveRunError::Process(error) => {
+            InteractiveExecutionError::Execution(ExecutionError::new(command_name, error))
+        }
+    })?;
+
+    Ok(completed_rule_result(rule, output))
+}
+
 pub fn expand_rule_files(workdir: &str, patterns: &[String]) -> Result<Vec<String>, String> {
     if patterns.is_empty() {
         return Ok(vec![]);
@@ -396,6 +445,7 @@ pub fn run_rule_file(workdir: &str, rel_path: &str) -> RuleResult {
         check: Some(rel_path.to_string()),
         severity: Some(Severity::Error),
         fix: None,
+        interactive_fix: None,
         hint: None,
         remote: None,
         timeout: None,
@@ -417,6 +467,7 @@ pub(crate) fn run_rule_file_supervised(
         check: Some(rel_path.to_string()),
         severity: Some(Severity::Error),
         fix: None,
+        interactive_fix: None,
         hint: None,
         remote: None,
         timeout: None,
@@ -512,6 +563,7 @@ mod tests {
                     check: Some("true".to_string()),
                     severity: Some(Severity::Debug),
                     fix: None,
+                    interactive_fix: None,
                     hint: None,
                     remote: None,
                     timeout: None,
@@ -521,6 +573,7 @@ mod tests {
                     check: Some("true".to_string()),
                     severity: Some(Severity::Info),
                     fix: None,
+                    interactive_fix: None,
                     hint: None,
                     remote: None,
                     timeout: None,
@@ -530,6 +583,7 @@ mod tests {
                     check: Some("true".to_string()),
                     severity: Some(Severity::Warning),
                     fix: None,
+                    interactive_fix: None,
                     hint: None,
                     remote: None,
                     timeout: None,
@@ -551,6 +605,7 @@ mod tests {
                 check: Some("".to_string()),
                 severity: Some(Severity::Warning),
                 fix: None,
+                interactive_fix: None,
                 hint: None,
                 remote: None,
                 timeout: None,
@@ -572,6 +627,7 @@ mod tests {
                     check: Some("".to_string()),
                     severity: Some(Severity::Warning),
                     fix: None,
+                    interactive_fix: None,
                     hint: None,
                     remote: None,
                     timeout: None,
@@ -586,6 +642,7 @@ mod tests {
                     check: Some("".to_string()),
                     severity: Some(Severity::Error),
                     fix: None,
+                    interactive_fix: None,
                     hint: None,
                     remote: None,
                     timeout: None,
@@ -630,6 +687,7 @@ mod tests {
                     check: Some(": > unexpected-marker".to_string()),
                     severity: Some(Severity::Error),
                     fix: None,
+                    interactive_fix: None,
                     hint: None,
                     remote: None,
                     timeout: None,
@@ -639,6 +697,7 @@ mod tests {
                     check: Some("true".to_string()),
                     severity: Some(Severity::Error),
                     fix: None,
+                    interactive_fix: None,
                     hint: None,
                     remote: None,
                     timeout: Some("0s".to_string()),

@@ -39,8 +39,8 @@ fn public_help_describes_the_provisioning_cli() {
         assert!(stdout.contains(command), "help omitted {command}");
     }
     assert!(!stdout.contains("apply"));
-    assert!(!stdout.contains("interactive-fix"));
-    assert!(!stdout.contains("--non-interactive"));
+    assert!(stdout.contains("interactive-fix"));
+    assert!(stdout.contains("--non-interactive"));
     assert_eq!(
         env!("CARGO_PKG_DESCRIPTION"),
         "Provision the current machine from trusted configuration"
@@ -130,7 +130,7 @@ fn documentation_distinguishes_the_runner_from_the_remaining_target() {
         "Fetching, updating, authenticating,",
         "`interactive-fix`",
         "`--non-interactive`",
-        "provisioning lock are not available",
+        "provisioning lock",
         "<account-home>/.local/state/checksy/provision.lock",
         "<account-home>/Library/Application Support/checksy/provision.lock",
         "/var/lib/checksy/provision.lock",

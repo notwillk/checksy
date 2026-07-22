@@ -1,0 +1,4 @@
+rules:
+  - check: 'false'
+    interactive-fix: null
+

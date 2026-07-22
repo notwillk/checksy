@@ -1,0 +1,6 @@
+rules:
+  - name: passing rule never needs its interactive repair
+    severity: error
+    timeout: 2s
+    check: "true"
+    interactive-fix: ': > "$CHECKSY_UNEXPECTED_INTERACTIVE"'

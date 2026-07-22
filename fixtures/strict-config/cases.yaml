@@ -64,6 +64,10 @@ cases:
     fixture: valid/timeout-maximum.yaml
     expected: accept
     validationLayer: structural
+  - id: interactive-fix
+    fixture: valid/interactive-fix.yaml
+    expected: accept
+    validationLayer: structural
 
   - id: unknown-top-level
     fixture: invalid/unknown-top-level.yaml
@@ -85,11 +89,41 @@ cases:
     expected: reject
     validationLayer: structural
     errorContains: unknown field
-  - id: future-interactive-fix
-    fixture: invalid/future-interactive-fix.yaml
+  - id: interactive-fix-blank
+    fixture: invalid/interactive-fix-blank.yaml
     expected: reject
     validationLayer: structural
-    errorContains: unknown field
+    errorContains: non-empty `interactive-fix`
+  - id: interactive-fix-null
+    fixture: invalid/interactive-fix-null.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: interactive-fix-type
+    fixture: invalid/interactive-fix-type.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: interactive-fix-nul
+    fixture: invalid/interactive-fix-nul.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: interactive-fix-without-check
+    fixture: invalid/interactive-fix-without-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: without `check`
+  - id: interactive-fix-on-include
+    fixture: invalid/interactive-fix-on-include.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: cannot have properties
+  - id: both-fix-forms
+    fixture: invalid/both-fix-forms.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: both `fix` and `interactive-fix`
 
   - id: empty-rule
     fixture: invalid/empty-rule.yaml

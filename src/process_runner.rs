@@ -143,6 +143,49 @@ pub(crate) enum ProcessError {
     UnsupportedPlatform,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum InteractiveUnavailable {
+    NoControllingTerminal,
+    NotForeground,
+}
+
+impl fmt::Display for InteractiveUnavailable {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoControllingTerminal => {
+                formatter.write_str("no usable controlling terminal is available")
+            }
+            Self::NotForeground => formatter.write_str(
+                "Checksy does not own the controlling terminal's foreground process group",
+            ),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum InteractiveRunError {
+    Unavailable(InteractiveUnavailable),
+    Process(ProcessError),
+}
+
+impl fmt::Display for InteractiveRunError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unavailable(reason) => reason.fmt(formatter),
+            Self::Process(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for InteractiveRunError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Unavailable(_) => None,
+            Self::Process(error) => Some(error),
+        }
+    }
+}
+
 impl ProcessError {
     pub(crate) fn output(&self) -> Option<&PartialProcessOutput> {
         match self {
@@ -225,6 +268,19 @@ pub(crate) fn run(
     supported::run(command, limits)
 }
 
+/// Run a configured command attached to the caller's controlling terminal.
+///
+/// Terminal access is checked lazily. The command receives a private PTY and
+/// becomes that PTY's session and process-group leader. Input and output are
+/// relayed live, so the returned capture buffers are always empty.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn run_interactive(
+    command: Command,
+    limits: ProcessLimits,
+) -> Result<CompletedProcess, InteractiveRunError> {
+    supported::run_interactive(command, limits)
+}
+
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 pub(crate) fn run_observed(
     command: Command,
@@ -252,24 +308,44 @@ pub(crate) fn run(
     Err(ProcessError::UnsupportedPlatform)
 }
 
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+pub(crate) fn run_interactive(
+    _command: Command,
+    _limits: ProcessLimits,
+) -> Result<CompletedProcess, InteractiveRunError> {
+    Err(InteractiveRunError::Process(
+        ProcessError::UnsupportedPlatform,
+    ))
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod supported {
     #[cfg(test)]
     use super::ProcessTestEvent;
     use super::{
-        CapturedOutput, CompletedProcess, PartialProcessOutput, ProcessError, ProcessLimits,
-        CAPTURE_LIMIT_BYTES,
+        CapturedOutput, CompletedProcess, InteractiveRunError, InteractiveUnavailable,
+        PartialProcessOutput, ProcessError, ProcessLimits, CAPTURE_LIMIT_BYTES,
     };
-    use rustix::fs::{fcntl_getfl, fcntl_setfl, OFlags};
-    use rustix::io::{self as rustix_io, Errno, PollFd, PollFlags};
+    use rustix::fd::{AsFd, OwnedFd};
+    use rustix::fs::{cwd, fcntl_getfl, fcntl_setfl, openat, Mode, OFlags};
+    use rustix::io::{
+        self as rustix_io, fcntl_dupfd_cloexec, fcntl_getfd, fcntl_setfd, Errno, FdFlags, PollFd,
+        PollFlags,
+    };
     use rustix::process::{
-        kill_process_group, test_kill_process_group, waitid, Pid, Signal, WaitId, WaitidOptions,
+        getpgrp, kill_process_group, test_kill_process_group, waitid, Pid, Signal, WaitId,
+        WaitidOptions,
+    };
+    use rustix::pty::{grantpt, openpt, ptsname, unlockpt, OpenptFlags};
+    use rustix::termios::{
+        cfmakeraw, tcgetattr, tcgetpgrp, tcgetwinsize, tcsetattr, tcsetwinsize, OptionalActions,
+        Termios, Winsize, ISIG, VSUSP,
     };
     use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
     use std::collections::VecDeque;
     use std::io;
     use std::mem;
-    use std::os::unix::process::CommandExt;
+    use std::os::unix::process::{CommandExt, ExitStatusExt};
     use std::process::{Child, ChildStderr, ChildStdout, Command, ExitStatus, Stdio};
     use std::ptr;
     use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
@@ -286,6 +362,42 @@ mod supported {
         limits: ProcessLimits,
     ) -> Result<CompletedProcess, ProcessError> {
         run_impl(command, limits, &mut NoopObserver)
+    }
+
+    pub(super) fn run_interactive(
+        command: Command,
+        limits: ProcessLimits,
+    ) -> Result<CompletedProcess, InteractiveRunError> {
+        validate_limits(limits).map_err(InteractiveRunError::Process)?;
+        let signal_handlers = TemporarySignalHandlers::install()
+            .map_err(supervision_empty)
+            .map_err(InteractiveRunError::Process)?;
+        let job_control = match InteractiveJobControlGuard::install() {
+            Ok(guard) => guard,
+            Err(source) => {
+                let error =
+                    finalize_setup_process_error(supervision_empty(source), signal_handlers);
+                return Err(InteractiveRunError::Process(error));
+            }
+        };
+        let terminal = match InteractiveTerminal::open() {
+            Ok(terminal) => terminal,
+            Err(error) => {
+                return match finalize_interactive_setup(job_control, signal_handlers) {
+                    Ok(()) => Err(error),
+                    Err(finalize_error) => Err(InteractiveRunError::Process(finalize_error)),
+                };
+            }
+        };
+        let result = run_interactive_with_signal_handlers(
+            command,
+            limits,
+            terminal,
+            &signal_handlers,
+            &job_control,
+        );
+        let result = finalize_job_control(result, job_control);
+        finalize_signal_handlers(result, signal_handlers).map_err(InteractiveRunError::Process)
     }
 
     #[cfg(test)]
@@ -339,12 +451,16 @@ mod supported {
     enum LeaderObservation {
         Exited,
         Signaled(i32),
+        Stopped(i32),
     }
 
     #[derive(Clone, Copy, Debug)]
     enum TerminationCause {
         Timeout,
         ChildSignal(i32),
+        Suspended(i32),
+        OuterJobControl(i32),
+        ForegroundOwnershipLost,
     }
 
     fn run_impl<O: ProcessObserver>(
@@ -525,6 +641,20 @@ mod supported {
                     })?;
                 }
                 if let Some(status) = child.status() {
+                    if let Some(signal) = status.signal() {
+                        cause = Some(TerminationCause::ChildSignal(signal));
+                        signal_group(child.process_group(), Signal::Term).map_err(|source| {
+                            supervision_with_output(
+                                source,
+                                &child,
+                                &stdout_capture,
+                                &stderr_capture,
+                            )
+                        })?;
+                        observer.term_sent();
+                        term_deadline = Some(deadline_from(now, limits.term_grace));
+                        continue;
+                    }
                     let group_exists =
                         process_group_exists(child.process_group()).map_err(|source| {
                             supervision_with_output(
@@ -617,6 +747,793 @@ mod supported {
         }
     }
 
+    fn run_interactive_with_signal_handlers(
+        mut command: Command,
+        limits: ProcessLimits,
+        terminal: InteractiveTerminal,
+        signal_handlers: &TemporarySignalHandlers,
+        job_control: &InteractiveJobControlGuard,
+    ) -> Result<CompletedProcess, ProcessError> {
+        let pty = InteractivePty::open(&terminal.attributes, terminal.window_size)
+            .map_err(supervision_empty)?;
+
+        let child_stdin = fcntl_dupfd_cloexec(&pty.slave, 3)
+            .map_err(|error| supervision_empty(os_error(error)))?;
+        let child_stdout = fcntl_dupfd_cloexec(&pty.slave, 3)
+            .map_err(|error| supervision_empty(os_error(error)))?;
+        let child_stderr = fcntl_dupfd_cloexec(&pty.slave, 3)
+            .map_err(|error| supervision_empty(os_error(error)))?;
+        let child_terminal = pty.slave;
+        command
+            .stdin(Stdio::from(child_stdin))
+            .stdout(Stdio::from(child_stdout))
+            .stderr(Stdio::from(child_stderr));
+        // SAFETY: `setsid` and the controlling-terminal ioctl are
+        // async-signal-safe. `child_terminal` is already open and no
+        // allocation occurs between fork and exec.
+        unsafe {
+            command.pre_exec(move || {
+                rustix::process::setsid().map_err(os_error)?;
+                reset_job_control_dispositions()?;
+                rustix::process::ioctl_tiocsctty(&child_terminal).map_err(os_error)
+            });
+        }
+
+        let child = command.spawn().map_err(ProcessError::Spawn)?;
+        // Drop the command immediately so the parent's copy of the PTY slave
+        // retained by the pre-exec closure cannot keep the master open.
+        drop(command);
+        let child = ArmedChild::new(child);
+        let initial_window_size = terminal.window_size;
+        let mut terminal_mode = TerminalModeGuard::engage(terminal)?;
+        let result = supervise_interactive(
+            child,
+            pty.master,
+            terminal_mode.fd(),
+            initial_window_size,
+            limits,
+            signal_handlers,
+            job_control,
+        );
+        let result = if result.is_ok() {
+            match require_foreground_terminal(terminal_mode.fd()) {
+                Ok(()) => result,
+                Err(source) => Err(ProcessError::Supervision {
+                    source,
+                    output: result_partial_output(&result),
+                }),
+            }
+        } else {
+            result
+        };
+        let restore_result = terminal_mode.restore();
+        match (result, restore_result) {
+            (result, Ok(())) => result,
+            (Ok(completed), Err(source)) => Err(ProcessError::Supervision {
+                source,
+                output: PartialProcessOutput {
+                    status: Some(completed.status),
+                    stdout: completed.stdout,
+                    stderr: completed.stderr,
+                },
+            }),
+            (Err(error), Err(source)) => Err(ProcessError::Supervision {
+                source,
+                output: error
+                    .output()
+                    .cloned()
+                    .unwrap_or_else(PartialProcessOutput::empty),
+            }),
+        }
+    }
+
+    fn supervise_interactive(
+        child: ArmedChild,
+        master: OwnedFd,
+        terminal: &OwnedFd,
+        initial_window_size: Winsize,
+        limits: ProcessLimits,
+        signal_handlers: &TemporarySignalHandlers,
+        job_control: &InteractiveJobControlGuard,
+    ) -> Result<CompletedProcess, ProcessError> {
+        let mut child = child;
+        let started_at = Instant::now();
+        let timeout_at = started_at.checked_add(limits.timeout).unwrap_or(started_at);
+        let mut terminal_input_open = true;
+        let mut master_output_open = true;
+        let mut input = PendingBytes::new();
+        let mut output = PendingBytes::new();
+        let mut observation = None;
+        let mut cause = None;
+        let mut first_parent_signal = None;
+        let mut term_deadline = None;
+        let mut kill_deadline = None;
+        let mut kill_sent = false;
+        let mut current_window_size = initial_window_size;
+        let mut outer_relay_enabled = true;
+
+        loop {
+            let now = Instant::now();
+
+            let received_signals = signal_handlers.take_count();
+            for _ in 0..received_signals {
+                if first_parent_signal.is_none() {
+                    let signal = signal_handlers.first_signal().ok_or_else(|| {
+                        interactive_supervision(
+                            io::Error::other("termination signal counter lost its first signal"),
+                            &child,
+                        )
+                    })?;
+                    first_parent_signal = Some(signal);
+                    let forwarded = Signal::from_raw(signal).ok_or_else(|| {
+                        interactive_supervision(
+                            io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                format!("unsupported caught signal {signal}"),
+                            ),
+                            &child,
+                        )
+                    })?;
+                    signal_group(child.process_group(), forwarded)
+                        .map_err(|source| interactive_supervision(source, &child))?;
+                    term_deadline = Some(deadline_from(now, limits.term_grace));
+                } else if !kill_sent {
+                    send_interactive_kill(&mut child, &mut kill_sent, &mut kill_deadline)?;
+                }
+            }
+
+            if cause.is_none() && first_parent_signal.is_none() {
+                if let Some(signal) = job_control.take_signal() {
+                    cause = Some(TerminationCause::OuterJobControl(signal));
+                    signal_group(child.process_group(), Signal::Term)
+                        .map_err(|source| interactive_supervision(source, &child))?;
+                    term_deadline = Some(deadline_from(now, limits.term_grace));
+                }
+            }
+
+            if cause.is_none() && first_parent_signal.is_none() {
+                let owns_foreground = owns_foreground_terminal(terminal)
+                    .map_err(os_error)
+                    .map_err(|source| interactive_supervision(source, &child))?;
+                if !owns_foreground {
+                    cause = Some(TerminationCause::ForegroundOwnershipLost);
+                    outer_relay_enabled = false;
+                    terminal_input_open = false;
+                    input.clear();
+                    output.clear();
+                    signal_group(child.process_group(), Signal::Term)
+                        .map_err(|source| interactive_supervision(source, &child))?;
+                    term_deadline = Some(deadline_from(now, limits.term_grace));
+                }
+            }
+
+            if observation.is_none() && child.status().is_none() {
+                match observe_interactive_leader(child.process_group())
+                    .map_err(|source| interactive_supervision(source, &child))?
+                {
+                    Some(LeaderObservation::Stopped(signal)) => {
+                        if cause.is_none() && first_parent_signal.is_none() {
+                            cause = Some(TerminationCause::Suspended(signal));
+                            signal_group(child.process_group(), Signal::Cont)
+                                .map_err(|source| interactive_supervision(source, &child))?;
+                            signal_group(child.process_group(), Signal::Term)
+                                .map_err(|source| interactive_supervision(source, &child))?;
+                            term_deadline = Some(deadline_from(now, limits.term_grace));
+                        }
+                    }
+                    Some(value) => {
+                        observation = Some(value);
+                        if let LeaderObservation::Signaled(signal) = value {
+                            if cause.is_none() && first_parent_signal.is_none() {
+                                cause = Some(TerminationCause::ChildSignal(signal));
+                                signal_group(child.process_group(), Signal::Term)
+                                    .map_err(|source| interactive_supervision(source, &child))?;
+                                term_deadline = Some(deadline_from(now, limits.term_grace));
+                            }
+                        }
+                    }
+                    None => {}
+                }
+            }
+
+            if cause.is_none() && first_parent_signal.is_none() && now >= timeout_at {
+                cause = Some(TerminationCause::Timeout);
+                signal_group(child.process_group(), Signal::Term)
+                    .map_err(|source| interactive_supervision(source, &child))?;
+                term_deadline = Some(deadline_from(now, limits.term_grace));
+            }
+
+            let terminating = cause.is_some() || first_parent_signal.is_some();
+            if terminating && !kill_sent && term_deadline.is_some_and(|deadline| now >= deadline) {
+                send_interactive_kill(&mut child, &mut kill_sent, &mut kill_deadline)?;
+            }
+
+            if kill_sent && child.status().is_none() {
+                reap_if_ready(&mut child, &mut NoopObserver)
+                    .map_err(|source| interactive_supervision(source, &child))?;
+            }
+
+            if child.status().is_none() && !master_output_open && output.is_empty() {
+                if observation.is_some() {
+                    reap_ready_leader(&mut child, &mut NoopObserver)
+                        .map_err(|source| interactive_supervision(source, &child))?;
+                } else {
+                    reap_if_ready(&mut child, &mut NoopObserver)
+                        .map_err(|source| interactive_supervision(source, &child))?;
+                }
+            }
+            if cause.is_none() && first_parent_signal.is_none() {
+                if let Some(signal) = child.status().and_then(|status| status.signal()) {
+                    cause = Some(TerminationCause::ChildSignal(signal));
+                    signal_group(child.process_group(), Signal::Term)
+                        .map_err(|source| interactive_supervision(source, &child))?;
+                    term_deadline = Some(deadline_from(now, limits.term_grace));
+                    continue;
+                }
+            }
+            let group_exists = process_group_exists(child.process_group())
+                .map_err(|source| interactive_supervision(source, &child))?;
+
+            if !group_exists && child.status().is_some() && !master_output_open && output.is_empty()
+            {
+                let failed = first_parent_signal.is_some() || cause.is_some();
+                child.disarm();
+                return if failed {
+                    Err(interactive_termination_error(
+                        first_parent_signal,
+                        cause,
+                        limits.timeout,
+                        &child,
+                    ))
+                } else {
+                    Ok(CompletedProcess {
+                        status: child.status().expect("completed child has a status"),
+                        stdout: CapturedOutput::empty(),
+                        stderr: CapturedOutput::empty(),
+                    })
+                };
+            }
+
+            if let Some(deadline) = kill_deadline {
+                if now >= deadline {
+                    if child.status().is_none() {
+                        reap_if_ready(&mut child, &mut NoopObserver)
+                            .map_err(|source| interactive_supervision(source, &child))?;
+                    }
+                    if child.status().is_some() {
+                        child.disarm();
+                    }
+                    return Err(interactive_termination_error(
+                        first_parent_signal,
+                        cause,
+                        limits.timeout,
+                        &child,
+                    ));
+                }
+            }
+
+            if outer_relay_enabled {
+                let window_size = tcgetwinsize(terminal)
+                    .map_err(os_error)
+                    .map_err(|source| interactive_supervision(source, &child))?;
+                if !same_window_size(window_size, current_window_size) {
+                    tcsetwinsize(&master, window_size)
+                        .map_err(os_error)
+                        .map_err(|source| interactive_supervision(source, &child))?;
+                    current_window_size = window_size;
+                }
+            }
+
+            let wake_at = next_wake(timeout_at, term_deadline, kill_deadline);
+            poll_interactive(
+                terminal,
+                &master,
+                outer_relay_enabled && terminal_input_open && input.is_empty(),
+                outer_relay_enabled && !output.is_empty(),
+                master_output_open && output.is_empty(),
+                outer_relay_enabled && !input.is_empty(),
+                wake_at,
+            )
+            .map_err(|source| interactive_supervision(source, &child))?;
+
+            if outer_relay_enabled {
+                let owns_foreground = owns_foreground_terminal(terminal)
+                    .map_err(os_error)
+                    .map_err(|source| interactive_supervision(source, &child))?;
+                if !owns_foreground {
+                    cause = Some(TerminationCause::ForegroundOwnershipLost);
+                    outer_relay_enabled = false;
+                    terminal_input_open = false;
+                    input.clear();
+                    output.clear();
+                    signal_group(child.process_group(), Signal::Term)
+                        .map_err(|source| interactive_supervision(source, &child))?;
+                    term_deadline = Some(deadline_from(Instant::now(), limits.term_grace));
+                }
+            }
+
+            if outer_relay_enabled && !output.is_empty() {
+                write_pending(terminal, &mut output)
+                    .map_err(|source| interactive_supervision(source, &child))?;
+            } else if !outer_relay_enabled {
+                output.clear();
+            }
+            if outer_relay_enabled && !input.is_empty() {
+                match write_pending(&master, &mut input) {
+                    Ok(()) => {}
+                    Err(error) if is_terminal_closed(&error) => input.clear(),
+                    Err(source) => return Err(interactive_supervision(source, &child)),
+                }
+            }
+            if outer_relay_enabled && terminal_input_open && input.is_empty() {
+                terminal_input_open = read_pending(terminal, &mut input, false)
+                    .map_err(|source| interactive_supervision(source, &child))?;
+            }
+            if master_output_open && output.is_empty() {
+                match read_pending(&master, &mut output, true) {
+                    Ok(open) => master_output_open = open,
+                    Err(error) if is_terminal_closed(&error) => master_output_open = false,
+                    Err(source) => return Err(interactive_supervision(source, &child)),
+                }
+                if !outer_relay_enabled {
+                    output.clear();
+                }
+            }
+        }
+    }
+
+    struct InteractiveTerminal {
+        fd: OwnedFd,
+        attributes: Termios,
+        window_size: Winsize,
+    }
+
+    impl InteractiveTerminal {
+        fn open() -> Result<Self, InteractiveRunError> {
+            let fd = openat(
+                cwd(),
+                "/dev/tty",
+                OFlags::RDWR | OFlags::NOCTTY | OFlags::NONBLOCK | OFlags::CLOEXEC,
+                Mode::empty(),
+            )
+            .map_err(|error| interactive_terminal_error("open /dev/tty", error))?;
+            let attributes = tcgetattr(&fd)
+                .map_err(|error| interactive_terminal_error("read /dev/tty attributes", error))?;
+            let window_size = tcgetwinsize(&fd)
+                .map_err(|error| interactive_terminal_error("read /dev/tty window size", error))?;
+            let foreground = tcgetpgrp(&fd).map_err(|error| {
+                interactive_terminal_error("read /dev/tty foreground process group", error)
+            })?;
+            if foreground != getpgrp() {
+                return Err(InteractiveRunError::Unavailable(
+                    InteractiveUnavailable::NotForeground,
+                ));
+            }
+            Ok(Self {
+                fd,
+                attributes,
+                window_size,
+            })
+        }
+    }
+
+    fn interactive_terminal_error(operation: &str, error: Errno) -> InteractiveRunError {
+        if matches!(
+            error,
+            Errno::NXIO | Errno::NODEV | Errno::NOTTY | Errno::NOENT
+        ) {
+            return InteractiveRunError::Unavailable(InteractiveUnavailable::NoControllingTerminal);
+        }
+        let source = os_error(error);
+        InteractiveRunError::Process(supervision_empty(io::Error::new(
+            source.kind(),
+            format!("failed to {operation}: {source}"),
+        )))
+    }
+
+    struct InteractivePty {
+        master: OwnedFd,
+        slave: OwnedFd,
+    }
+
+    impl InteractivePty {
+        fn open(attributes: &Termios, window_size: Winsize) -> io::Result<Self> {
+            let mut flags = OpenptFlags::RDWR | OpenptFlags::NOCTTY;
+            #[cfg(target_os = "linux")]
+            {
+                flags |= OpenptFlags::CLOEXEC;
+            }
+            let master = openpt(flags).map_err(os_error)?;
+            ensure_cloexec(&master)?;
+            grantpt(&master).map_err(os_error)?;
+            unlockpt(&master).map_err(os_error)?;
+            let slave_name = ptsname(&master, Vec::new()).map_err(os_error)?;
+            let slave = openat(
+                cwd(),
+                slave_name.as_c_str(),
+                OFlags::RDWR | OFlags::NOCTTY | OFlags::CLOEXEC,
+                Mode::empty(),
+            )
+            .map_err(os_error)?;
+            tcsetattr(&slave, OptionalActions::Now, attributes).map_err(os_error)?;
+            tcsetwinsize(&slave, window_size).map_err(os_error)?;
+            set_nonblocking(&master)?;
+            Ok(Self { master, slave })
+        }
+    }
+
+    struct TerminalModeGuard {
+        fd: Option<OwnedFd>,
+        original: Termios,
+    }
+
+    impl TerminalModeGuard {
+        fn engage(terminal: InteractiveTerminal) -> Result<Self, ProcessError> {
+            require_foreground_terminal(&terminal.fd).map_err(supervision_empty)?;
+            let mut relay = terminal.attributes;
+            cfmakeraw(&mut relay);
+            // Keep interrupt and quit processing in the outer terminal so the
+            // parent signal-forwarding path observes Ctrl-C/Ctrl-\\. Disable
+            // suspension so Ctrl-Z reaches the inner PTY, where a stopped
+            // child is resumed and terminated instead of hanging Checksy.
+            relay.c_lflag |= ISIG;
+            relay.c_cc[VSUSP] = libc::_POSIX_VDISABLE as _;
+            tcsetattr(&terminal.fd, OptionalActions::Now, &relay)
+                .map_err(os_error)
+                .map_err(supervision_empty)?;
+            Ok(Self {
+                fd: Some(terminal.fd),
+                original: terminal.attributes,
+            })
+        }
+
+        fn fd(&self) -> &OwnedFd {
+            self.fd.as_ref().expect("active terminal guard has a file")
+        }
+
+        fn restore(&mut self) -> io::Result<()> {
+            let Some(fd) = self.fd.as_ref() else {
+                return Ok(());
+            };
+            tcsetattr(fd, OptionalActions::Now, &self.original).map_err(os_error)?;
+            self.fd.take();
+            Ok(())
+        }
+    }
+
+    fn require_foreground_terminal(terminal: &OwnedFd) -> io::Result<()> {
+        if owns_foreground_terminal(terminal).map_err(os_error)? {
+            Ok(())
+        } else {
+            Err(io::Error::other(
+                "Checksy lost ownership of the controlling terminal's foreground process group",
+            ))
+        }
+    }
+
+    fn owns_foreground_terminal(terminal: &OwnedFd) -> Result<bool, Errno> {
+        tcgetpgrp(terminal).map(|foreground| foreground == getpgrp())
+    }
+
+    impl Drop for TerminalModeGuard {
+        fn drop(&mut self) {
+            let _ = self.restore();
+        }
+    }
+
+    struct PendingBytes {
+        bytes: Vec<u8>,
+        offset: usize,
+    }
+
+    impl PendingBytes {
+        fn new() -> Self {
+            Self {
+                bytes: Vec::with_capacity(READ_BUFFER_BYTES),
+                offset: 0,
+            }
+        }
+
+        fn is_empty(&self) -> bool {
+            self.offset == self.bytes.len()
+        }
+
+        fn remaining(&self) -> &[u8] {
+            &self.bytes[self.offset..]
+        }
+
+        fn replace(&mut self, bytes: &[u8]) {
+            self.bytes.clear();
+            self.bytes.extend_from_slice(bytes);
+            self.offset = 0;
+        }
+
+        fn consume(&mut self, count: usize) {
+            self.offset += count;
+            if self.is_empty() {
+                self.clear();
+            }
+        }
+
+        fn clear(&mut self) {
+            self.bytes.clear();
+            self.offset = 0;
+        }
+    }
+
+    fn read_pending<Fd: AsFd>(
+        fd: &Fd,
+        pending: &mut PendingBytes,
+        eio_is_eof: bool,
+    ) -> io::Result<bool> {
+        let mut bytes = [0_u8; READ_BUFFER_BYTES];
+        loop {
+            match rustix_io::read(fd, &mut bytes) {
+                Ok(0) => return Ok(false),
+                Ok(count) => {
+                    pending.replace(&bytes[..count]);
+                    return Ok(true);
+                }
+                Err(Errno::INTR) => continue,
+                Err(Errno::AGAIN) => return Ok(true),
+                Err(Errno::IO) if eio_is_eof => return Ok(false),
+                Err(error) => return Err(os_error(error)),
+            }
+        }
+    }
+
+    fn write_pending<Fd: AsFd>(fd: &Fd, pending: &mut PendingBytes) -> io::Result<()> {
+        while !pending.is_empty() {
+            match rustix_io::write(fd, pending.remaining()) {
+                Ok(0) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::WriteZero,
+                        "terminal write returned zero",
+                    ))
+                }
+                Ok(count) => pending.consume(count),
+                Err(Errno::INTR) => continue,
+                Err(Errno::AGAIN) => return Ok(()),
+                Err(error) => return Err(os_error(error)),
+            }
+        }
+        Ok(())
+    }
+
+    fn poll_interactive(
+        terminal: &OwnedFd,
+        master: &OwnedFd,
+        read_terminal: bool,
+        write_terminal: bool,
+        read_master: bool,
+        write_master: bool,
+        wake_at: Instant,
+    ) -> io::Result<()> {
+        let terminal_flags = (if read_terminal {
+            PollFlags::IN
+        } else {
+            PollFlags::empty()
+        }) | if write_terminal {
+            PollFlags::OUT
+        } else {
+            PollFlags::empty()
+        };
+        let master_flags = (if read_master {
+            PollFlags::IN
+        } else {
+            PollFlags::empty()
+        }) | if write_master {
+            PollFlags::OUT
+        } else {
+            PollFlags::empty()
+        };
+        let common = PollFlags::HUP | PollFlags::ERR;
+        let mut poll_fds = Vec::with_capacity(2);
+        if !terminal_flags.is_empty() {
+            poll_fds.push(PollFd::new(terminal, terminal_flags | common));
+        }
+        if !master_flags.is_empty() {
+            poll_fds.push(PollFd::new(master, master_flags | common));
+        }
+        loop {
+            match rustix_io::poll(&mut poll_fds, poll_timeout_ms(wake_at)) {
+                Ok(_) => return Ok(()),
+                Err(Errno::INTR) if Instant::now() < wake_at => continue,
+                Err(Errno::INTR) => return Ok(()),
+                Err(error) => return Err(os_error(error)),
+            }
+        }
+    }
+
+    fn observe_interactive_leader(process: Pid) -> io::Result<Option<LeaderObservation>> {
+        let stopped = match waitid(
+            WaitId::Pid(process),
+            WaitidOptions::STOPPED | WaitidOptions::NOHANG,
+        ) {
+            Ok(status) => status,
+            // Linux may report ECHILD when the only pending state is an exit
+            // and this probe requested stopped states only. The following
+            // EXITED|NOWAIT probe remains authoritative for that state.
+            Err(Errno::CHILD) => None,
+            Err(error) => return Err(os_error(error)),
+        };
+        if let Some(signal) = stopped.and_then(|status| status.stopping_signal()) {
+            return Ok(Some(LeaderObservation::Stopped(
+                i32::try_from(signal).unwrap_or(i32::MAX),
+            )));
+        }
+        peek_leader(process)
+    }
+
+    fn send_interactive_kill(
+        child: &mut ArmedChild,
+        kill_sent: &mut bool,
+        kill_deadline: &mut Option<Instant>,
+    ) -> Result<(), ProcessError> {
+        signal_group(child.process_group(), Signal::Kill)
+            .map_err(|source| interactive_supervision(source, child))?;
+        let deadline = deadline_from(Instant::now(), FINAL_REAP_LIMIT);
+        *kill_sent = true;
+        child.mark_group_killed(deadline);
+        *kill_deadline = Some(deadline);
+        Ok(())
+    }
+
+    fn interactive_termination_error(
+        first_parent_signal: Option<i32>,
+        cause: Option<TerminationCause>,
+        timeout: Duration,
+        child: &ArmedChild,
+    ) -> ProcessError {
+        let output = interactive_partial(child);
+        if let Some(signal) = first_parent_signal {
+            return ProcessError::Interrupted {
+                signal,
+                output,
+                restore: super::SignalRestoreGuard::disarmed(),
+            };
+        }
+        match cause.expect("interactive termination has a cause") {
+            TerminationCause::Timeout => ProcessError::TimedOut { timeout, output },
+            TerminationCause::ChildSignal(signal) => ProcessError::ChildSignaled { signal, output },
+            TerminationCause::Suspended(signal) => ProcessError::Supervision {
+                source: io::Error::other(format!(
+                    "interactive command suspended by signal {signal}; job-control suspension is unsupported"
+                )),
+                output,
+            },
+            TerminationCause::OuterJobControl(signal) => ProcessError::Supervision {
+                source: io::Error::other(format!(
+                    "Checksy received job-control signal {signal} while relaying the interactive terminal"
+                )),
+                output,
+            },
+            TerminationCause::ForegroundOwnershipLost => ProcessError::Supervision {
+                source: io::Error::other(
+                    "Checksy lost ownership of the controlling terminal's foreground process group",
+                ),
+                output,
+            },
+        }
+    }
+
+    fn interactive_supervision(source: io::Error, child: &ArmedChild) -> ProcessError {
+        ProcessError::Supervision {
+            source,
+            output: interactive_partial(child),
+        }
+    }
+
+    fn interactive_partial(child: &ArmedChild) -> PartialProcessOutput {
+        PartialProcessOutput {
+            status: child.status(),
+            stdout: CapturedOutput::empty(),
+            stderr: CapturedOutput::empty(),
+        }
+    }
+
+    fn supervision_empty(source: io::Error) -> ProcessError {
+        ProcessError::Supervision {
+            source,
+            output: PartialProcessOutput::empty(),
+        }
+    }
+
+    fn ensure_cloexec(fd: &OwnedFd) -> io::Result<()> {
+        let flags = fcntl_getfd(fd).map_err(os_error)?;
+        fcntl_setfd(fd, flags | FdFlags::CLOEXEC).map_err(os_error)
+    }
+
+    fn same_window_size(left: Winsize, right: Winsize) -> bool {
+        left.ws_row == right.ws_row
+            && left.ws_col == right.ws_col
+            && left.ws_xpixel == right.ws_xpixel
+            && left.ws_ypixel == right.ws_ypixel
+    }
+
+    fn is_terminal_closed(error: &io::Error) -> bool {
+        matches!(
+            error.raw_os_error(),
+            Some(libc::EIO) | Some(libc::EPIPE) | Some(libc::ENXIO)
+        )
+    }
+
+    fn finalize_job_control(
+        result: Result<CompletedProcess, ProcessError>,
+        job_control: InteractiveJobControlGuard,
+    ) -> Result<CompletedProcess, ProcessError> {
+        let output = result_partial_output(&result);
+        finish_job_control(job_control, output)?;
+        result
+    }
+
+    fn finish_job_control(
+        mut job_control: InteractiveJobControlGuard,
+        output: PartialProcessOutput,
+    ) -> Result<(), ProcessError> {
+        let restore_result = job_control.restore();
+        if let Some(signal) = job_control.take_signal() {
+            return Err(ProcessError::Supervision {
+                source: io::Error::other(format!(
+                    "Checksy received job-control signal {signal} while restoring the interactive terminal"
+                )),
+                output,
+            });
+        }
+        if let Err(source) = restore_result {
+            return Err(ProcessError::Supervision { source, output });
+        }
+        Ok(())
+    }
+
+    fn finalize_interactive_setup(
+        job_control: InteractiveJobControlGuard,
+        signal_handlers: TemporarySignalHandlers,
+    ) -> Result<(), ProcessError> {
+        match finish_job_control(job_control, PartialProcessOutput::empty()) {
+            Ok(()) => finalize_idle_signal_handlers(signal_handlers),
+            Err(error) => Err(finalize_setup_process_error(error, signal_handlers)),
+        }
+    }
+
+    fn finalize_setup_process_error(
+        error: ProcessError,
+        signal_handlers: TemporarySignalHandlers,
+    ) -> ProcessError {
+        match finalize_signal_handlers(Err(error), signal_handlers) {
+            Err(error) => error,
+            Ok(_) => unreachable!("finalizing an error cannot produce a completed process"),
+        }
+    }
+
+    fn finalize_idle_signal_handlers(
+        mut signal_handlers: TemporarySignalHandlers,
+    ) -> Result<(), ProcessError> {
+        let restore_result = signal_handlers.restore();
+        if signal_handlers.take_count() > 0 {
+            let Some(signal) = signal_handlers.first_signal() else {
+                return Err(ProcessError::Supervision {
+                    source: io::Error::other(
+                        "termination signal counter lost its first signal during cleanup",
+                    ),
+                    output: PartialProcessOutput::empty(),
+                });
+            };
+            return Err(ProcessError::Interrupted {
+                signal,
+                output: PartialProcessOutput::empty(),
+                restore: super::SignalRestoreGuard::disarmed(),
+            });
+        }
+        if let Err(source) = restore_result {
+            return Err(ProcessError::Supervision {
+                source,
+                output: PartialProcessOutput::empty(),
+            });
+        }
+        Ok(())
+    }
+
     fn finalize_signal_handlers(
         result: Result<CompletedProcess, ProcessError>,
         mut signal_handlers: TemporarySignalHandlers,
@@ -702,15 +1619,129 @@ mod supported {
     static SIGNAL_HANDLER_LOCK: Mutex<()> = Mutex::new(());
     static SIGNAL_COUNT: AtomicUsize = AtomicUsize::new(0);
     static FIRST_SIGNAL: AtomicI32 = AtomicI32::new(0);
+    static JOB_CONTROL_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static FIRST_JOB_CONTROL_SIGNAL: AtomicI32 = AtomicI32::new(0);
 
     extern "C" fn capture_termination_signal(signal: libc::c_int) {
         let _ = FIRST_SIGNAL.compare_exchange(0, signal, Ordering::Release, Ordering::Relaxed);
         SIGNAL_COUNT.fetch_add(1, Ordering::Release);
     }
 
+    extern "C" fn capture_job_control_signal(signal: libc::c_int) {
+        let _ = FIRST_JOB_CONTROL_SIGNAL.compare_exchange(
+            0,
+            signal,
+            Ordering::Release,
+            Ordering::Relaxed,
+        );
+        JOB_CONTROL_COUNT.fetch_add(1, Ordering::Release);
+    }
+
     struct PreviousSignalAction {
         signal: libc::c_int,
         action: libc::sigaction,
+    }
+
+    /// Prevents outer-terminal job control from stopping Checksy while it owns
+    /// a raw relay terminal. The child resets these dispositions after
+    /// `setsid`, before acquiring its private controlling PTY.
+    struct InteractiveJobControlGuard {
+        previous: Vec<PreviousSignalAction>,
+    }
+
+    impl InteractiveJobControlGuard {
+        fn install() -> io::Result<Self> {
+            JOB_CONTROL_COUNT.store(0, Ordering::Release);
+            FIRST_JOB_CONTROL_SIGNAL.store(0, Ordering::Release);
+            let mut guard = Self {
+                previous: Vec::with_capacity(3),
+            };
+            guard.install_action(
+                libc::SIGTSTP,
+                capture_job_control_signal as *const () as usize,
+            )?;
+            guard.install_action(libc::SIGTTIN, libc::SIG_IGN)?;
+            guard.install_action(libc::SIGTTOU, libc::SIG_IGN)?;
+            Ok(guard)
+        }
+
+        fn install_action(&mut self, signal: libc::c_int, disposition: usize) -> io::Result<()> {
+            // SAFETY: the action is fully initialized before `sigaction`, and
+            // both supplied dispositions are valid POSIX signal actions.
+            let mut action: libc::sigaction = unsafe { mem::zeroed() };
+            action.sa_sigaction = disposition;
+            action.sa_flags = libc::SA_RESTART;
+            // SAFETY: `sa_mask` belongs to the initialized action.
+            if unsafe { libc::sigemptyset(&mut action.sa_mask) } != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            // SAFETY: all pointers refer to initialized storage for this call.
+            let mut previous: libc::sigaction = unsafe { mem::zeroed() };
+            if unsafe { libc::sigaction(signal, &action, &mut previous) } != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            self.previous.push(PreviousSignalAction {
+                signal,
+                action: previous,
+            });
+            Ok(())
+        }
+
+        fn take_signal(&self) -> Option<i32> {
+            if JOB_CONTROL_COUNT.swap(0, Ordering::AcqRel) == 0 {
+                return None;
+            }
+            match FIRST_JOB_CONTROL_SIGNAL.load(Ordering::Acquire) {
+                0 => None,
+                signal => Some(signal),
+            }
+        }
+
+        fn restore(&mut self) -> io::Result<()> {
+            restore_signal_actions(&mut self.previous)
+        }
+    }
+
+    impl Drop for InteractiveJobControlGuard {
+        fn drop(&mut self) {
+            let _ = self.restore();
+        }
+    }
+
+    fn restore_signal_actions(previous_actions: &mut Vec<PreviousSignalAction>) -> io::Result<()> {
+        let mut failed = Vec::new();
+        let mut first_error = None;
+        while let Some(previous) = previous_actions.pop() {
+            // SAFETY: the saved action came from `sigaction` for this signal.
+            if unsafe { libc::sigaction(previous.signal, &previous.action, ptr::null_mut()) } != 0 {
+                if first_error.is_none() {
+                    first_error = Some(io::Error::last_os_error());
+                }
+                failed.push(previous);
+            }
+        }
+        failed.reverse();
+        *previous_actions = failed;
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+
+    fn reset_job_control_dispositions() -> io::Result<()> {
+        // SAFETY: the action is initialized and installed only in the forked
+        // child before exec, where `sigaction` is async-signal-safe.
+        let mut action: libc::sigaction = unsafe { mem::zeroed() };
+        action.sa_sigaction = libc::SIG_DFL;
+        if unsafe { libc::sigemptyset(&mut action.sa_mask) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        for signal in [libc::SIGTSTP, libc::SIGTTIN, libc::SIGTTOU] {
+            if unsafe { libc::sigaction(signal, &action, ptr::null_mut()) } != 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+        Ok(())
     }
 
     /// Owns exact process signal dispositions for one supervised command.
@@ -773,26 +1804,7 @@ mod supported {
         }
 
         fn restore(&mut self) -> io::Result<()> {
-            let mut failed = Vec::new();
-            let mut first_error = None;
-            while let Some(previous) = self.previous.pop() {
-                // SAFETY: the saved action was returned by sigaction for this
-                // exact signal and remains initialized.
-                if unsafe { libc::sigaction(previous.signal, &previous.action, ptr::null_mut()) }
-                    != 0
-                {
-                    if first_error.is_none() {
-                        first_error = Some(io::Error::last_os_error());
-                    }
-                    failed.push(previous);
-                }
-            }
-            failed.reverse();
-            self.previous = failed;
-            match first_error {
-                Some(error) => Err(error),
-                None => Ok(()),
-            }
+            restore_signal_actions(&mut self.previous)
         }
     }
 
@@ -1017,6 +2029,24 @@ mod supported {
                 TerminationCause::ChildSignal(signal) => {
                     ProcessError::ChildSignaled { signal, output }
                 }
+                TerminationCause::Suspended(signal) => ProcessError::Supervision {
+                    source: io::Error::other(format!(
+                        "process unexpectedly suspended by signal {signal}"
+                    )),
+                    output,
+                },
+                TerminationCause::OuterJobControl(signal) => ProcessError::Supervision {
+                    source: io::Error::other(format!(
+                        "unexpected outer job-control signal {signal} in non-interactive supervision"
+                    )),
+                    output,
+                },
+                TerminationCause::ForegroundOwnershipLost => ProcessError::Supervision {
+                    source: io::Error::other(
+                        "unexpected terminal foreground loss in non-interactive supervision",
+                    ),
+                    output,
+                },
             }
         }
     }
@@ -1225,6 +2255,41 @@ mod supported {
             assert!(matches!(
                 result,
                 Err(ProcessError::Interrupted { signal, .. }) if signal == SIGINT
+            ));
+        }
+
+        #[test]
+        fn only_expected_terminal_absence_is_a_compliance_unavailable_result() {
+            for error in [Errno::NXIO, Errno::NODEV, Errno::NOTTY, Errno::NOENT] {
+                assert!(matches!(
+                    interactive_terminal_error("test terminal", error),
+                    InteractiveRunError::Unavailable(InteractiveUnavailable::NoControllingTerminal)
+                ));
+            }
+            for error in [Errno::MFILE, Errno::NFILE, Errno::IO, Errno::INTR] {
+                assert!(matches!(
+                    interactive_terminal_error("test terminal", error),
+                    InteractiveRunError::Process(ProcessError::Supervision { .. })
+                ));
+            }
+        }
+
+        #[test]
+        fn terminal_setup_failure_preserves_concurrent_signals() {
+            let handlers = TemporarySignalHandlers::install().unwrap();
+            let job_control = InteractiveJobControlGuard::install().unwrap();
+            capture_termination_signal(SIGINT);
+            assert!(matches!(
+                finalize_interactive_setup(job_control, handlers),
+                Err(ProcessError::Interrupted { signal, .. }) if signal == SIGINT
+            ));
+
+            let handlers = TemporarySignalHandlers::install().unwrap();
+            let job_control = InteractiveJobControlGuard::install().unwrap();
+            capture_job_control_signal(libc::SIGTSTP);
+            assert!(matches!(
+                finalize_interactive_setup(job_control, handlers),
+                Err(ProcessError::Supervision { .. })
             ));
         }
     }

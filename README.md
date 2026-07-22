@@ -21,10 +21,10 @@ with the permissions of the invoking user. Commands are not sandboxed, fixes may
 partially mutate the machine before failing, and Checksy cannot transactionally
 undo those mutations. Checksy never invokes `sudo` automatically.
 
-The following interaction and locking rules are the normative P0 contract. The
-supervised non-interactive runner is implemented. `interactive-fix`,
-`--non-interactive`, and the provisioning lock are not available at the current
-HEAD.
+The following interaction and locking rules are the normative P0 contract.
+Supervised non-interactive commands, `interactive-fix`, and
+`--non-interactive` are implemented. The provisioning lock is not available at
+the current HEAD; `skip-if` is also pending.
 
 ### Interaction modes
 
@@ -32,40 +32,43 @@ HEAD.
   non-interactive. They receive `/dev/null` as stdin and run in a new session
   without a controlling terminal, so they cannot fall back to `/dev/tty` for
   input. Future `skip-if` predicates will use the same runner.
-- Only the future `interactive-fix` command may use a terminal. It runs only
-  after its rule fails its check.
+- Only `interactive-fix` may use a terminal. It runs only during `check --fix`,
+  after its rule fails its check, and never alongside an ordinary `fix`.
 - A missing terminal is relevant only when a failed rule needs its
   `interactive-fix`. A passing rule never requires a terminal merely because it
   defines one.
-- The future `--non-interactive` flag prohibits terminal use but still permits
-  ordinary fixes.
+- `--non-interactive` prohibits terminal use but still permits ordinary fixes.
 - `--stdin-config` always implies non-interactive execution. A stdin-supplied
   configuration never opens `/dev/tty` or receives a PTY.
-- When a needed interactive repair cannot run, the rule remains failed at its
-  configured severity and Checksy continues normal reporting.
+- When a needed interactive repair cannot run, Checksy prints a reason-specific
+  diagnostic, leaves the rule failed at its configured severity, and continues
+  normal reporting. This is a compliance failure rather than an operational
+  failure.
 
 ### Command supervision
 
-Every check and ordinary fix runs through the same Linux/macOS process
-supervisor. An executable rule may set `timeout` to a positive duration matching
-`^[1-9][0-9]*(ms|s|m|h)$`, from `1ms` through `2h`. The default is `15m`. A
-rule's timeout applies independently to its initial check, fix, and final
-recheck; pattern scripts always use `15m`.
+Every configured command runs through the same Linux/macOS process-supervision
+layer. Checks, ordinary fixes, final checks, and pattern scripts use the
+non-interactive mode described above. An executable rule may set `timeout` to a
+positive duration matching `^[1-9][0-9]*(ms|s|m|h)$`, from `1ms` through `2h`.
+The default is `15m`. A rule's timeout applies independently to its initial
+check, ordinary or interactive fix, and final recheck; pattern scripts always
+use `15m`.
 
-Each command becomes the leader of its own session and managed process group.
-At the deadline Checksy sends `TERM` to the group, waits up to five seconds,
-then sends `KILL` and allows up to five more seconds for final process and pipe
-cleanup. Checksy continuously drains stdout and stderr. Each stream retains at
-most 1 MiB as equal head and tail halves, with
+Each non-interactive command becomes the leader of its own session and managed
+process group. At the deadline Checksy sends `TERM` to the group, waits up to
+five seconds, then sends `KILL` and allows up to five more seconds for final
+process and pipe cleanup. Checksy continuously drains non-interactive stdout and
+stderr. Each stream retains at most 1 MiB as equal head and tail halves, with
 `... N bytes omitted from bounded process output ...` between them when output
 was truncated. A successful Bash leader is not complete while another process
 remains in its managed group; lingering descendants are supervised through the
 same deadline and escalation.
 
-While a command is active, Checksy catches `SIGINT`, `SIGTERM`, `SIGHUP`, and
-`SIGQUIT`. It forwards the first signal to the managed group, escalates after
-the same five-second grace, and sends `KILL` immediately after a second
-termination signal. After cleanup and captured diagnostics, Checksy restores
+While either kind of command is active, Checksy catches `SIGINT`, `SIGTERM`,
+`SIGHUP`, and `SIGQUIT`. It forwards the first signal to the managed group,
+escalates after the same five-second grace, and sends `KILL` immediately after
+a second termination signal. After cleanup and captured diagnostics, Checksy restores
 conventional termination behavior and re-raises the first signal so the
 invoking shell observes the usual signal status. Internally, each command saves
 the exact incoming signal dispositions and restores them before returning. For
@@ -85,6 +88,22 @@ invoker's filesystem, network, and process authority; Checksy applies no CPU,
 memory, or disk quota; and a command that deliberately creates another session
 can escape the managed-descendant guarantee. Legacy Git commands used by
 `install` are not routed through this configured-command runner.
+
+For an eligible file-backed `interactive-fix`, Checksy validates the caller's
+foreground controlling terminal, creates an inner PTY, and runs the repair as a
+new session and process-group leader with that PTY as its controlling terminal.
+Input and merged terminal output are relayed live; interactive output is not
+duplicated later in the normal report. Checksy adds no confirmation prompt—the
+configured command owns its interaction. Timeout, descendant cleanup, and
+parent-signal forwarding use the same bounded lifecycle as non-interactive
+commands, and the caller's terminal attributes are restored on every return
+path. Outer job-control signals and foreground-terminal loss are cleaned up as
+operational failures instead of leaving Checksy suspended with a live repair.
+A completed nonzero repair leaves the original rule failure in place,
+skips the final check, and continues; a terminal-supervision failure is
+operational exit `2` and stops later commands. The closed, network-free
+[interactive-fix fixture corpus](fixtures/interactive-fix/README.md) exercises
+these PTY and headless contracts through the compiled binary.
 
 ### Provisioning lock
 
@@ -141,7 +160,7 @@ src/
   cli.rs               # Argument parsing and command wiring
   config.rs            # Shared strict configuration loading
   check.rs             # Check execution and reporting helpers
-  process_runner.rs    # Bounded non-interactive process supervision
+  process_runner.rs    # Bounded headless and PTY process supervision
   git.rs               # Git operations for caching remotes
   schema.rs            # Strict types and generated Draft 7 schema
   version.rs           # Centralized version string
@@ -175,6 +194,9 @@ cat path/to/.checksy.yaml | checksy --stdin-config check
 # Attempt to auto-fix failures when fixes are defined
 checksy --config=path/to/.checksy.yaml check --fix
 
+# Permit ordinary fixes while explicitly prohibiting terminal repairs
+checksy --config=path/to/.checksy.yaml check --fix --non-interactive
+
 # Emit the configuration JSON schema
 checksy schema > dist/config.schema.json
 
@@ -184,10 +206,12 @@ checksy check --check-severity warn --fail-severity error
 
 The `check` command executes each configured rule, printing ✅/⚠️/❌ for every
 check, forwarding any failing command output to stderr, and returning a non-zero
-exit code when something breaks. Passing `--fix` attempts to run each rule's
-optional `fix` script to resolve issues before re-running the check. The
-`schema` command deterministically generates the Draft 7 JSON Schema from the
-same strict Rust model used at runtime.
+exit code when something breaks. Passing `--fix` attempts the rule's optional
+ordinary `fix` or terminal-capable `interactive-fix`, then re-runs the check
+after a successful repair. `--non-interactive` disables only
+`interactive-fix`; it is accepted with or without `--fix`. The `schema` command
+deterministically generates the Draft 7 JSON Schema from the same strict Rust
+model used at runtime.
 
 Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. When omitted, checks currently run at every severity and the command only fails for error-level rules. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but do not make the run fail.
 
@@ -261,7 +285,8 @@ Every rule is exactly one of these forms:
 
 - An include with one nonblank `remote` field and no other fields.
 - An executable rule with a nonblank `check` plus optional `name`, `severity`,
-  `fix`, `hint`, and `timeout` fields.
+  `fix`, `interactive-fix`, `hint`, and `timeout` fields. `fix` and
+  `interactive-fix` are mutually exclusive.
 
 Stdin documents must be self-contained; includes require a filesystem context
 and are rejected for `--stdin-config` and `--config -`. Shell commands remain
@@ -276,8 +301,17 @@ type/null rejection, the `2h` ceiling, and rejection of timeouts on includes.
 range from `1ms` through `2h`. Numeric overflow and the upper bound are runtime
 validation constraints because Draft 7 cannot compute a mixed-unit duration.
 Rules without `timeout` use `15m`. The same timeout starts afresh for the
-initial check, an ordinary fix, and its final recheck; pattern scripts use
-`15m` and do not have per-pattern overrides.
+initial check, an ordinary or interactive fix, and its final recheck; pattern
+scripts use `15m` and do not have per-pattern overrides.
+
+`interactive-fix` must contain a nonblank, NUL-free command and cannot appear
+with `fix` or on an include. It is ignored during check-only runs and when its
+check passes. During `check --fix`, stdin configuration is always
+non-interactive: both `--stdin-config` and `--config -` prohibit opening
+`/dev/tty` or allocating a PTY, even if Checksy itself has a controlling
+terminal. If a failed rule needs an interactive repair in that mode, with
+`--non-interactive`, or without a usable foreground terminal, Checksy leaves the
+repair unexecuted and explains how to proceed.
 
 Commands currently execute relative to the selected root configuration's
 directory; preserving the defining directory of every nested local include is
@@ -285,8 +319,8 @@ a separate origin-correctness milestone.
 
 ### Inline rules, preconditions, and patterns
 
-- **`preconditions`** — An array of rule objects that run **before** the main rules. They follow the same failure/fix behavior as regular rules. Useful for checks that must pass before proceeding (e.g., verifying dependencies).
-- **`rules`** — An array of rule objects, each with `name`, `check`, optional `severity`, `fix`, `hint`, and `timeout`. These run first in config order.
+- **`preconditions`** — An array of rule objects that run **before** the main rules. They follow the same failure and ordinary/interactive repair behavior as regular rules. Useful for checks that must pass before proceeding (e.g., verifying dependencies).
+- **`rules`** — An array of rule objects, each with `name`, `check`, optional `severity`, one of `fix` or `interactive-fix`, `hint`, and `timeout`. These run first in config order.
 - **`patterns`** — An array of glob-style patterns that select script files to run as rules (e.g. `tests/*.sh`). Success and failure are determined by the script's exit code, same as inline rules. There is no fix step or timeout override for file-based rules; they use the 15-minute default and run after inline rules in a deterministic order (alphabetically by file path). Pattern-only configurations execute normally. Patterns are resolved relative to the config file directory. You can use **positive** patterns (any match is included) and **negated** patterns (prefix with `!` to exclude). A file is included only if it matches at least one positive pattern and no negative pattern.
 
 ### Remote Config References

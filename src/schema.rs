@@ -255,6 +255,8 @@ pub mod schema {
         pub severity: Option<Severity>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub fix: Option<String>,
+        #[serde(rename = "interactive-fix", skip_serializing_if = "Option::is_none")]
+        pub interactive_fix: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub hint: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -274,6 +276,8 @@ pub mod schema {
         severity: StrictOptional<Severity>,
         #[serde(default)]
         fix: StrictOptional<StrictString>,
+        #[serde(default, rename = "interactive-fix")]
+        interactive_fix: StrictOptional<StrictString>,
         #[serde(default)]
         hint: StrictOptional<StrictString>,
         #[serde(default)]
@@ -291,6 +295,10 @@ pub mod schema {
                 check: raw.check.into_option().map(StrictString::into_string),
                 severity: raw.severity.into_option(),
                 fix: raw.fix.into_option().map(StrictString::into_string),
+                interactive_fix: raw
+                    .interactive_fix
+                    .into_option()
+                    .map(StrictString::into_string),
                 hint: raw.hint.into_option().map(StrictString::into_string),
                 remote: raw.remote.into_option().map(StrictString::into_string),
                 timeout: raw.timeout.into_option().map(StrictString::into_string),
@@ -329,6 +337,9 @@ pub mod schema {
         severity: StrictOptional<Severity>,
         #[serde(default)]
         fix: StrictOptional<StrictString>,
+        #[serde(default, rename = "interactive-fix")]
+        #[schemars(schema_with = "non_blank_no_nul_string_schema")]
+        interactive_fix: StrictOptional<StrictString>,
         #[serde(default)]
         hint: StrictOptional<StrictString>,
         #[serde(default)]
@@ -343,7 +354,16 @@ pub mod schema {
 
         fn json_schema(generator: &mut SchemaGenerator) -> Schema {
             let include = IncludeRuleSchema::json_schema(generator);
-            let executable = ExecutableRuleSchema::json_schema(generator);
+            let mut executable = ExecutableRuleSchema::json_schema(generator);
+            executable
+                .as_object_mut()
+                .expect("derived executable rule schema must be an object")
+                .insert(
+                    "not".to_string(),
+                    serde_json::json!({
+                        "required": ["fix", "interactive-fix"]
+                    }),
+                );
             schemars::json_schema!({
                 "oneOf": [include, executable]
             })
@@ -368,6 +388,12 @@ pub mod schema {
                 if self.fix.is_some() {
                     return Err("executable rule cannot define `fix` without `check`".to_string());
                 }
+                if self.interactive_fix.is_some() {
+                    return Err(
+                        "executable rule cannot define `interactive-fix` without `check`"
+                            .to_string(),
+                    );
+                }
                 return Err(
                     "rule must contain exactly one of `remote` or a non-empty `check`".to_string(),
                 );
@@ -375,6 +401,22 @@ pub mod schema {
 
             if check.trim().is_empty() {
                 return Err("executable rule requires a non-empty `check` value".to_string());
+            }
+
+            if self
+                .interactive_fix
+                .as_deref()
+                .is_some_and(|command| command.trim().is_empty())
+            {
+                return Err(
+                    "executable rule requires a non-empty `interactive-fix` value".to_string(),
+                );
+            }
+
+            if self.fix.is_some() && self.interactive_fix.is_some() {
+                return Err(
+                    "executable rule cannot define both `fix` and `interactive-fix`".to_string(),
+                );
             }
 
             if let Some(timeout) = self.timeout.as_deref() {
@@ -389,6 +431,7 @@ pub mod schema {
                 ("name", self.name.as_deref()),
                 ("check", self.check.as_deref()),
                 ("fix", self.fix.as_deref()),
+                ("interactive-fix", self.interactive_fix.as_deref()),
                 ("hint", self.hint.as_deref()),
                 ("remote", self.remote.as_deref()),
                 ("timeout", self.timeout.as_deref()),
@@ -423,6 +466,9 @@ pub mod schema {
             }
             if self.fix.is_some() {
                 invalid_props.push("fix");
+            }
+            if self.interactive_fix.is_some() {
+                invalid_props.push("interactive-fix");
             }
             if self.hint.is_some() {
                 invalid_props.push("hint");
@@ -637,7 +683,10 @@ pub mod schema {
                 "  - name: compatible\n",
                 "    check: echo ok\n",
                 "    severity: warning\n",
-                "    timeout: 30s\n"
+                "    timeout: 30s\n",
+                "  - name: interactive\n",
+                "    check: test -f ready\n",
+                "    interactive-fix: read -r answer\n"
             );
             let config: Config = serde_yaml::from_str(yaml).unwrap();
             let reparsed_yaml: Config =
@@ -646,11 +695,15 @@ pub mod schema {
                 serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
 
             for reparsed in [reparsed_yaml, reparsed_json] {
-                assert_eq!(reparsed.rules.len(), 1);
+                assert_eq!(reparsed.rules.len(), 2);
                 assert_eq!(reparsed.rules[0].name.as_deref(), Some("compatible"));
                 assert_eq!(reparsed.rules[0].check.as_deref(), Some("echo ok"));
                 assert_eq!(reparsed.rules[0].severity, Some(Severity::Warning));
                 assert_eq!(reparsed.rules[0].timeout.as_deref(), Some("30s"));
+                assert_eq!(
+                    reparsed.rules[1].interactive_fix.as_deref(),
+                    Some("read -r answer")
+                );
             }
         }
 
@@ -711,6 +764,12 @@ pub mod schema {
                 "rules:\n  - remote: nested.yaml\n    check: echo mixed\n",
                 "rules:\n  - remote: nested.yaml\n    timeout: 1s\n",
                 "rules:\n  - fix: echo fixed\n",
+                "rules:\n  - interactive-fix: read -r answer\n",
+                "rules:\n  - check: ok\n    interactive-fix: '  '\n",
+                "rules:\n  - check: ok\n    interactive-fix: null\n",
+                "rules:\n  - check: ok\n    interactive-fix: 1\n",
+                "rules:\n  - check: ok\n    fix: echo fixed\n    interactive-fix: read -r answer\n",
+                "rules:\n  - remote: nested.yaml\n    interactive-fix: read -r answer\n",
                 "rules:\n  - check: ok\n    timeout: null\n",
                 "rules:\n  - check: ok\n    timeout: 1\n",
                 "rules:\n  - check: ok\n    timeout: 0s\n",
@@ -733,6 +792,7 @@ pub mod schema {
                 "rules:\n  - name: \"bad\\0name\"\n    check: ok\n",
                 "rules:\n  - check: \"bad\\0check\"\n",
                 "rules:\n  - check: 'false'\n    fix: \"bad\\0fix\"\n",
+                "rules:\n  - check: 'false'\n    interactive-fix: \"bad\\0interactive\"\n",
                 "rules:\n  - check: 'false'\n    hint: \"bad\\0hint\"\n",
                 "rules:\n  - remote: \"bad\\0remote\"\n",
                 "rules:\n  - check: ok\n    timeout: \"bad\\0timeout\"\n",
@@ -779,10 +839,17 @@ pub mod schema {
                 branches[1]["properties"]["timeout"]["pattern"],
                 RULE_TIMEOUT_PATTERN
             );
+            assert!(branches[1]["properties"].get("interactive-fix").is_some());
+            assert!(branches[1]["properties"].get("interactive_fix").is_none());
+            assert_eq!(
+                branches[1]["not"]["required"],
+                json!(["fix", "interactive-fix"])
+            );
             assert!(branches[1]["properties"]["timeout"]
                 .get("default")
                 .is_none());
             assert!(branches[0]["properties"].get("timeout").is_none());
+            assert!(branches[0]["properties"].get("interactive-fix").is_none());
         }
 
         #[test]
@@ -795,6 +862,7 @@ pub mod schema {
                 json!({}),
                 json!({"rules": [{"check": "echo ok", "severity": "WaRnInG"}]}),
                 json!({"rules": [{"remote": "nested.yaml"}]}),
+                json!({"rules": [{"check": "false", "interactive-fix": "read -r answer"}]}),
                 json!({"rules": [{"check": "true", "timeout": "1ms"}]}),
                 json!({"rules": [{"check": "true", "timeout": "2h"}]}),
                 json!({"patterns": ["scripts/*.sh"]}),
@@ -809,6 +877,14 @@ pub mod schema {
                 json!({"rules": [{"check": " "}]}),
                 json!({"rules": [{"remote": "nested.yaml", "check": "echo mixed"}]}),
                 json!({"rules": [{"remote": "nested.yaml", "timeout": "1s"}]}),
+                json!({"rules": [{"remote": "nested.yaml", "interactive-fix": "read -r answer"}]}),
+                json!({"rules": [{"interactive-fix": "read -r answer"}]}),
+                json!({"rules": [{"check": "false", "interactive-fix": ""}]}),
+                json!({"rules": [{"check": "false", "interactive-fix": "  "}]}),
+                json!({"rules": [{"check": "false", "interactive-fix": null}]}),
+                json!({"rules": [{"check": "false", "interactive-fix": 1}]}),
+                json!({"rules": [{"check": "false", "interactive-fix": "bad\0command"}]}),
+                json!({"rules": [{"check": "false", "fix": "true", "interactive-fix": "read -r answer"}]}),
                 json!({"rules": [{"check": "ok", "name": "bad\0name"}]}),
                 json!({"rules": [{"check": "ok", "timeout": null}]}),
                 json!({"rules": [{"check": "ok", "timeout": 1}]}),

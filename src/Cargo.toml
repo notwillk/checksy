@@ -15,7 +15,7 @@ schemars = "=1.2.1"
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 libc = "=0.2.189"
-rustix = { version = "=0.37.28", features = ["fs", "process", "std"] }
+rustix = { version = "=0.37.28", features = ["fs", "process", "pty", "std", "termios"] }
 signal-hook = { version = "=0.4.4", features = ["iterator"] }
 
 [dev-dependencies]
@@ -23,7 +23,7 @@ jsonschema = { version = "=0.48.2", default-features = false }
 tempfile = "=3.5.0"
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dev-dependencies]
-rustix = { version = "=0.37.28", features = ["fs", "process", "pty", "std"] }
+rustix = { version = "=0.37.28", features = ["fs", "process", "pty", "std", "termios"] }
 
 [profile.release]
 lto = true

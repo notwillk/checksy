@@ -1,0 +1,10 @@
+rules:
+  - name: failed rule needs an interactive repair
+    severity: error
+    timeout: 2s
+    check: "false"
+    interactive-fix: ': > "$CHECKSY_UNEXPECTED_INTERACTIVE"'
+  - name: reporting continues after unavailable repair
+    severity: error
+    timeout: 2s
+    check: ': > "$CHECKSY_LATER_RULE_MARKER"'
