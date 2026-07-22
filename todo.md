@@ -113,7 +113,7 @@ behavior except where explicitly documented.
 
 ### Conditional checks with `skip-if`
 
-- [ ] Add `skip-if` as an optional executable-rule command and implement it end
+- [x] Add `skip-if` as an optional executable-rule command and implement it end
   to end.
   - Keep rule execution linear; do not add rule IDs, `dependsOn`, dependency
     graphs, or dependency-cycle semantics.
@@ -125,8 +125,9 @@ behavior except where explicitly documented.
     values.
   - Spawn failure, timeout, or signal termination is an operational error and
     prevents the rule's check from running.
-  - Run it with `/dev/null`, the inherited environment, and the working
-    directory of the rule's defining configuration.
+  - Run it with `/dev/null`, the inherited environment, and the same effective
+    working directory as the associated check. The P1 origin milestone moves
+    both together to the defining configuration's directory.
   - A skipped rule is neither compliant nor failed and does not affect severity
     thresholds.
   - Reject empty `skip-if`, `skip-if` without `check`, and `skip-if` on an
@@ -134,8 +135,8 @@ behavior except where explicitly documented.
   - Cover command-availability and environment-variable gates in file-backed
     and stdin configurations.
 
-This item is unblocked now that strict configuration and the supervised runner
-are complete.
+This item is complete. Rule execution remains linear; no dependency graph or
+special nonzero predicate exits were added.
 
 ### Interactive repairs with `interactive-fix`
 
@@ -208,8 +209,8 @@ than a sandbox or cross-UID machine-global lock.
   - Invalid configuration fails before any configured command executes.
   - The default suite uses no public network.
 
-Blocked by all preceding P0 runtime features. This gate does not replace their
-focused tests.
+This gate is now unblocked. It does not replace the focused tests for each P0
+runtime feature.
 
 ## P1 — Important
 

@@ -68,6 +68,10 @@ cases:
     fixture: valid/interactive-fix.yaml
     expected: accept
     validationLayer: structural
+  - id: skip-if
+    fixture: valid/skip-if.yaml
+    expected: accept
+    validationLayer: structural
 
   - id: unknown-top-level
     fixture: invalid/unknown-top-level.yaml
@@ -84,11 +88,36 @@ cases:
     expected: reject
     validationLayer: structural
     errorContains: unknown field
-  - id: future-skip-if
-    fixture: invalid/future-skip-if.yaml
+  - id: skip-if-blank
+    fixture: invalid/skip-if-blank.yaml
     expected: reject
     validationLayer: structural
-    errorContains: unknown field
+    errorContains: non-empty `skip-if`
+  - id: skip-if-null
+    fixture: invalid/skip-if-null.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: skip-if-type
+    fixture: invalid/skip-if-type.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: invalid type
+  - id: skip-if-nul
+    fixture: invalid/skip-if-nul.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: NUL byte
+  - id: skip-if-without-check
+    fixture: invalid/skip-if-without-check.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: without `check`
+  - id: skip-if-on-include
+    fixture: invalid/skip-if-on-include.yaml
+    expected: reject
+    validationLayer: structural
+    errorContains: cannot have properties
   - id: interactive-fix-blank
     fixture: invalid/interactive-fix-blank.yaml
     expected: reject

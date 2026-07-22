@@ -9,7 +9,7 @@ pub mod schema;
 pub mod version;
 
 pub use cache::{CacheManager, GitRemote};
-pub use check::{diagnose, Options, Report, RuleResult};
+pub use check::{diagnose, Options, Report, RuleOutcome, RuleResult};
 pub use cli::run;
 pub use config::{load, parse_git_remote, resolve_path};
 pub use git::GitCache;

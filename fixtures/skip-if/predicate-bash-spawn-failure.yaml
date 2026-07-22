@@ -1,0 +1,10 @@
+preconditions:
+  - name: predicate Bash spawn failure
+    skip-if: exit 0
+    check: |
+      : > .unexpected-spawn-check
+      exit 95
+rules:
+  - name: must not run after predicate spawn failure
+    check: |
+      : > .unexpected-after-spawn-failure

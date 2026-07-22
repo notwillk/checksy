@@ -1,0 +1,16 @@
+preconditions:
+  - name: skipped precondition
+    skip-if: |
+      : > .precondition-predicate
+      exit 0
+    check: |
+      : > .unexpected-precondition-check
+      exit 85
+rules:
+  - name: skipped ordinary rule
+    skip-if: |
+      : > .rule-predicate
+      exit 0
+    check: |
+      : > .unexpected-rule-check
+      exit 86

@@ -23,12 +23,14 @@
 │       ├── provisioning_contract.rs
 │       ├── provisioning_lock_contract.rs # Compiled-binary semaphore tests
 │       ├── process_runner_contract.rs # Compiled-binary supervisor tests
+│       ├── skip_if_contract.rs     # Compiled-binary predicate tests
 │       └── strict_configuration.rs    # Compiled-binary strict-loading tests
 │
 ├── fixtures/               # Test configurations (YAML)
 │   ├── interactive-fix/     # Closed terminal-repair contract corpus
 │   ├── process-runner/      # Closed command-supervision contract corpus
 │   ├── provisioning-lock/   # Closed per-EUID semaphore contract corpus
+│   ├── skip-if/             # Closed conditional-rule contract corpus
 │   ├── strict-config/       # Closed runtime/schema parity corpus and CLI assets
 │   ├── happy-path/         # Basic severity level tests
 │   ├── inline-check/       # Simple inline rule tests
@@ -82,6 +84,8 @@
 - `run_install()`: Git remote caching with spinner UI
 - `run_init()`: Config file creation
 - `run_schema()`: JSON schema output
+- Conditional workflow: Run `skip-if`, retain skipped outcomes, and suppress
+  the complete rule when the predicate succeeds
 - Fix workflow: Ordinary and interactive repair, final recheck, and unavailable
   terminal reporting
 - Provisioning-lock acquisition and exit `4` handling for every `--fix` path
@@ -156,12 +160,16 @@
 **Key Types**:
 - `Options { config, workdir, min_severity, fail_severity }`: Execution context
 - `Report { rules, fail_severity }`: Aggregated results
-- `RuleResult { rule, err, stdout, stderr }`: Single check result
+- `RuleResult { rule, outcome, err, stdout, stderr }`: Passed, skipped, or
+  failed rule result
+- `RuleOutcome`: Explicit `Passed`, `Skipped`, and `Failed` states
 
 **Key Functions**:
 - `diagnose()`: Main execution entry
 - `run_rule()`: Execute one Bash check through the supervisor
 - `run_rule_file()`: Execute a pattern script through the supervisor
+- Internal skip helper: Execute `skip-if` before the initial check using the
+  rule timeout and working directory
 - Internal checked helpers: Preserve typed operational outcomes for the CLI
 - `expand_rule_files()`: Glob pattern expansion
 - `filter_rules()`, `filter_preconditions()`: Severity filtering
@@ -230,6 +238,7 @@
 - `Severity::parse()`: String parsing
 - `Rule::is_remote()`: Check if remote rule
 - `Rule::validate_remote_only()`: Enforce remote-only constraint
+- Skip validation: Require nonblank `skip-if` only on executable rules
 - Repair validation: Require exactly zero or one of `fix` and `interactive-fix`
 - Timeout parsing: Enforce `1ms` through `2h` executable-rule bounds
 - `configuration_schema()`: Deterministically generate Draft 7 from the strict model
@@ -299,6 +308,12 @@ Fixtures organized by feature/scenario:
 - `README.md`: Per-EUID namespace, lifecycle, filesystem boundary, and residual
   advisory-lock risk
 
+**skip-if/** (Conditional-rule contract)
+- `cases.yaml`: Closed fixture-to-test index for file and stdin predicates
+- YAML assets: Command and environment gates, completed exits, summary/report
+  states, fix suppression, workdir/timeout behavior, and operational failures
+- `README.md`: Exact predicate, reporting, and process-supervision contract
+
 ## Test Locations
 
 ### Unit Tests
@@ -321,8 +336,10 @@ Inline at bottom of each source file:
   interactive-repair tests
 - `tests/provisioning_lock_contract.rs`: Actual compiled-binary provisioning
   semaphore tests
+- `tests/skip_if_contract.rs`: Actual compiled-binary conditional-rule tests
 - `fixtures/strict-config/`: Fully indexed strict model plus checked-in CLI assets
 - `fixtures/process-runner/`: Closed network-free command-runner scenarios
+- `fixtures/skip-if/`: Closed network-free conditional-rule scenarios
 - `fixtures/interactive-fix/`: Closed network-free interactive-repair scenarios
 - `fixtures/provisioning-lock/`: Closed network-free semaphore scenarios
 
@@ -346,7 +363,9 @@ Expanded Config
 Per-EUID provisioning lock
   ↓ (Options creation)
 Options
-  ↓ (diagnose execution)
+  ↓ (severity filter, then skip-if)
+Applicable checks
+  ↓ (diagnose/fix execution)
 Report
   ↓ (CLI output)
 Exit code + stdout/stderr

@@ -828,6 +828,19 @@ fn print_usage(stdout: &mut dyn Write) {
         stdout,
         "  --non-interactive    prohibit interactive-fix terminal use"
     );
+    let _ = writeln!(stdout);
+    let _ = writeln!(
+        stdout,
+        "  skip-if runs once before check: exit 0 skips; completed nonzero runs check"
+    );
+    let _ = writeln!(
+        stdout,
+        "  A skip prints '⏭️ <name> (skipped)' and runs no check, repair, or recheck"
+    );
+    let _ = writeln!(
+        stdout,
+        "  A skip-if process failure stops the run with operational exit 2"
+    );
 }
 
 fn parse_severity(value: &str) -> Result<Severity, String> {
@@ -895,12 +908,20 @@ fn print_rule_warning(result: &RuleResult, stdout: &mut dyn Write, stderr: &mut 
     print_rule_status(result, "⚠️ ", true, stdout, stderr);
 }
 
+fn print_rule_skipped(result: &RuleResult, stdout: &mut dyn Write) {
+    let _ = writeln!(stdout, "⏭️ {} (skipped)", result.name());
+}
+
 fn print_rule_outcome(
     result: &RuleResult,
     fail_severity: Severity,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) {
+    if result.skipped() {
+        print_rule_skipped(result, stdout);
+        return;
+    }
     if result.success() {
         print_rule_success(result, stdout, stderr);
         return;
@@ -913,13 +934,29 @@ fn print_rule_outcome(
 }
 
 fn summarize_report(report: &Report, no_fail: bool, stdout: &mut dyn Write) -> i32 {
+    let skipped = report.skipped_count();
     if !report.has_failures() {
-        let _ = writeln!(stdout, "😎 All rules validated");
+        if skipped == 0 {
+            let _ = writeln!(stdout, "😎 All rules validated");
+        } else {
+            let _ = writeln!(
+                stdout,
+                "😎 All applicable rules validated; {skipped} skipped"
+            );
+        }
         return 0;
     }
 
     let failures = report.failures();
-    let _ = writeln!(stdout, "😭 {} rules failed validation", failures.len());
+    if skipped == 0 {
+        let _ = writeln!(stdout, "😭 {} rules failed validation", failures.len());
+    } else {
+        let _ = writeln!(
+            stdout,
+            "😭 {} rules failed validation; {skipped} skipped",
+            failures.len()
+        );
+    }
     for failure in &failures {
         let _ = writeln!(stdout, "- {}", failure.name());
     }
@@ -1035,6 +1072,10 @@ fn run_rule_with_fixes(
     stderr: &mut dyn Write,
 ) -> Result<RuleResult, DiagnoseError> {
     let original = check::run_rule_supervised(rule.clone(), workdir)?;
+    if original.skipped() {
+        print_rule_skipped(&original, stdout);
+        return Ok(original);
+    }
     if original.success() {
         print_rule_success(&original, stdout, stderr);
         return Ok(original);
@@ -1054,7 +1095,7 @@ fn run_rule_with_fixes(
         }
 
         print_rule_success(&fix_result, stdout, stderr);
-        let final_result = check::run_rule_supervised(rule, workdir)?;
+        let final_result = check::run_rule_check_supervised(rule, workdir)?;
         print_rule_outcome(&final_result, fail_severity, stdout, stderr);
         return Ok(final_result);
     }
@@ -1090,7 +1131,7 @@ fn run_rule_with_fixes(
     }
 
     print_rule_success(&fix_result, stdout, stderr);
-    let final_result = check::run_rule_supervised(rule, workdir)?;
+    let final_result = check::run_rule_check_supervised(rule, workdir)?;
     print_rule_outcome(&final_result, fail_severity, stdout, stderr);
     Ok(final_result)
 }
@@ -1102,6 +1143,7 @@ fn repair_rule(rule: &Rule, command: &str) -> Rule {
         severity: rule.severity,
         fix: None,
         interactive_fix: None,
+        skip_if: None,
         hint: rule.hint.clone(),
         remote: None,
         timeout: rule.timeout.clone(),
@@ -1512,6 +1554,54 @@ mod tests {
     }
 
     #[test]
+    fn fix_workflow_evaluates_skip_if_only_before_the_initial_check() {
+        let directory = tempfile::tempdir().unwrap();
+        let trace = directory.path().join("trace");
+        let fixed = directory.path().join("fixed");
+        let rule = Rule {
+            name: Some("once-only predicate".to_string()),
+            check: Some(format!(
+                "printf 'check\\n' >> '{}'; test -f '{}'",
+                trace.display(),
+                fixed.display()
+            )),
+            skip_if: Some(format!(
+                "printf 'predicate\\n' >> '{}'; exit 23",
+                trace.display()
+            )),
+            severity: Some(Severity::Error),
+            fix: Some(format!(
+                "printf 'fix\\n' >> '{}'; : > '{}'",
+                trace.display(),
+                fixed.display()
+            )),
+            interactive_fix: None,
+            hint: None,
+            remote: None,
+            timeout: Some("2s".to_string()),
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let result = run_rule_with_fixes(
+            rule,
+            directory.path().to_str().unwrap(),
+            Severity::Error,
+            InteractionMode::Prohibited,
+            &mut stdout,
+            &mut stderr,
+        )
+        .unwrap();
+
+        assert_eq!(result.outcome, crate::check::RuleOutcome::Passed);
+        assert_eq!(
+            std::fs::read_to_string(trace).unwrap(),
+            "predicate\ncheck\nfix\ncheck\n"
+        );
+        assert!(stderr.is_empty());
+    }
+
+    #[test]
     fn test_rule_display_name() {
         let rule = Rule {
             name: None,
@@ -1519,6 +1609,7 @@ mod tests {
             severity: None,
             fix: None,
             interactive_fix: None,
+            skip_if: None,
             hint: None,
             remote: None,
             timeout: None,
@@ -1531,6 +1622,7 @@ mod tests {
             severity: None,
             fix: None,
             interactive_fix: None,
+            skip_if: None,
             hint: None,
             remote: None,
             timeout: None,

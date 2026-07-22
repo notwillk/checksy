@@ -33,15 +33,23 @@ impl Clone for Report {
 #[derive(Debug)]
 pub struct RuleResult {
     pub rule: Rule,
+    pub outcome: RuleOutcome,
     pub err: Option<Box<dyn std::error::Error>>,
     pub stdout: String,
     pub stderr: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuleOutcome {
+    Passed,
+    Skipped,
+    Failed,
+}
+
 /// A command-runner failure, as distinct from an ordinary nonzero check.
 ///
-/// This stays private to the crate so the public 0.x reporting API remains
-/// source-compatible apart from the documented `Rule::timeout` field.
+/// This stays private to the crate; public callers receive the corresponding
+/// failed `RuleResult` while the CLI preserves the operational-error class.
 #[derive(Debug)]
 pub(crate) struct ExecutionError {
     command_name: String,
@@ -60,6 +68,13 @@ impl ExecutionError {
         Self {
             command_name,
             source: Box::new(ExecutionFailure::InvalidTimeout(error)),
+        }
+    }
+
+    fn invalid_rule(command_name: String, error: String) -> Self {
+        Self {
+            command_name,
+            source: Box::new(ExecutionFailure::InvalidRule(error)),
         }
     }
 
@@ -91,14 +106,14 @@ impl ExecutionError {
     pub(crate) fn restore_signal_handlers(&mut self) -> std::io::Result<()> {
         match self.source.as_mut() {
             ExecutionFailure::Process(error) => error.restore_signal_handlers(),
-            ExecutionFailure::InvalidTimeout(_) => Ok(()),
+            ExecutionFailure::InvalidTimeout(_) | ExecutionFailure::InvalidRule(_) => Ok(()),
         }
     }
 
     fn process_error(&self) -> Option<&ProcessError> {
         match self.source.as_ref() {
             ExecutionFailure::Process(error) => Some(error),
-            ExecutionFailure::InvalidTimeout(_) => None,
+            ExecutionFailure::InvalidTimeout(_) | ExecutionFailure::InvalidRule(_) => None,
         }
     }
 
@@ -108,6 +123,7 @@ impl ExecutionError {
         let _ = self.restore_signal_handlers();
         RuleResult {
             rule,
+            outcome: RuleOutcome::Failed,
             err: Some(Box::new(self)),
             stdout,
             stderr,
@@ -119,6 +135,7 @@ impl ExecutionError {
 enum ExecutionFailure {
     Process(ProcessError),
     InvalidTimeout(String),
+    InvalidRule(String),
 }
 
 impl fmt::Display for ExecutionFailure {
@@ -126,6 +143,7 @@ impl fmt::Display for ExecutionFailure {
         match self {
             Self::Process(error) => error.fmt(formatter),
             Self::InvalidTimeout(error) => formatter.write_str(error),
+            Self::InvalidRule(error) => formatter.write_str(error),
         }
     }
 }
@@ -190,6 +208,7 @@ impl Clone for RuleResult {
     fn clone(&self) -> Self {
         RuleResult {
             rule: self.rule.clone(),
+            outcome: self.outcome,
             err: None,
             stdout: self.stdout.clone(),
             stderr: self.stderr.clone(),
@@ -199,7 +218,11 @@ impl Clone for RuleResult {
 
 impl RuleResult {
     pub fn success(&self) -> bool {
-        self.err.is_none()
+        self.outcome == RuleOutcome::Passed
+    }
+
+    pub fn skipped(&self) -> bool {
+        self.outcome == RuleOutcome::Skipped
     }
 
     pub fn name(&self) -> String {
@@ -214,7 +237,7 @@ impl RuleResult {
     }
 
     pub fn should_fail(&self, threshold: Severity) -> bool {
-        if self.success() {
+        if self.outcome != RuleOutcome::Failed {
             return false;
         }
         let normalized = normalize_fail_severity(threshold);
@@ -235,6 +258,10 @@ impl Report {
             .filter(|r| r.should_fail(threshold))
             .map(|r| (*r).clone())
             .collect()
+    }
+
+    pub fn skipped_count(&self) -> usize {
+        self.rules.iter().filter(|result| result.skipped()).count()
     }
 }
 
@@ -310,6 +337,23 @@ pub fn run_rule(rule: Rule, workdir: &str) -> RuleResult {
 }
 
 pub(crate) fn run_rule_supervised(rule: Rule, workdir: &str) -> Result<RuleResult, ExecutionError> {
+    let command_name = rule
+        .name
+        .clone()
+        .or_else(|| rule.check.clone())
+        .unwrap_or_else(|| "rule".to_string());
+    rule.validate()
+        .map_err(|error| ExecutionError::invalid_rule(command_name, error))?;
+    if should_skip_rule_supervised(&rule, workdir)? {
+        return Ok(skipped_rule_result(rule));
+    }
+    run_rule_check_supervised(rule, workdir)
+}
+
+pub(crate) fn run_rule_check_supervised(
+    rule: Rule,
+    workdir: &str,
+) -> Result<RuleResult, ExecutionError> {
     let script = rule.check.clone().unwrap_or_else(|| "true".to_string());
     let script = if script.ends_with('\n') {
         script
@@ -337,6 +381,38 @@ pub(crate) fn run_rule_supervised(rule: Rule, workdir: &str) -> Result<RuleResul
     .map_err(|error| ExecutionError::new(command_name, error))?;
 
     Ok(completed_rule_result(rule, output))
+}
+
+fn should_skip_rule_supervised(rule: &Rule, workdir: &str) -> Result<bool, ExecutionError> {
+    let Some(script) = rule.skip_if.as_deref() else {
+        return Ok(false);
+    };
+    let script = if script.ends_with('\n') {
+        script.to_string()
+    } else {
+        format!("{script}\n")
+    };
+    let rule_name = rule
+        .name
+        .clone()
+        .unwrap_or_else(|| rule.check.clone().unwrap_or_default());
+    let command_name = format!("{rule_name} skip-if");
+    let timeout = rule
+        .effective_timeout()
+        .map_err(|error| ExecutionError::invalid_timeout(command_name.clone(), error))?;
+    let mut command = Command::new("bash");
+    command.current_dir(workdir).arg("-c").arg(script);
+
+    let output = process_runner::run(
+        command,
+        ProcessLimits {
+            timeout,
+            ..ProcessLimits::default()
+        },
+    )
+    .map_err(|error| ExecutionError::new(command_name, error))?;
+
+    Ok(output.status.success())
 }
 
 pub(crate) fn run_rule_interactive_supervised(
@@ -446,6 +522,7 @@ pub fn run_rule_file(workdir: &str, rel_path: &str) -> RuleResult {
         severity: Some(Severity::Error),
         fix: None,
         interactive_fix: None,
+        skip_if: None,
         hint: None,
         remote: None,
         timeout: None,
@@ -468,6 +545,7 @@ pub(crate) fn run_rule_file_supervised(
         severity: Some(Severity::Error),
         fix: None,
         interactive_fix: None,
+        skip_if: None,
         hint: None,
         remote: None,
         timeout: None,
@@ -504,9 +582,24 @@ fn completed_rule_result(rule: Rule, output: process_runner::CompletedProcess) -
     };
     RuleResult {
         rule,
+        outcome: if exit_error.is_none() {
+            RuleOutcome::Passed
+        } else {
+            RuleOutcome::Failed
+        },
         err: exit_error,
         stdout: output.stdout.render_lossy(),
         stderr: output.stderr.render_lossy(),
+    }
+}
+
+fn skipped_rule_result(rule: Rule) -> RuleResult {
+    RuleResult {
+        rule,
+        outcome: RuleOutcome::Skipped,
+        err: None,
+        stdout: String::new(),
+        stderr: String::new(),
     }
 }
 
@@ -564,6 +657,7 @@ mod tests {
                     severity: Some(Severity::Debug),
                     fix: None,
                     interactive_fix: None,
+                    skip_if: None,
                     hint: None,
                     remote: None,
                     timeout: None,
@@ -574,6 +668,7 @@ mod tests {
                     severity: Some(Severity::Info),
                     fix: None,
                     interactive_fix: None,
+                    skip_if: None,
                     hint: None,
                     remote: None,
                     timeout: None,
@@ -584,6 +679,7 @@ mod tests {
                     severity: Some(Severity::Warning),
                     fix: None,
                     interactive_fix: None,
+                    skip_if: None,
                     hint: None,
                     remote: None,
                     timeout: None,
@@ -606,10 +702,12 @@ mod tests {
                 severity: Some(Severity::Warning),
                 fix: None,
                 interactive_fix: None,
+                skip_if: None,
                 hint: None,
                 remote: None,
                 timeout: None,
             },
+            outcome: RuleOutcome::Failed,
             err: Some(Box::new(std::io::Error::other("boom"))),
             stdout: "".to_string(),
             stderr: "".to_string(),
@@ -628,10 +726,12 @@ mod tests {
                     severity: Some(Severity::Warning),
                     fix: None,
                     interactive_fix: None,
+                    skip_if: None,
                     hint: None,
                     remote: None,
                     timeout: None,
                 },
+                outcome: RuleOutcome::Failed,
                 err: Some(Box::new(std::io::Error::other("boom"))),
                 stdout: "".to_string(),
                 stderr: "".to_string(),
@@ -643,13 +743,32 @@ mod tests {
                     severity: Some(Severity::Error),
                     fix: None,
                     interactive_fix: None,
+                    skip_if: None,
                     hint: None,
                     remote: None,
                     timeout: None,
                 },
+                outcome: RuleOutcome::Failed,
                 err: Some(Box::new(std::io::Error::other("boom"))),
                 stdout: "".to_string(),
                 stderr: "".to_string(),
+            },
+            RuleResult {
+                rule: Rule {
+                    name: Some("skipped error".to_string()),
+                    check: Some("false".to_string()),
+                    skip_if: Some("true".to_string()),
+                    severity: Some(Severity::Error),
+                    fix: None,
+                    interactive_fix: None,
+                    hint: None,
+                    remote: None,
+                    timeout: None,
+                },
+                outcome: RuleOutcome::Skipped,
+                err: None,
+                stdout: String::new(),
+                stderr: String::new(),
             },
         ];
         let report = Report {
@@ -659,6 +778,148 @@ mod tests {
         assert!(report.has_failures());
         let failures = report.failures();
         assert_eq!(failures.len(), 1);
+        assert_eq!(report.skipped_count(), 1);
+        let skipped = &report.rules[2];
+        assert!(skipped.skipped());
+        assert!(!skipped.success());
+        assert!(!skipped.should_fail(Severity::Debug));
+        assert_eq!(skipped.clone().outcome, RuleOutcome::Skipped);
+    }
+
+    #[test]
+    fn skip_predicate_maps_completed_status_and_uses_the_rule_timeout() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("check-ran");
+        let skipped = run_rule_supervised(
+            Rule {
+                name: Some("skip zero".to_string()),
+                check: Some(format!(": > '{}'", marker.display())),
+                skip_if: Some("printf 'suppressed predicate output'; exit 0".to_string()),
+                severity: Some(Severity::Error),
+                fix: None,
+                interactive_fix: None,
+                hint: None,
+                remote: None,
+                timeout: Some("2s".to_string()),
+            },
+            directory.path().to_str().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(skipped.outcome, RuleOutcome::Skipped);
+        assert!(skipped.stdout.is_empty());
+        assert!(!marker.exists());
+
+        let executed = run_rule_supervised(
+            Rule {
+                name: Some("skip nonzero".to_string()),
+                check: Some("printf 'check output'".to_string()),
+                skip_if: Some("printf 'suppressed predicate output'; exit 23".to_string()),
+                severity: Some(Severity::Error),
+                fix: None,
+                interactive_fix: None,
+                hint: None,
+                remote: None,
+                timeout: Some("2s".to_string()),
+            },
+            directory.path().to_str().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(executed.outcome, RuleOutcome::Passed);
+        assert_eq!(executed.stdout, "check output");
+
+        let timeout = run_rule_supervised(
+            Rule {
+                name: Some("bounded predicate".to_string()),
+                check: Some(format!(": > '{}'", marker.display())),
+                skip_if: Some(
+                    "printf 'predicate stdout'; printf 'predicate stderr' >&2; sleep 10"
+                        .to_string(),
+                ),
+                severity: Some(Severity::Error),
+                fix: None,
+                interactive_fix: None,
+                hint: None,
+                remote: None,
+                timeout: Some("100ms".to_string()),
+            },
+            directory.path().to_str().unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(timeout.command_name(), "bounded predicate skip-if");
+        assert!(timeout.stdout().contains("predicate stdout"));
+        assert!(timeout.stderr().contains("predicate stderr"));
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn public_run_rule_rejects_invalid_skip_if_before_any_command() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("must-not-run");
+        let workdir = directory.path().to_str().unwrap();
+
+        for (label, rule) in [
+            (
+                "missing check",
+                Rule {
+                    name: Some("missing check".to_string()),
+                    check: None,
+                    skip_if: Some(format!(": > '{}'", marker.display())),
+                    severity: Some(Severity::Error),
+                    fix: None,
+                    interactive_fix: None,
+                    hint: None,
+                    remote: None,
+                    timeout: None,
+                },
+            ),
+            (
+                "include rule",
+                Rule {
+                    name: None,
+                    check: None,
+                    skip_if: Some(format!(": > '{}'", marker.display())),
+                    severity: None,
+                    fix: None,
+                    interactive_fix: None,
+                    hint: None,
+                    remote: Some("nested.yaml".to_string()),
+                    timeout: None,
+                },
+            ),
+            (
+                "blank predicate",
+                Rule {
+                    name: Some("blank predicate".to_string()),
+                    check: Some(format!(": > '{}'", marker.display())),
+                    skip_if: Some("  ".to_string()),
+                    severity: Some(Severity::Error),
+                    fix: None,
+                    interactive_fix: None,
+                    hint: None,
+                    remote: None,
+                    timeout: None,
+                },
+            ),
+            (
+                "NUL predicate",
+                Rule {
+                    name: Some("NUL predicate".to_string()),
+                    check: Some(format!(": > '{}'", marker.display())),
+                    skip_if: Some("invalid\0predicate".to_string()),
+                    severity: Some(Severity::Error),
+                    fix: None,
+                    interactive_fix: None,
+                    hint: None,
+                    remote: None,
+                    timeout: None,
+                },
+            ),
+        ] {
+            let result = run_rule(rule, workdir);
+            assert_eq!(result.outcome, RuleOutcome::Failed, "{label}");
+            assert!(result.err.is_some(), "{label}");
+            assert!(!marker.exists(), "{label} executed a configured command");
+        }
     }
 
     #[test]
@@ -688,6 +949,7 @@ mod tests {
                     severity: Some(Severity::Error),
                     fix: None,
                     interactive_fix: None,
+                    skip_if: None,
                     hint: None,
                     remote: None,
                     timeout: None,
@@ -698,6 +960,7 @@ mod tests {
                     severity: Some(Severity::Error),
                     fix: None,
                     interactive_fix: None,
+                    skip_if: None,
                     hint: None,
                     remote: None,
                     timeout: Some("0s".to_string()),

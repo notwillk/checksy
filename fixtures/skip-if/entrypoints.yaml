@@ -1,0 +1,9 @@
+rules:
+  - name: entrypoint predicate
+    skip-if: |
+      : "${CHECKSY_SKIP_IF_ENTRYPOINT:?entrypoint mode is required}"
+      : > ".${CHECKSY_SKIP_IF_ENTRYPOINT}.predicate"
+      exit 0
+    check: |
+      : > ".unexpected-${CHECKSY_SKIP_IF_ENTRYPOINT}-check"
+      exit 89

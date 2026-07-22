@@ -41,6 +41,9 @@ fn public_help_describes_the_provisioning_cli() {
     assert!(!stdout.contains("apply"));
     assert!(stdout.contains("interactive-fix"));
     assert!(stdout.contains("--non-interactive"));
+    assert!(stdout.contains("skip-if runs once before check: exit 0 skips"));
+    assert!(stdout.contains("⏭️ <name> (skipped)"));
+    assert!(stdout.contains("skip-if process failure stops the run with operational exit 2"));
     assert_eq!(
         env!("CARGO_PKG_DESCRIPTION"),
         "Provision the current machine from trusted configuration"

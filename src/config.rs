@@ -370,6 +370,7 @@ mod tests {
                 Rule {
                     name: None,
                     check: Some("echo hi".to_string()),
+                    skip_if: None,
                     severity: None,
                     fix: None,
                     interactive_fix: None,
@@ -380,6 +381,7 @@ mod tests {
                 Rule {
                     name: None,
                     check: Some("echo warn".to_string()),
+                    skip_if: None,
                     severity: Some(Severity::Warning),
                     fix: None,
                     interactive_fix: None,

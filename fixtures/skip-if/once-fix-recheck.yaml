@@ -1,0 +1,12 @@
+rules:
+  - name: predicate runs only before the initial check
+    skip-if: |
+      printf 'hidden once predicate output\n'
+      printf 'predicate\n' >> .trace
+      exit 1
+    check: |
+      printf 'check\n' >> .trace
+      test -f .fixed
+    fix: |
+      printf 'fix\n' >> .trace
+      : > .fixed

@@ -1,0 +1,16 @@
+rules:
+  - name: predicate receives dev null
+    skip-if: |
+      if IFS= read -r unexpected; then
+        printf 'unexpected predicate stdin: %s\n' "$unexpected" >&2
+        : > .unexpected-predicate-input
+        exit 90
+      fi
+      : > .predicate-eof
+      exit 0
+    check: |
+      : > .unexpected-eof-check
+      exit 91
+    fix: |
+      : > .unexpected-eof-fix
+      exit 92

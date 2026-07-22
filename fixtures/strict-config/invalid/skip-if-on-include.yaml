@@ -1,0 +1,3 @@
+rules:
+  - remote: nested.yaml
+    skip-if: test -f disabled

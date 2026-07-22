@@ -251,6 +251,8 @@ pub mod schema {
         pub name: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub check: Option<String>,
+        #[serde(rename = "skip-if", skip_serializing_if = "Option::is_none")]
+        pub skip_if: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub severity: Option<Severity>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -272,6 +274,8 @@ pub mod schema {
         name: StrictOptional<StrictString>,
         #[serde(default)]
         check: StrictOptional<StrictString>,
+        #[serde(default, rename = "skip-if")]
+        skip_if: StrictOptional<StrictString>,
         #[serde(default)]
         severity: StrictOptional<Severity>,
         #[serde(default)]
@@ -293,6 +297,7 @@ pub mod schema {
             let rule = Self {
                 name: raw.name.into_option().map(StrictString::into_string),
                 check: raw.check.into_option().map(StrictString::into_string),
+                skip_if: raw.skip_if.into_option().map(StrictString::into_string),
                 severity: raw.severity.into_option(),
                 fix: raw.fix.into_option().map(StrictString::into_string),
                 interactive_fix: raw
@@ -333,6 +338,9 @@ pub mod schema {
         name: StrictOptional<StrictString>,
         #[schemars(schema_with = "non_blank_no_nul_string_schema")]
         check: StrictString,
+        #[serde(default, rename = "skip-if")]
+        #[schemars(schema_with = "non_blank_no_nul_string_schema")]
+        skip_if: StrictOptional<StrictString>,
         #[serde(default)]
         severity: StrictOptional<Severity>,
         #[serde(default)]
@@ -371,7 +379,7 @@ pub mod schema {
     }
 
     impl Rule {
-        fn validate(&self) -> Result<(), String> {
+        pub(crate) fn validate(&self) -> Result<(), String> {
             self.validate_strings()?;
 
             if self.is_remote() {
@@ -385,6 +393,11 @@ pub mod schema {
             }
 
             let Some(check) = self.check.as_deref() else {
+                if self.skip_if.is_some() {
+                    return Err(
+                        "executable rule cannot define `skip-if` without `check`".to_string()
+                    );
+                }
                 if self.fix.is_some() {
                     return Err("executable rule cannot define `fix` without `check`".to_string());
                 }
@@ -401,6 +414,14 @@ pub mod schema {
 
             if check.trim().is_empty() {
                 return Err("executable rule requires a non-empty `check` value".to_string());
+            }
+
+            if self
+                .skip_if
+                .as_deref()
+                .is_some_and(|command| command.trim().is_empty())
+            {
+                return Err("executable rule requires a non-empty `skip-if` value".to_string());
             }
 
             if self
@@ -430,6 +451,7 @@ pub mod schema {
             for (field, value) in [
                 ("name", self.name.as_deref()),
                 ("check", self.check.as_deref()),
+                ("skip-if", self.skip_if.as_deref()),
                 ("fix", self.fix.as_deref()),
                 ("interactive-fix", self.interactive_fix.as_deref()),
                 ("hint", self.hint.as_deref()),
@@ -460,6 +482,9 @@ pub mod schema {
             }
             if self.check.is_some() {
                 invalid_props.push("check");
+            }
+            if self.skip_if.is_some() {
+                invalid_props.push("skip-if");
             }
             if self.severity.is_some() {
                 invalid_props.push("severity");
@@ -682,6 +707,7 @@ pub mod schema {
                 "rules:\n",
                 "  - name: compatible\n",
                 "    check: echo ok\n",
+                "    skip-if: test -f disabled\n",
                 "    severity: warning\n",
                 "    timeout: 30s\n",
                 "  - name: interactive\n",
@@ -689,15 +715,24 @@ pub mod schema {
                 "    interactive-fix: read -r answer\n"
             );
             let config: Config = serde_yaml::from_str(yaml).unwrap();
-            let reparsed_yaml: Config =
-                serde_yaml::from_str(&serde_yaml::to_string(&config).unwrap()).unwrap();
-            let reparsed_json: Config =
-                serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+            let serialized_yaml = serde_yaml::to_string(&config).unwrap();
+            let serialized_json = serde_json::to_string(&config).unwrap();
+            assert!(serialized_yaml.contains("skip-if:"));
+            assert!(!serialized_yaml.contains("skip_if:"));
+            assert!(serialized_json.contains("\"skip-if\":"));
+            assert!(!serialized_json.contains("\"skip_if\":"));
+
+            let reparsed_yaml: Config = serde_yaml::from_str(&serialized_yaml).unwrap();
+            let reparsed_json: Config = serde_json::from_str(&serialized_json).unwrap();
 
             for reparsed in [reparsed_yaml, reparsed_json] {
                 assert_eq!(reparsed.rules.len(), 2);
                 assert_eq!(reparsed.rules[0].name.as_deref(), Some("compatible"));
                 assert_eq!(reparsed.rules[0].check.as_deref(), Some("echo ok"));
+                assert_eq!(
+                    reparsed.rules[0].skip_if.as_deref(),
+                    Some("test -f disabled")
+                );
                 assert_eq!(reparsed.rules[0].severity, Some(Severity::Warning));
                 assert_eq!(reparsed.rules[0].timeout.as_deref(), Some("30s"));
                 assert_eq!(
@@ -758,6 +793,11 @@ pub mod schema {
                 "rules: null\n",
                 "rules:\n  - check: null\n",
                 "rules:\n  - check: 123\n",
+                "rules:\n  - check: ok\n    skip-if: '  '\n",
+                "rules:\n  - check: ok\n    skip-if: null\n",
+                "rules:\n  - check: ok\n    skip-if: 1\n",
+                "rules:\n  - skip-if: command -v optional\n",
+                "rules:\n  - remote: nested.yaml\n    skip-if: test -f disabled\n",
                 "rules:\n  - {}\n",
                 "rules:\n  - check: '  '\n",
                 "rules:\n  - remote: '  '\n",
@@ -791,6 +831,7 @@ pub mod schema {
                 "checkSeverity: \"error\\0\"\n",
                 "rules:\n  - name: \"bad\\0name\"\n    check: ok\n",
                 "rules:\n  - check: \"bad\\0check\"\n",
+                "rules:\n  - check: ok\n    skip-if: \"bad\\0predicate\"\n",
                 "rules:\n  - check: 'false'\n    fix: \"bad\\0fix\"\n",
                 "rules:\n  - check: 'false'\n    interactive-fix: \"bad\\0interactive\"\n",
                 "rules:\n  - check: 'false'\n    hint: \"bad\\0hint\"\n",
@@ -839,6 +880,14 @@ pub mod schema {
                 branches[1]["properties"]["timeout"]["pattern"],
                 RULE_TIMEOUT_PATTERN
             );
+            let skip_if = &branches[1]["properties"]["skip-if"];
+            assert_eq!(skip_if["type"], "string");
+            assert_eq!(skip_if["allOf"][0]["pattern"], NO_NUL_PATTERN);
+            assert_eq!(
+                skip_if["allOf"][1]["pattern"],
+                format!("[^{}]", JSON_SCHEMA_WHITESPACE_CLASS)
+            );
+            assert!(branches[1]["properties"].get("skip_if").is_none());
             assert!(branches[1]["properties"].get("interactive-fix").is_some());
             assert!(branches[1]["properties"].get("interactive_fix").is_none());
             assert_eq!(
@@ -849,6 +898,7 @@ pub mod schema {
                 .get("default")
                 .is_none());
             assert!(branches[0]["properties"].get("timeout").is_none());
+            assert!(branches[0]["properties"].get("skip-if").is_none());
             assert!(branches[0]["properties"].get("interactive-fix").is_none());
         }
 
@@ -862,6 +912,7 @@ pub mod schema {
                 json!({}),
                 json!({"rules": [{"check": "echo ok", "severity": "WaRnInG"}]}),
                 json!({"rules": [{"remote": "nested.yaml"}]}),
+                json!({"rules": [{"check": "command -v optional", "skip-if": "test -f disabled"}]}),
                 json!({"rules": [{"check": "false", "interactive-fix": "read -r answer"}]}),
                 json!({"rules": [{"check": "true", "timeout": "1ms"}]}),
                 json!({"rules": [{"check": "true", "timeout": "2h"}]}),
@@ -876,6 +927,13 @@ pub mod schema {
                 json!({"rules": [{}]}),
                 json!({"rules": [{"check": " "}]}),
                 json!({"rules": [{"remote": "nested.yaml", "check": "echo mixed"}]}),
+                json!({"rules": [{"remote": "nested.yaml", "skip-if": "test -f disabled"}]}),
+                json!({"rules": [{"skip-if": "test -f disabled"}]}),
+                json!({"rules": [{"check": "ok", "skip-if": ""}]}),
+                json!({"rules": [{"check": "ok", "skip-if": "  "}]}),
+                json!({"rules": [{"check": "ok", "skip-if": null}]}),
+                json!({"rules": [{"check": "ok", "skip-if": 1}]}),
+                json!({"rules": [{"check": "ok", "skip-if": "bad\0predicate"}]}),
                 json!({"rules": [{"remote": "nested.yaml", "timeout": "1s"}]}),
                 json!({"rules": [{"remote": "nested.yaml", "interactive-fix": "read -r answer"}]}),
                 json!({"rules": [{"interactive-fix": "read -r answer"}]}),

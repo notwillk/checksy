@@ -1,0 +1,82 @@
+schemaVersion: 1
+cases:
+  - id: skip-zero-repairs
+    fixture: skip-zero-repairs.yaml
+    assets: []
+    modes:
+      - file-check
+      - file-fix
+    test: skip_exit_zero_suppresses_checks_and_both_repair_forms
+  - id: completed-nonzero
+    fixture: completed-nonzero.yaml
+    assets: []
+    modes:
+      - file-check
+    test: completed_nonzero_predicates_run_checks_without_leaking_output
+  - id: once-fix-recheck
+    fixture: once-fix-recheck.yaml
+    assets: []
+    modes:
+      - file-check
+      - file-fix
+    test: predicate_runs_once_before_check_and_fix_recheck_cycle
+  - id: preconditions-and-rules
+    fixture: preconditions-and-rules.yaml
+    assets: []
+    modes:
+      - file-check
+    test: preconditions_and_ordinary_rules_are_retained_as_skips
+  - id: severity-filtering
+    fixture: severity-filtering.yaml
+    assets: []
+    modes:
+      - file-check-severity
+    test: severity_filtering_precedes_predicates_and_skipped_errors_do_not_fail
+  - id: explicit-and-stdin-entrypoints
+    fixture: entrypoints.yaml
+    assets: []
+    modes:
+      - config-dash
+      - deprecated-diagnose
+      - file-check
+      - stdin-config
+    test: all_configuration_entrypoints_and_deprecated_diagnose_apply_skip_if
+  - id: auto-discovered-entrypoint
+    fixture: autodiscovery/.checksy.yaml
+    assets: []
+    modes:
+      - auto-discovery
+    test: all_configuration_entrypoints_and_deprecated_diagnose_apply_skip_if
+  - id: inherited-environment-gates
+    fixture: inherited-environment-gates.yaml
+    assets:
+      - bin/checksy-skip-if-contract-gate
+    modes:
+      - file-check-gates-absent
+      - file-check-gates-present
+    test: environment_and_command_availability_gates_use_inherited_environment
+  - id: predicate-stdin-eof
+    fixture: predicate-stdin-eof.yaml
+    assets: []
+    modes:
+      - file-check
+      - file-fix
+    test: predicate_stdin_is_dev_null_in_check_and_fix_modes
+  - id: predicate-timeout
+    fixture: predicate-timeout.yaml
+    assets: []
+    modes:
+      - file-check-no-fail
+    test: predicate_timeout_is_bounded_operational_and_fail_fast
+  - id: predicate-child-signal
+    fixture: predicate-child-signal.yaml
+    assets: []
+    modes:
+      - file-check-no-fail
+    test: predicate_child_signal_is_operational_and_fail_fast
+  - id: predicate-bash-spawn-failure
+    fixture: predicate-bash-spawn-failure.yaml
+    assets: []
+    modes:
+      - file-check-empty-path-no-fail
+    test: bash_spawn_failure_is_operational_fail_fast_and_not_masked

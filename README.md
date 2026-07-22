@@ -22,16 +22,15 @@ partially mutate the machine before failing, and Checksy cannot transactionally
 undo those mutations. Checksy never invokes `sudo` automatically.
 
 The following interaction and locking rules are the normative P0 contract.
-Supervised non-interactive commands, `interactive-fix`, and
-`--non-interactive`, and the provisioning lock are implemented. `skip-if`
-remains pending.
+Supervised commands, `skip-if`, `interactive-fix`, `--non-interactive`, and the
+provisioning lock are implemented.
 
 ### Interaction modes
 
-- Checks, pattern scripts, ordinary `fix` commands, and final checks are
-  non-interactive. They receive `/dev/null` as stdin and run in a new session
-  without a controlling terminal, so they cannot fall back to `/dev/tty` for
-  input. Future `skip-if` predicates will use the same runner.
+- `skip-if` predicates, checks, pattern scripts, ordinary `fix` commands, and
+  final checks are non-interactive. They receive `/dev/null` as stdin and run
+  in a new session without a controlling terminal, so they cannot fall back to
+  `/dev/tty` for input.
 - Only `interactive-fix` may use a terminal. It runs only during `check --fix`,
   after its rule fails its check, and never alongside an ordinary `fix`.
 - A missing terminal is relevant only when a failed rule needs its
@@ -48,12 +47,12 @@ remains pending.
 ### Command supervision
 
 Every configured command runs through the same Linux/macOS process-supervision
-layer. Checks, ordinary fixes, final checks, and pattern scripts use the
-non-interactive mode described above. An executable rule may set `timeout` to a
-positive duration matching `^[1-9][0-9]*(ms|s|m|h)$`, from `1ms` through `2h`.
-The default is `15m`. A rule's timeout applies independently to its initial
-check, ordinary or interactive fix, and final recheck; pattern scripts always
-use `15m`.
+layer. Skip predicates, checks, ordinary fixes, final checks, and pattern
+scripts use the non-interactive mode described above. An executable rule may
+set `timeout` to a positive duration matching `^[1-9][0-9]*(ms|s|m|h)$`, from
+`1ms` through `2h`. The default is `15m`. A rule's timeout applies independently
+to its `skip-if`, initial check, ordinary or interactive fix, and final recheck;
+pattern scripts always use `15m`.
 
 Each non-interactive command becomes the leader of its own session and managed
 process group. At the deadline Checksy sends `TERM` to the group, waits up to
@@ -76,18 +75,45 @@ an interruption they remain installed through diagnostic flushing, are then
 restored, and signal-hook's platform-default action is emulated before control
 can return.
 
-An ordinary nonzero command exit remains a compliance result governed by rule
-severity, fixes, and `--no-fail`. Spawn, timeout, child-signal, and supervision
-failures are operational exit `2`, stop the run immediately, and cannot be
-masked by `--no-fail`. A configuration containing only `patterns` still runs
-matching scripts; a definition with no executable rules or matching patterns
-completes without starting a command. The network-free [process-runner fixture
-corpus](fixtures/process-runner/README.md) exercises these guarantees through
-the compiled binary. Supervision is not a sandbox: trusted Bash keeps the
-invoker's filesystem, network, and process authority; Checksy applies no CPU,
-memory, or disk quota; and a command that deliberately creates another session
-can escape the managed-descendant guarantee. Legacy Git commands used by
-`install` are not routed through this configured-command runner.
+An ordinary nonzero check or repair remains a compliance result governed by
+rule severity, fixes, and `--no-fail`. A completed nonzero `skip-if` instead
+means its condition did not match, so Checksy proceeds to the check; individual
+nonzero values have no special meanings. Spawn, timeout, child-signal, and
+supervision failures are operational exit `2`, stop the run immediately, and
+cannot be masked by `--no-fail`. A configuration containing only `patterns`
+still runs matching scripts; a definition with no executable rules or matching
+patterns completes without starting a command. The network-free
+[process-runner fixture corpus](fixtures/process-runner/README.md) exercises
+these guarantees through the compiled binary. Supervision is not a sandbox:
+trusted Bash keeps the invoker's filesystem, network, and process authority;
+Checksy applies no CPU, memory, or disk quota; and a command that deliberately
+creates another session can escape the managed-descendant guarantee. Legacy Git
+commands used by `install` are not routed through this configured-command
+runner.
+
+### Conditional execution
+
+An executable rule may set `skip-if` to a nonblank, NUL-free Bash command.
+After severity filtering, Checksy runs it once immediately before that rule's
+initial check in both check-only and `--fix` modes. The predicate inherits
+Checksy's environment, receives `/dev/null`, uses a fresh application of the
+rule's timeout, and runs in the same effective working directory as the
+associated check.
+
+Predicate exit `0` reports exactly `⏭️ <name> (skipped)` and suppresses the
+check, ordinary or interactive repair, and final recheck. Every completed
+nonzero exit proceeds to the check. Output from an ordinarily completed
+predicate is control output and is not printed or retained as rule output. A
+skipped outcome is retained in the report but is neither passed nor failed,
+does not affect severity thresholds, and is not masked or changed by
+`--no-fail`. When at least one rule skips, a successful run uses the summary
+`😎 All applicable rules validated; N skipped`; a failure summary appends
+`; N skipped`. Summaries are unchanged when nothing skips. Predicate spawn,
+timeout, signal, or supervision failures are operational exit `2`, preserve
+available bounded output, and prevent the check and all later commands from
+running. The closed, network-free [skip-if fixture
+corpus](fixtures/skip-if/README.md) covers command-availability and environment
+gates plus file-backed and stdin configuration.
 
 For an eligible file-backed `interactive-fix`, Checksy validates the caller's
 foreground controlling terminal, creates an inner PTY, and runs the repair as a
@@ -305,7 +331,7 @@ Every rule is exactly one of these forms:
 
 - An include with one nonblank `remote` field and no other fields.
 - An executable rule with a nonblank `check` plus optional `name`, `severity`,
-  `fix`, `interactive-fix`, `hint`, and `timeout` fields. `fix` and
+  `skip-if`, `fix`, `interactive-fix`, `hint`, and `timeout` fields. `fix` and
   `interactive-fix` are mutually exclusive.
 
 Stdin documents must be self-contained; includes require a filesystem context
@@ -321,8 +347,13 @@ type/null rejection, the `2h` ceiling, and rejection of timeouts on includes.
 range from `1ms` through `2h`. Numeric overflow and the upper bound are runtime
 validation constraints because Draft 7 cannot compute a mixed-unit duration.
 Rules without `timeout` use `15m`. The same timeout starts afresh for the
-initial check, an ordinary or interactive fix, and its final recheck; pattern
-scripts use `15m` and do not have per-pattern overrides.
+`skip-if`, initial check, an ordinary or interactive fix, and its final recheck;
+pattern scripts use `15m` and do not have per-pattern overrides.
+
+`skip-if` must contain a nonblank, NUL-free command, requires `check`, and
+cannot appear on an include. Predicate exit `0` skips the complete rule;
+completed nonzero exits run it normally. Predicate process failures are
+operational errors rather than skip decisions.
 
 `interactive-fix` must contain a nonblank, NUL-free command and cannot appear
 with `fix` or on an include. It is ignored during check-only runs and when its
@@ -333,14 +364,15 @@ terminal. If a failed rule needs an interactive repair in that mode, with
 `--non-interactive`, or without a usable foreground terminal, Checksy leaves the
 repair unexecuted and explains how to proceed.
 
-Commands currently execute relative to the selected root configuration's
-directory; preserving the defining directory of every nested local include is
-a separate origin-correctness milestone.
+Commands, including `skip-if`, currently execute relative to the selected root
+configuration's directory. A predicate and its associated check always share
+that effective working directory. Preserving the defining directory of every
+nested local include is a separate origin-correctness milestone.
 
 ### Inline rules, preconditions, and patterns
 
-- **`preconditions`** — An array of rule objects that run **before** the main rules. They follow the same failure and ordinary/interactive repair behavior as regular rules. Useful for checks that must pass before proceeding (e.g., verifying dependencies).
-- **`rules`** — An array of rule objects, each with `name`, `check`, optional `severity`, one of `fix` or `interactive-fix`, `hint`, and `timeout`. These run first in config order.
+- **`preconditions`** — An array of rule objects that run **before** the main rules. They support the same conditional, failure, and ordinary/interactive repair behavior as regular rules. Useful for checks that apply only after a prerequisite condition is met.
+- **`rules`** — An array of rule objects, each with `name`, `check`, optional `skip-if`, `severity`, one of `fix` or `interactive-fix`, `hint`, and `timeout`. These run first in config order.
 - **`patterns`** — An array of glob-style patterns that select script files to run as rules (e.g. `tests/*.sh`). Success and failure are determined by the script's exit code, same as inline rules. There is no fix step or timeout override for file-based rules; they use the 15-minute default and run after inline rules in a deterministic order (alphabetically by file path). Pattern-only configurations execute normally. Patterns are resolved relative to the config file directory. You can use **positive** patterns (any match is included) and **negated** patterns (prefix with `!` to exclude). A file is included only if it matches at least one positive pattern and no negative pattern.
 
 ### Remote Config References

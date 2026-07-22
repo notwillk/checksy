@@ -28,14 +28,14 @@ a different session is outside the managed-descendant guarantee.
 ## Normative P0 execution contract
 
 This section records both implemented behavior and the remaining target. At the
-current HEAD, hardened non-interactive supervision, `interactive-fix`,
-`--non-interactive`, and the provisioning lock exist; `skip-if` does not.
+current HEAD, hardened non-interactive supervision, `skip-if`,
+`interactive-fix`, `--non-interactive`, and the provisioning lock exist.
 
 ### Interaction modes
 
-- Checks, pattern scripts, ordinary fixes, and final checks are non-interactive,
-  receive `/dev/null` as stdin, and run in a detached session without a
-  controlling terminal. Future `skip-if` predicates will use the same runner.
+- Skip predicates, checks, pattern scripts, ordinary fixes, and final checks are
+  non-interactive, receive `/dev/null` as stdin, and run in a detached session
+  without a controlling terminal.
 - `interactive-fix` is the only terminal-capable command. It is considered only
   during `check --fix` after its check fails; a passing rule never requires a
   terminal. It is mutually exclusive with ordinary `fix`.
@@ -57,10 +57,10 @@ has no controlling terminal, opening `/dev/tty` also fails.
 
 Executable rules use a `15m` compiled default or an optional `timeout` matching
 `^[1-9][0-9]*(ms|s|m|h)$` in the inclusive range `1ms` through `2h`. A rule gets
-a fresh timeout for its initial check, ordinary or interactive fix, and final
-recheck. Pattern scripts use `15m`. The complete configuration is validated
-before execution, including rejection of malformed, null, overflowing,
-over-limit, or include-rule timeouts.
+a fresh timeout for its skip predicate, initial check, ordinary or interactive
+fix, and final recheck. Pattern scripts use `15m`. The complete configuration
+is validated before execution, including rejection of malformed, null,
+overflowing, over-limit, or include-rule timeouts.
 
 At a deadline the runner sends `TERM` to the whole managed group, permits a
 five-second grace, sends `KILL` if anything remains, then permits five more
@@ -80,13 +80,42 @@ remain active. It then restores the exact saved signal dispositions and
 emulates the first signal's platform-default action so its parent observes the
 conventional signal status.
 
-Completed nonzero exits are compliance results and continue through severity,
-fix, final-check, and `--no-fail` policy. Spawn, timeout, child-signal, and
-supervision failures are operational: no fix, recheck, or later configured
-command runs, retained output is reported, and the CLI returns `2` regardless
-of severity or `--no-fail`. Pattern-only configurations execute their scripts;
-only a definition with no executable rules or matching patterns is empty.
-Legacy Git subprocesses are unchanged and remain outside this runner.
+Completed nonzero checks and repairs are compliance results and continue
+through severity, fix, final-check, and `--no-fail` policy. A completed nonzero
+skip predicate is a false condition and proceeds to the check, regardless of
+its specific value. Spawn, timeout, child-signal, and supervision failures are
+operational: no repair, recheck, or later configured command runs, retained
+output is reported, and the CLI returns `2` regardless of severity or
+`--no-fail`. Pattern-only configurations execute their scripts; only a
+definition with no executable rules or matching patterns is empty. Legacy Git
+subprocesses are unchanged and remain outside this runner.
+
+### Conditional rule lifecycle
+
+Each executable precondition or rule may carry one `skip-if`. The engine runs
+it once immediately before the initial check, after severity filtering, with
+`/dev/null`, the inherited environment, a fresh application of the rule
+timeout, and the same effective working directory as that check. Execution
+remains a linear list; there are no rule IDs, dependency graph, or dependency
+cycle semantics.
+
+Exit `0` produces `RuleOutcome::Skipped`, suppressing the check, either repair,
+and final check. Every completed nonzero exit proceeds to the check. Output from
+an ordinarily completed predicate is discarded as control output; operational
+failures retain bounded output for diagnostics. Spawn, timeout, child-signal,
+and supervision failures remain operational and abort before the check. At the
+current HEAD the predicate and check both use the selected root configuration
+directory; the later origin-correctness milestone will move them together to
+their defining configuration directory.
+
+`RuleResult` retains `Passed`, `Skipped`, or `Failed` explicitly. `success()` is
+true only for passed results, while failure and threshold calculations consider
+only `Failed`; `skipped()` and `Report::skipped_count()` expose the third state.
+The CLI prints `⏭️ <name> (skipped)`. When skips exist, the success summary is
+`😎 All applicable rules validated; N skipped`, while the failure summary gains
+`; N skipped`; zero-skip summaries remain byte-for-byte unchanged. The
+[skip-if contract corpus](fixtures/skip-if/README.md) maps these semantics to
+compiled-binary file and stdin scenarios.
 
 ### Interactive command lifecycle
 
@@ -193,9 +222,9 @@ rejects unknown and duplicate fields, unsupported nulls and scalar coercions,
 invalid rule unions, blank checks/includes, invalid severities and globs, and
 NUL in any configuration string before command execution. Executable-rule
 timeouts use the documented syntax and `1ms` through `2h` runtime bound;
-include rules cannot declare them. `interactive-fix` is a nonblank executable
-command, requires `check`, cannot coexist with `fix`, and cannot appear on an
-include.
+include rules cannot declare them. `skip-if` and `interactive-fix` are nonblank
+executable commands, require `check`, and cannot appear on an include;
+`interactive-fix` also cannot coexist with `fix`.
 
 `Config` and `Rule` remain the public compatibility types. Private raw types
 express omission without accepting explicit null and project into those public
@@ -254,16 +283,19 @@ and exercises the compiled binary without a public network.
 - **Network required**: All operations need network access
 
 ### check.rs (Execution Engine)
-- **Rule orchestration**: Routes checks, ordinary/interactive fixes, final
-  rechecks, and pattern scripts through the private supervisor
-- **Result collection**: `RuleResult` contains stdout, stderr, exit status
+- **Rule orchestration**: Routes skip predicates, checks,
+  ordinary/interactive fixes, final rechecks, and pattern scripts through the
+  private supervisor
+- **Result collection**: `RuleResult` retains an explicit passed, skipped, or
+  failed outcome plus bounded output
 - **Filtering**: `filter_rules()`, `filter_preconditions()` by severity
 - **Pattern expansion**: Glob matching for script files (`tests/*.sh`)
-- **Reporting**: `Report` aggregates results, calculates failures
+- **Reporting**: `Report` aggregates results and calculates failures and skipped
+  counts independently
 
 ### process_runner.rs (Process Supervisor)
 - **Non-interactive isolation**: `/dev/null` stdin plus a new session/process
-  group
+  group for skip predicates, checks, ordinary fixes, rechecks, and patterns
 - **Interactive terminal relay**: Foreground `/dev/tty` validation, inner PTY,
   live bidirectional relay, resize propagation, and exact terminal restoration
 - **Deadlines**: Monotonic timeout, five-second TERM grace, bounded KILL/reap
@@ -275,8 +307,8 @@ and exercises the compiled binary without a public network.
 - **Domain types**: Public `Config`, `Rule`, and `Severity` compatibility types
 - **Strict projection**: Closed private raw types reject nulls, coercion, and malformed rule unions
 - **Custom serialization**: `Severity` maps to strings ("warn", "error", etc.)
-- **Validation**: String, exact repair union, rule-form, timeout-bound, and full
-  glob validation before execution
+- **Validation**: String, `skip-if`, exact repair union, rule-form,
+  timeout-bound, and full glob validation before execution
 - **Schema generation**: Deterministic Draft 7 output through Schemars
 - **CamelCase mapping**: Config fields use camelCase in YAML
 
@@ -299,6 +331,7 @@ main.rs
       → diagnose() / check_with_fixes() # Execute checks and requested repairs
         → run_preconditions()           # Filter & run
         → run rules                     # Filter & supervise
+          → skip-if                     # Skip or continue before initial check
         → expand_rule_files()           # Glob patterns, including pattern-only configs
         → process_runner                 # Headless pipes or interactive PTY
       → print_report_results() [cli.rs] # Print ✓/⚠/✗
@@ -345,6 +378,18 @@ run_install() [cli.rs]
   advisory locks, and bounded watchdogs to prove TERM-resistant leaders,
   children, and grandchildren terminate and the leader is reaped without a
   public network.
+
+### Conditional-rule test coverage
+
+- The compiled skip-predicate tests map to the closed, network-free
+  [skip-if fixture corpus](fixtures/skip-if/README.md).
+- Cases cover command-availability and environment gates, file and stdin
+  entrypoints, exit `0` versus arbitrary nonzero values, exact reporting and
+  summaries, shared working directory, a fresh timeout application, and
+  suppression of checks and both repair forms.
+- Operational spawn, timeout, and signal cases retain available output, stop
+  before the check and later commands, return exit `2`, and remain unmasked by
+  `--no-fail`.
 
 ### Interactive-repair test coverage
 
