@@ -791,7 +791,7 @@ fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Writ
 fn print_usage(stdout: &mut dyn Write) {
     let _ = writeln!(
         stdout,
-        "checksy - inspect and troubleshoot development environments"
+        "checksy - provision the current machine from trusted configuration"
     );
     let _ = writeln!(stdout);
     let _ = writeln!(stdout, "Usage:");
@@ -805,12 +805,16 @@ fn print_usage(stdout: &mut dyn Write) {
     let _ = writeln!(stdout, "  --stdin-config    read config from stdin");
     let _ = writeln!(stdout);
     let _ = writeln!(stdout, "Available Commands:");
-    let _ = writeln!(stdout, "  check      Run checks for config-defined rules");
+    let _ = writeln!(
+        stdout,
+        "  check      Run checks; add --fix to provision the machine"
+    );
     let _ = writeln!(
         stdout,
         "  diagnose   Run checks (deprecated, use 'check' instead)"
     );
     let _ = writeln!(stdout, "  install    Cache git-based remote configs");
+    let _ = writeln!(stdout, "  init       Create a starter configuration file");
     let _ = writeln!(
         stdout,
         "  schema     Print the JSON schema for configuration file"
@@ -1044,6 +1048,75 @@ fn rule_display_name(rule: &Rule) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn invoke(args: &[&str]) -> (i32, String, String) {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = run(
+            args.iter().map(|arg| (*arg).to_string()).collect(),
+            &mut stdout,
+            &mut stderr,
+        );
+        (
+            code,
+            String::from_utf8(stdout).unwrap(),
+            String::from_utf8(stderr).unwrap(),
+        )
+    }
+
+    #[test]
+    fn help_describes_the_provisioning_cli() {
+        let (code, stdout, stderr) = invoke(&["help"]);
+
+        assert_eq!(code, 0);
+        assert!(stderr.is_empty());
+        assert!(stdout.contains("provision the current machine"));
+        assert!(stdout.contains("--fix"));
+        for command in ["check", "diagnose", "install", "init", "schema", "version"] {
+            assert!(stdout.contains(command), "help omitted {command}");
+        }
+        assert!(!stdout.contains("apply"));
+    }
+
+    #[test]
+    fn stable_exit_classes_cover_usage_operations_and_compliance() {
+        let (code, _, _) = invoke(&[]);
+        assert_eq!(code, 1);
+
+        let (code, _, _) = invoke(&["unknown-command"]);
+        assert_eq!(code, 2);
+
+        let directory = tempfile::tempdir().unwrap();
+        let missing = directory.path().join("missing.yaml");
+        let missing = missing.to_string_lossy().into_owned();
+        let (code, _, _) = invoke(&["--config", &missing, "check"]);
+        assert_eq!(code, 2);
+        let (code, _, _) = invoke(&["--config", &missing, "check", "--no-fail"]);
+        assert_eq!(code, 2);
+
+        let passing = directory.path().join("passing.yaml");
+        std::fs::write(
+            &passing,
+            "rules:\n  - name: passing\n    check: 'true'\n    severity: error\n",
+        )
+        .unwrap();
+        let passing = passing.to_string_lossy().into_owned();
+        let (code, _, _) = invoke(&["--config", &passing, "check"]);
+        assert_eq!(code, 0);
+
+        let failing = directory.path().join("failing.yaml");
+        std::fs::write(
+            &failing,
+            "rules:\n  - name: failing\n    check: 'false'\n    severity: error\n",
+        )
+        .unwrap();
+        let failing = failing.to_string_lossy().into_owned();
+        let (code, _, _) = invoke(&["--config", &failing, "check"]);
+        assert_eq!(code, 3);
+
+        let (code, _, _) = invoke(&["--config", &failing, "check", "--no-fail"]);
+        assert_eq!(code, 0);
+    }
 
     #[test]
     fn test_parse_severity() {

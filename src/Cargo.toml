@@ -2,7 +2,7 @@
 name = "checksy"
 version = "0.5.2"
 edition = "2021"
-description = "Inspect and troubleshoot development environments"
+description = "Provision the current machine from trusted configuration"
 repository = "https://github.com/notwillk/checksy"
 license = "MIT"
 

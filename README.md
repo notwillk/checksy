@@ -1,6 +1,78 @@
 # checksy
 
-checksy is a Rust-based command line utility intended to run lightweight health checks against a development workspace.
+checksy provisions the current machine from a trusted YAML configuration. It
+runs checks, applies configured fixes when asked, and re-runs checks to confirm
+the result.
+
+Configuration may come from an explicit local file, an automatically discovered
+`.checksy.yaml` or `.checksy.yml`, or stdin. Fetching, updating, authenticating,
+and unpacking configuration are responsibilities of the surrounding shell or
+automation. Existing Git acquisition remains available temporarily for
+compatibility, but it is not part of the target architecture.
+
+## Provisioning contract
+
+`checksy check --fix` is Checksy's only provisioning lifecycle. Checksy does not
+provide a separate `apply` command, daemon, scheduler, enrollment service, or
+rollback engine.
+
+Checksy intentionally executes arbitrary Bash supplied by trusted configuration
+with the permissions of the invoking user. Commands are not sandboxed, fixes may
+partially mutate the machine before failing, and Checksy cannot transactionally
+undo those mutations. Checksy never invokes `sudo` automatically.
+
+The following interaction and locking rules are the normative P0 contract. They
+are documented before implementation; `interactive-fix`, `--non-interactive`,
+and the provisioning lock are not available at the current HEAD.
+
+### Interaction modes
+
+- Checks, pattern scripts, ordinary `fix` commands, final checks, and future
+  `skip-if` predicates are non-interactive and receive `/dev/null` as stdin.
+- Only the future `interactive-fix` command may use a terminal. It runs only
+  after its rule fails its check.
+- A missing terminal is relevant only when a failed rule needs its
+  `interactive-fix`. A passing rule never requires a terminal merely because it
+  defines one.
+- The future `--non-interactive` flag prohibits terminal use but still permits
+  ordinary fixes.
+- `--stdin-config` always implies non-interactive execution. A stdin-supplied
+  configuration never opens `/dev/tty` or receives a PTY.
+- When a needed interactive repair cannot run, the rule remains failed at its
+  configured severity and Checksy continues normal reporting.
+
+### Provisioning lock
+
+Every future `check --fix` invocation will take one nonblocking advisory lock
+for its effective user. The namespace is independent of the configuration path,
+working directory, stdin versus file input, includes, and legacy `cachePath`.
+
+| Platform and effective user | Lock file |
+| --- | --- |
+| Linux non-root | `<account-home>/.local/state/checksy/provision.lock` |
+| macOS non-root | `<account-home>/Library/Application Support/checksy/provision.lock` |
+| Linux root | `/var/lib/checksy/provision.lock` |
+| macOS root | `/Library/Application Support/checksy/provision.lock` |
+
+The account home is resolved from the operating-system account database, not
+from `$HOME` or XDG environment variables. File-backed, auto-discovered, and
+stdin provisioning under the same effective UID therefore contend on the same
+lock; root and non-root users intentionally use separate namespaces. Check-only
+runs remain lock-free. Lock contents are never interpreted, and descriptor
+lifetime—not PID text or file removal—determines ownership.
+
+### Exit status
+
+| Exit | Meaning |
+| ---: | --- |
+| `0` | Successful run, or a compliance failure masked by `--no-fail` |
+| `1` | Existing no-command usage fallback |
+| `2` | Invalid invocation/configuration or an operational failure |
+| `3` | Unmasked rule-compliance failure |
+| `4` | Provisioning lock contention; reserved until locking is implemented |
+
+`--no-fail` masks only rule-compliance exit `3`. It never masks an operational
+failure or lock contention.
 
 ## Installation
 
@@ -33,7 +105,8 @@ src/
 
 `just build`
 
-The resulting binary can be copied anywhere on your `PATH` if desired. Running `go` commands from the `src/` directory keeps import paths consistent with the module definition.
+The resulting binary can be copied anywhere on your `PATH` if desired. Cargo
+commands run from `src/`; the root `justfile` provides the common project tasks.
 
 ### Cross-compiling
 
@@ -60,14 +133,19 @@ checksy --config=path/to/.checksy.yaml check --fix
 checksy schema > dist/config.schema.json
 
 # Only execute warn+ rules but fail only on errors
-checksy check --check-severity=warn --fail-severity=error
+checksy check --check-severity warn --fail-severity error
 ```
 
-The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command reflects over the configuration struct and outputs a machine-readable JSON Schema definition that downstream tooling can validate against.
+The `check` command executes each configured rule, printing ✅/⚠️/❌ for every check, forwarding any failing command output to stderr, and returning a non-zero exit code when something breaks. Passing `--fix` attempts to run each rule's optional `fix` script to resolve issues before re-running the check. The `schema` command outputs the current machine-readable JSON Schema; generating that schema from strict runtime types is a separate P0 milestone.
 
-Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. When omitted, checks default to running for warn+ rules and the command only fails for error-level rules. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but no longer abort the run.
+Use `--check-severity/--cs` to decide which rules run and `--fail-severity/--fs` to decide which severities cause the command to exit non-zero. When omitted, checks currently run at every severity and the command only fails for error-level rules. Failing checks below the fail severity threshold still surface with a ⚠️ indicator but do not make the run fail.
 
-### Git-based Remote Configs
+### Legacy Git-based remote configs
+
+The following built-in acquisition behavior is retained for compatibility. New
+automation should acquire and authenticate configuration outside Checksy, then
+pass a local file or self-contained stdin document. Runtime deprecation belongs
+to the later Git-compatibility milestone and is not introduced here.
 
 Remote configs can reference git repositories using the format:
 ```
@@ -114,7 +192,13 @@ rules:
 
 ## Configuration
 
-`checksy --config=path/to/workspace.yaml check` loads the provided YAML, validates it against the same JSON Schema emitted by the `schema` command, and aborts if validation fails. When the flag is omitted, the command automatically looks for `.checksy.yaml` or `.checksy.yml` in the current working directory so repositories can keep a shared default. Every rule's command executes relative to the directory containing the resolved config file, so you can point the CLI at any workspace path while keeping rule definitions portable.
+`checksy --config=path/to/workspace.yaml check` loads the provided YAML and
+aborts if it cannot be deserialized. Strict runtime/schema parity is the next P0
+configuration milestone. When the flag is omitted, the command automatically
+looks for `.checksy.yaml` or `.checksy.yml` in the current working directory.
+Commands currently execute relative to the selected root configuration's
+directory; preserving the defining directory of every nested local include is
+a separate origin-correctness milestone.
 
 ### Inline rules, preconditions, and patterns
 

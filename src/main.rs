@@ -24,6 +24,10 @@ mod tests {
         let mut stderr = vec![];
         let code = run(vec!["help".to_string()], &mut stdout, &mut stderr);
         assert_eq!(code, 0);
-        assert!(!stdout.is_empty());
+        assert!(stderr.is_empty());
+        let stdout = String::from_utf8(stdout).unwrap();
+        assert!(stdout.contains("provision the current machine"));
+        assert!(stdout.contains("check"));
+        assert!(!stdout.contains("apply"));
     }
 }

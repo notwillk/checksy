@@ -60,7 +60,7 @@ the current machine by running checks, applicable fixes, and final checks.
 
 ### Lock the product and CLI contract
 
-- [ ] Document the product boundary in README and architecture documentation.
+- [x] Document the product boundary in README and architecture documentation.
   - State that source acquisition and authentication happen outside Checksy.
   - Keep `check --fix` as the only provisioning lifecycle.
   - Document that commands are trusted arbitrary code and machine mutations

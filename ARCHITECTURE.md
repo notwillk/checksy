@@ -1,10 +1,98 @@
 # checksy Architecture
 
 ## System Overview
-checksy is a layered CLI application with clear separation between command handling, configuration management, and execution. The architecture prioritizes:
-- **Determinism**: Configs loaded and expanded before execution begins
-- **Isolation**: Shell commands run in config file's directory, not CWD
-- **Composability**: Remote configs allow modular, reusable check libraries
+
+checksy is a CLI provisioner: it takes a trusted configuration for the current
+machine, runs checks, optionally applies fixes, and re-runs checks to confirm the
+result. `check --fix` is the sole provisioning lifecycle. The target
+architecture has no `apply` command, daemon, scheduler manager, enrollment
+system, source-provider framework, status database, generation store, trust
+database, or rollback engine.
+
+Configuration enters through a local file, automatic local discovery, or
+stdin. Acquisition, updates, authentication, and unpacking compose outside
+Checksy. The current built-in Git cache and `install` command are legacy
+compatibility surfaces pending a separate deprecation milestone; they are not a
+foundation for new architecture.
+
+## Security and mutation boundary
+
+Configured checks and fixes are trusted arbitrary Bash executed with the
+invoking user's authority. They are not sandboxed. Checksy does not invoke
+`sudo`, cannot transactionally roll back shell mutations, and may leave partial
+machine changes when a fix fails. Correct and idempotent fixes remain the
+configuration author's responsibility.
+
+## Normative P0 execution contract
+
+This section defines target behavior before implementation. At the current
+HEAD, `interactive-fix`, `--non-interactive`, hardened process supervision, and
+the provisioning lock do not yet exist.
+
+### Interaction modes
+
+- Checks, pattern scripts, ordinary fixes, final checks, and future `skip-if`
+  predicates are non-interactive and receive `/dev/null` as stdin.
+- `interactive-fix` is the only terminal-capable command. It is considered only
+  after its check fails; a passing rule never requires a terminal.
+- `--non-interactive` prohibits terminal use without disabling ordinary fixes.
+- `--stdin-config` implies non-interactive operation and never opens
+  `/dev/tty`, allocates a PTY, or otherwise attaches a terminal.
+- If a failed rule needs an interactive fix but terminal use is unavailable or
+  prohibited, the fix is not run. The rule remains failed at its configured
+  severity and reporting continues normally.
+
+### Provisioning-lock identity
+
+The lock namespace is `checksy-provision`, keyed only by effective UID. It is
+not keyed by configuration, source, working directory, include graph, or
+legacy `cachePath`.
+
+| Platform and effective user | Lock file |
+| --- | --- |
+| Linux non-root | `<account-home>/.local/state/checksy/provision.lock` |
+| macOS non-root | `<account-home>/Library/Application Support/checksy/provision.lock` |
+| Linux root | `/var/lib/checksy/provision.lock` |
+| macOS root | `/Library/Application Support/checksy/provision.lock` |
+
+Non-root account homes come from the operating-system account database rather
+than environment variables. All file-backed, auto-discovered, and stdin
+`check --fix` runs for the same effective UID contend. Root and non-root users
+intentionally have separate namespaces; this is not a cross-UID machine-global
+lock.
+
+Lock acquisition is nonblocking and occurs after invocation and configuration
+validation but before any configured command starts. The descriptor is held
+through initial checks, fixes, final checks, and reporting. Check-only runs do
+not lock. The future implementation will use a private owner-only directory and
+file, reject link/type/ownership/mode substitution, never interpret lock-file
+contents, and rely on descriptor close or process death for release.
+
+### Stable exit classes
+
+| Exit | Meaning |
+| ---: | --- |
+| `0` | Success, including a compliance failure explicitly masked by `--no-fail` |
+| `1` | Existing no-command usage fallback only |
+| `2` | Invalid arguments/configuration or operational failure |
+| `3` | Unmasked rule-compliance failure |
+| `4` | Provisioning lock contention; reserved until the lock is implemented |
+
+`--no-fail` affects only exit `3`. It does not convert argument, configuration,
+process, state, platform, or contention failures to success. Process spawn,
+timeout, and signal failures will become operational exit `2` when the hardened
+runner is implemented; current runner behavior is not yet fully classified.
+
+## Architectural priorities
+
+- **Determinism**: Load and validate the complete configuration before any
+  configured command executes.
+- **Explicit authority**: Run trusted commands only as the invoking user; never
+  escalate automatically.
+- **Shell composability**: Let external tools acquire and authenticate input,
+  then use local files or stdin as the boundary.
+- **Local composition**: Preserve file includes without turning them into a
+  source-management subsystem.
 
 ## Component Responsibilities
 
@@ -108,7 +196,7 @@ run_install() [cli.rs]
 ### File System Interactions
 - **Config discovery**: Looks for `.checksy.yaml`, `.checksy.yml` in CWD
 - **Cache directory**: Creates `<cache-path>/git/` structure
-- **Work directory**: All shell commands run in config file's directory
+- **Work directory**: Commands currently run in the selected root config's directory; nested defining origins are a pending correction
 - **Glob expansion**: Expands patterns relative to config directory
 
 ## Entry Points
@@ -168,11 +256,12 @@ main.rs
 - Allows severity filtering without re-parsing
 - Simplifies circular reference detection
 
-### Why Separate Install Command?
-- Explicit network operations (user consent)
-- Avoids implicit network calls during check
-- Allows offline operation after install
-- Enables pruning of unused cache
+### Why Is the Install Command Still Present?
+- It preserves compatibility with existing Git-based configurations.
+- `check --fix` can currently clone a missing Git remote, so checks are not yet
+  guaranteed network-free.
+- The P1 Git-deprecation slice will define the warning window and eventual
+  removal while new workflows use external acquisition.
 
 ### Why Shallow Clones (--depth 1)?
 - Minimizes disk usage for cached repos
