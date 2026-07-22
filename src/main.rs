@@ -7,7 +7,11 @@ fn run(args: Vec<String>, stdout: &mut dyn io::Write, stderr: &mut dyn io::Write
 fn main() {
     let mut stdout = io::stdout();
     let mut stderr = io::stderr();
-    std::process::exit(run(std::env::args().skip(1).collect(), &mut stdout, &mut stderr));
+    std::process::exit(run(
+        std::env::args().skip(1).collect(),
+        &mut stdout,
+        &mut stderr,
+    ));
 }
 
 #[cfg(test)]
