@@ -1,9 +1,88 @@
 use crate::cache::{CacheManager, GitRemote};
-use crate::schema::{Config, Severity};
+use crate::schema::{Config, Rule, Severity};
 use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DefinitionOrigin {
+    pub(crate) config_path: PathBuf,
+    pub(crate) base_dir: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ResolvedRule {
+    pub(crate) rule: Rule,
+    pub(crate) origin: DefinitionOrigin,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ResolvedPatternGroup {
+    pub(crate) patterns: Vec<String>,
+    pub(crate) origin: DefinitionOrigin,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ResolvedDefinition {
+    pub(crate) root_origin: DefinitionOrigin,
+    pub(crate) cache_path: Option<String>,
+    pub(crate) check_severity: Option<Severity>,
+    pub(crate) fail_severity: Option<Severity>,
+    pub(crate) preconditions: Vec<ResolvedRule>,
+    pub(crate) rules: Vec<ResolvedRule>,
+    pub(crate) pattern_groups: Vec<ResolvedPatternGroup>,
+}
+
+impl ResolvedDefinition {
+    fn into_config(self) -> Config {
+        let root_patterns = self
+            .pattern_groups
+            .into_iter()
+            .find(|group| group.origin == self.root_origin)
+            .map(|group| group.patterns)
+            .unwrap_or_default();
+        Config {
+            cache_path: self.cache_path,
+            check_severity: self.check_severity,
+            fail_severity: self.fail_severity,
+            preconditions: self
+                .preconditions
+                .into_iter()
+                .map(|resolved| resolved.rule)
+                .collect(),
+            rules: self
+                .rules
+                .into_iter()
+                .map(|resolved| resolved.rule)
+                .collect(),
+            patterns: root_patterns,
+        }
+    }
+}
+
+struct ResolvedFragment {
+    cache_path: Option<String>,
+    check_severity: Option<Severity>,
+    fail_severity: Option<Severity>,
+    preconditions: Vec<ResolvedRule>,
+    rules: Vec<ResolvedRule>,
+    origin: DefinitionOrigin,
+}
+
+#[derive(Default)]
+struct ResolutionState {
+    active: Vec<PathBuf>,
+    completed: HashSet<PathBuf>,
+    pattern_groups: Vec<ResolvedPatternGroup>,
+    display_root: Option<PathBuf>,
+}
+
+#[derive(Clone, Copy)]
+enum ResolutionMode {
+    CanonicalOrigins,
+    LegacyPublicPaths,
+}
 
 pub fn resolve_path(explicit: &str) -> Result<Option<String>, String> {
     if explicit == "-" {
@@ -35,7 +114,40 @@ pub fn resolve_path(explicit: &str) -> Result<Option<String>, String> {
 }
 
 pub fn load(path: &str) -> Result<Config, String> {
-    load_with_context(path, None, &mut HashSet::new())
+    load_resolved_with_mode(path, ResolutionMode::LegacyPublicPaths)
+        .map(ResolvedDefinition::into_config)
+}
+
+pub(crate) fn load_resolved(path: &str) -> Result<ResolvedDefinition, String> {
+    load_resolved_with_mode(path, ResolutionMode::CanonicalOrigins)
+}
+
+fn load_resolved_with_mode(path: &str, mode: ResolutionMode) -> Result<ResolvedDefinition, String> {
+    if path == "-" {
+        let mut stdin = std::io::stdin();
+        let mut buffer = String::new();
+        stdin
+            .read_to_string(&mut buffer)
+            .map_err(|error| format!("read stdin: {error}"))?;
+        let base_dir = std::env::current_dir()
+            .and_then(|path| path.canonicalize())
+            .map_err(|error| format!("resolve current directory: {error}"))?;
+        return resolve_stdin(&buffer, base_dir);
+    }
+
+    let mut state = ResolutionState::default();
+    let fragment = resolve_file(Path::new(path), None, mode, &mut state)?
+        .expect("the root definition cannot already be completed");
+
+    Ok(ResolvedDefinition {
+        root_origin: fragment.origin,
+        cache_path: fragment.cache_path,
+        check_severity: fragment.check_severity,
+        fail_severity: fragment.fail_severity,
+        preconditions: fragment.preconditions,
+        rules: fragment.rules,
+        pattern_groups: state.pattern_groups,
+    })
 }
 
 pub(crate) fn decode_config(data: &str) -> Result<Config, String> {
@@ -48,50 +160,13 @@ pub(crate) fn decode_config(data: &str) -> Result<Config, String> {
     serde_yaml::from_str(data).map_err(|error| format!("decode config: {}", error))
 }
 
-fn load_with_context(
-    path: &str,
-    parent_defaults: Option<(Option<Severity>, Option<Severity>)>,
-    visited: &mut HashSet<PathBuf>,
-) -> Result<Config, String> {
-    // For non-stdin paths, check if already visited BEFORE loading
-    // to prevent circular references
-    if path != "-" {
-        let config_path = Path::new(path);
-        if let Ok(canonical) = config_path.canonicalize() {
-            if visited.contains(&canonical) {
-                // Already visited this config (circular reference)
-                // Return empty config with inherited defaults
-                return Ok(Config {
-                    cache_path: None,
-                    check_severity: parent_defaults.and_then(|(s, _)| s),
-                    fail_severity: parent_defaults.and_then(|(_, s)| s),
-                    preconditions: vec![],
-                    rules: vec![],
-                    patterns: vec![],
-                });
-            }
-        }
-    }
-
-    let data = if path == "-" {
-        let mut stdin = std::io::stdin();
-        let mut buffer = String::new();
-        stdin
-            .read_to_string(&mut buffer)
-            .map_err(|e| format!("read stdin: {}", e))?;
-        buffer
-    } else {
-        fs::read_to_string(path).map_err(|e| format!("read config: {}", e))?
-    };
-
-    let mut cfg = decode_config(&data)?;
-
-    if path == "-"
-        && cfg
-            .preconditions
-            .iter()
-            .chain(cfg.rules.iter())
-            .any(|rule| rule.is_remote())
+fn resolve_stdin(data: &str, base_dir: PathBuf) -> Result<ResolvedDefinition, String> {
+    let mut config = decode_config(data)?;
+    if config
+        .preconditions
+        .iter()
+        .chain(config.rules.iter())
+        .any(Rule::is_remote)
     {
         return Err(
             "stdin configuration must be self-contained; `remote` includes are not supported"
@@ -99,109 +174,197 @@ fn load_with_context(
         );
     }
 
-    // Apply inherited defaults if parent provided them
-    if let Some((check_sev, fail_sev)) = parent_defaults {
-        if cfg.check_severity.is_none() {
-            cfg.check_severity = check_sev;
-        }
-        if cfg.fail_severity.is_none() {
-            cfg.fail_severity = fail_sev;
-        }
-    }
+    apply_rule_defaults(&mut config);
+    let origin = DefinitionOrigin {
+        config_path: PathBuf::from("<stdin>"),
+        base_dir,
+    };
+    let preconditions = config
+        .preconditions
+        .into_iter()
+        .map(|rule| ResolvedRule {
+            rule,
+            origin: origin.clone(),
+        })
+        .collect();
+    let rules = config
+        .rules
+        .into_iter()
+        .map(|rule| ResolvedRule {
+            rule,
+            origin: origin.clone(),
+        })
+        .collect();
+    let pattern_groups = (!config.patterns.is_empty())
+        .then(|| ResolvedPatternGroup {
+            patterns: config.patterns,
+            origin: origin.clone(),
+        })
+        .into_iter()
+        .collect();
 
-    apply_rule_defaults(&mut cfg);
-
-    // Expand remote configs if this is not stdin
-    if path != "-" {
-        let config_path = Path::new(path);
-        let config_dir = config_path
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."));
-
-        // Mark this config as visited before expanding remotes
-        if let Ok(canonical) = config_path.canonicalize() {
-            visited.insert(canonical);
-        }
-
-        expand_remotes(&mut cfg, &config_dir, visited)?;
-    }
-
-    Ok(cfg)
+    Ok(ResolvedDefinition {
+        root_origin: origin,
+        cache_path: config.cache_path,
+        check_severity: config.check_severity,
+        fail_severity: config.fail_severity,
+        preconditions,
+        rules,
+        pattern_groups,
+    })
 }
 
-fn expand_remotes(
-    cfg: &mut Config,
+fn resolve_file(
+    path: &Path,
+    parent_defaults: Option<(Option<Severity>, Option<Severity>)>,
+    mode: ResolutionMode,
+    state: &mut ResolutionState,
+) -> Result<Option<ResolvedFragment>, String> {
+    let canonical = path
+        .canonicalize()
+        .map_err(|error| format!("read config: {error}"))?;
+    if state.display_root.is_none() {
+        state.display_root = canonical.parent().map(Path::to_path_buf);
+    }
+
+    if let Some(cycle_start) = state.active.iter().position(|active| active == &canonical) {
+        let display_chain = state.active[cycle_start..]
+            .iter()
+            .chain(std::iter::once(&canonical))
+            .map(|path| state.display_path(path))
+            .collect::<Vec<_>>()
+            .join(" -> ");
+        return Err(format!("local include cycle detected: {display_chain}"));
+    }
+
+    if state.completed.contains(&canonical) {
+        return Ok(None);
+    }
+
+    let data = fs::read_to_string(&canonical).map_err(|error| format!("read config: {error}"))?;
+    let mut config = decode_config(&data)?;
+
+    if let Some((check_sev, fail_sev)) = parent_defaults {
+        if config.check_severity.is_none() {
+            config.check_severity = check_sev;
+        }
+        if config.fail_severity.is_none() {
+            config.fail_severity = fail_sev;
+        }
+    }
+
+    apply_rule_defaults(&mut config);
+    let base_dir = match mode {
+        ResolutionMode::CanonicalOrigins => canonical
+            .parent()
+            .expect("a canonical file path has a parent")
+            .to_path_buf(),
+        ResolutionMode::LegacyPublicPaths => path
+            .parent()
+            .expect("a configuration path has a parent")
+            .to_path_buf(),
+    };
+    let origin = DefinitionOrigin {
+        config_path: canonical.clone(),
+        base_dir: base_dir.clone(),
+    };
+    if !config.patterns.is_empty() {
+        state.pattern_groups.push(ResolvedPatternGroup {
+            patterns: std::mem::take(&mut config.patterns),
+            origin: origin.clone(),
+        });
+    }
+
+    state.active.push(canonical.clone());
+    let result = (|| {
+        let parent_defaults = (config.check_severity, config.fail_severity);
+        let preconditions = resolve_rule_list(
+            config.preconditions,
+            &base_dir,
+            config.cache_path.as_deref(),
+            parent_defaults,
+            &origin,
+            mode,
+            state,
+        )?;
+        let rules = resolve_rule_list(
+            config.rules,
+            &base_dir,
+            config.cache_path.as_deref(),
+            parent_defaults,
+            &origin,
+            mode,
+            state,
+        )?;
+
+        Ok(ResolvedFragment {
+            cache_path: config.cache_path,
+            check_severity: config.check_severity,
+            fail_severity: config.fail_severity,
+            preconditions,
+            rules,
+            origin,
+        })
+    })();
+    let popped = state.active.pop();
+    debug_assert_eq!(popped.as_ref(), Some(&canonical));
+    if result.is_ok() {
+        state.completed.insert(canonical);
+    }
+
+    result.map(Some)
+}
+
+fn resolve_rule_list(
+    rules: Vec<Rule>,
     config_dir: &Path,
-    visited: &mut HashSet<PathBuf>,
-) -> Result<(), String> {
-    // Expand preconditions first
-    let mut expanded_preconditions = Vec::new();
-    for rule in cfg.preconditions.drain(..) {
-        if rule.is_remote() {
-            // Validate that remote rule has no other properties
-            if let Some(error) = rule.validate_remote_only() {
-                return Err(format!(
-                    "invalid remote rule (remote: {:?}): {}",
-                    rule.remote, error
-                ));
-            }
-
-            let remote_path = rule.remote.as_ref().unwrap();
-            let resolved = resolve_remote_path(config_dir, cfg.cache_path.as_deref(), remote_path)?;
-
-            // Load and expand the remote config
-            // (load_with_context will handle circular reference detection)
-            let parent_defaults = (cfg.check_severity, cfg.fail_severity);
-            let remote_cfg = load_with_context(
-                resolved.to_string_lossy().as_ref(),
-                Some(parent_defaults),
-                visited,
-            )?;
-
-            // Add all remote rules to expanded preconditions
-            expanded_preconditions.extend(remote_cfg.preconditions);
-            expanded_preconditions.extend(remote_cfg.rules);
-        } else {
-            expanded_preconditions.push(rule);
+    cache_path: Option<&str>,
+    parent_defaults: (Option<Severity>, Option<Severity>),
+    origin: &DefinitionOrigin,
+    mode: ResolutionMode,
+    state: &mut ResolutionState,
+) -> Result<Vec<ResolvedRule>, String> {
+    let mut resolved_rules = Vec::new();
+    for rule in rules {
+        if !rule.is_remote() {
+            resolved_rules.push(ResolvedRule {
+                rule,
+                origin: origin.clone(),
+            });
+            continue;
         }
-    }
-    cfg.preconditions = expanded_preconditions;
 
-    // Expand main rules
-    let mut expanded_rules = Vec::new();
-    for rule in cfg.rules.drain(..) {
-        if rule.is_remote() {
-            // Validate that remote rule has no other properties
-            if let Some(error) = rule.validate_remote_only() {
-                return Err(format!(
-                    "invalid remote rule (remote: {:?}): {}",
-                    rule.remote, error
-                ));
-            }
-
-            let remote_path = rule.remote.as_ref().unwrap();
-            let resolved = resolve_remote_path(config_dir, cfg.cache_path.as_deref(), remote_path)?;
-
-            // Load and expand the remote config
-            // (load_with_context will handle circular reference detection)
-            let parent_defaults = (cfg.check_severity, cfg.fail_severity);
-            let remote_cfg = load_with_context(
-                resolved.to_string_lossy().as_ref(),
-                Some(parent_defaults),
-                visited,
-            )?;
-
-            // Add all remote rules to expanded rules
-            expanded_rules.extend(remote_cfg.preconditions);
-            expanded_rules.extend(remote_cfg.rules);
-        } else {
-            expanded_rules.push(rule);
+        if let Some(error) = rule.validate_remote_only() {
+            return Err(format!(
+                "invalid remote rule (remote: {:?}): {}",
+                rule.remote, error
+            ));
         }
-    }
-    cfg.rules = expanded_rules;
+        let remote_path = rule
+            .remote
+            .as_deref()
+            .expect("an include rule has a remote path");
+        let resolved_path = resolve_remote_path(config_dir, cache_path, remote_path)?;
+        let Some(child) = resolve_file(&resolved_path, Some(parent_defaults), mode, state)? else {
+            continue;
+        };
 
-    Ok(())
+        resolved_rules.extend(child.preconditions);
+        resolved_rules.extend(child.rules);
+    }
+    Ok(resolved_rules)
+}
+
+impl ResolutionState {
+    fn display_path(&self, path: &Path) -> String {
+        let display = self
+            .display_root
+            .as_deref()
+            .and_then(|root| path.strip_prefix(root).ok())
+            .filter(|relative| !relative.as_os_str().is_empty())
+            .unwrap_or(path);
+        display.to_string_lossy().replace('\\', "/")
+    }
 }
 
 /// Parse a remote string to detect git-based resource locators
@@ -480,31 +643,76 @@ mod tests {
     }
 
     #[test]
-    fn test_circular_reference_handled() {
+    fn test_circular_reference_reports_the_active_chain() {
         let dir = TempDir::new().unwrap();
 
-        // Create config A that references B
         let path_a = dir.path().join("a.yaml");
-        fs::write(
-            &path_a,
-            "rules:\n  - name: rule_a\n    check: echo A\n  - remote: b.yaml\n",
-        )
-        .unwrap();
-
-        // Create config B that references A (circular)
+        fs::write(&path_a, "rules:\n  - remote: b.yaml\n").unwrap();
         let path_b = dir.path().join("b.yaml");
+        fs::write(&path_b, "rules:\n  - remote: c.yaml\n").unwrap();
+        let path_c = dir.path().join("c.yaml");
+        fs::write(&path_c, "rules:\n  - remote: a.yaml\n").unwrap();
+
+        let error = load(path_a.to_str().unwrap()).unwrap_err();
+        assert_eq!(
+            error,
+            "local include cycle detected: a.yaml -> b.yaml -> c.yaml -> a.yaml"
+        );
+    }
+
+    #[test]
+    fn circular_reference_chain_disambiguates_repeated_basenames() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir(dir.path().join("child")).unwrap();
+
+        let root = dir.path().join("config.yaml");
+        fs::write(&root, "rules:\n  - remote: child/config.yaml\n").unwrap();
         fs::write(
-            &path_b,
-            "rules:\n  - name: rule_b\n    check: echo B\n  - remote: a.yaml\n",
+            dir.path().join("child/config.yaml"),
+            "rules:\n  - remote: ../config.yaml\n",
         )
         .unwrap();
 
-        let result = load(path_a.to_str().unwrap());
-        assert!(result.is_ok(), "Failed with circular: {:?}", result.err());
+        let error = load(root.to_str().unwrap()).unwrap_err();
+        assert_eq!(
+            error,
+            "local include cycle detected: config.yaml -> child/config.yaml -> config.yaml"
+        );
+    }
 
-        let cfg = result.unwrap();
-        // Should have rule_a, rule_b (A's rule + B's rule, but not duplicate from circular)
-        assert_eq!(cfg.rules.len(), 2);
+    #[cfg(unix)]
+    #[test]
+    fn public_load_preserves_legacy_symlink_relative_include_behavior() {
+        use std::os::unix::fs::symlink;
+
+        let dir = TempDir::new().unwrap();
+        let target = dir.path().join("target");
+        let alias = dir.path().join("alias");
+        fs::create_dir(&target).unwrap();
+        fs::create_dir(&alias).unwrap();
+        fs::write(target.join("root.yaml"), "rules:\n  - remote: child.yaml\n").unwrap();
+        fs::write(
+            target.join("child.yaml"),
+            "rules:\n  - name: target child\n    check: 'true'\n",
+        )
+        .unwrap();
+        fs::write(
+            alias.join("child.yaml"),
+            "rules:\n  - name: alias child\n    check: 'true'\n",
+        )
+        .unwrap();
+        let alias_root = alias.join("root.yaml");
+        symlink(target.join("root.yaml"), &alias_root).unwrap();
+
+        let public = load(alias_root.to_str().unwrap()).unwrap();
+        assert_eq!(public.rules[0].name.as_deref(), Some("alias child"));
+
+        let resolved = load_resolved(alias_root.to_str().unwrap()).unwrap();
+        assert_eq!(resolved.rules[0].rule.name.as_deref(), Some("target child"));
+        assert_eq!(
+            resolved.rules[0].origin.base_dir,
+            target.canonicalize().unwrap()
+        );
     }
 
     #[test]
@@ -532,6 +740,211 @@ mod tests {
 
         let cfg = result.unwrap();
         assert_eq!(cfg.rules[0].severity, Some(Severity::Warning));
+    }
+
+    #[test]
+    fn resolved_definitions_preserve_origins_order_defaults_and_pattern_groups() {
+        let dir = TempDir::new().unwrap();
+        let nested = dir.path().join("nested");
+        let deeper = nested.join("deeper");
+        fs::create_dir_all(&deeper).unwrap();
+
+        fs::write(
+            deeper.join("c.yaml"),
+            "\
+checkSeverity: info
+patterns:
+  - c/*.sh
+preconditions:
+  - name: c-pre
+    check: echo c-pre
+rules:
+  - name: c-rule
+    check: echo c-rule
+",
+        )
+        .unwrap();
+        fs::write(
+            nested.join("a.yaml"),
+            "\
+patterns:
+  - a/*.sh
+preconditions:
+  - name: a-pre
+    check: echo a-pre
+  - remote: deeper/c.yaml
+rules:
+  - name: a-rule
+    check: echo a-rule
+",
+        )
+        .unwrap();
+        fs::write(
+            nested.join("b.yaml"),
+            "\
+patterns:
+  - b/*.sh
+preconditions:
+  - name: b-pre
+    check: echo b-pre
+rules:
+  - name: b-rule
+    check: echo b-rule
+    severity: debug
+",
+        )
+        .unwrap();
+        let root = dir.path().join("main.yaml");
+        fs::write(
+            &root,
+            "\
+checkSeverity: warn
+patterns:
+  - root/*.sh
+preconditions:
+  - name: root-pre
+    check: echo root-pre
+  - remote: nested/a.yaml
+rules:
+  - name: root-rule
+    check: echo root-rule
+  - remote: nested/b.yaml
+",
+        )
+        .unwrap();
+
+        let resolved = load_resolved(root.to_str().unwrap()).unwrap();
+
+        assert_eq!(
+            resolved.root_origin.config_path,
+            root.canonicalize().unwrap()
+        );
+        assert_eq!(
+            resolved.root_origin.base_dir,
+            dir.path().canonicalize().unwrap()
+        );
+        assert_eq!(
+            resolved
+                .preconditions
+                .iter()
+                .map(|resolved| resolved.rule.name.as_deref().unwrap())
+                .collect::<Vec<_>>(),
+            ["root-pre", "a-pre", "c-pre", "c-rule", "a-rule"]
+        );
+        assert_eq!(
+            resolved
+                .rules
+                .iter()
+                .map(|resolved| resolved.rule.name.as_deref().unwrap())
+                .collect::<Vec<_>>(),
+            ["root-rule", "b-pre", "b-rule"]
+        );
+        assert_eq!(
+            resolved
+                .pattern_groups
+                .iter()
+                .map(|group| group.patterns[0].as_str())
+                .collect::<Vec<_>>(),
+            ["root/*.sh", "a/*.sh", "c/*.sh", "b/*.sh"]
+        );
+
+        let canonical_nested = nested.canonicalize().unwrap();
+        let canonical_deeper = deeper.canonicalize().unwrap();
+        assert_eq!(resolved.preconditions[0].origin.base_dir, dir.path());
+        assert_eq!(resolved.preconditions[1].origin.base_dir, canonical_nested);
+        assert_eq!(resolved.preconditions[2].origin.base_dir, canonical_deeper);
+        assert_eq!(
+            resolved
+                .preconditions
+                .iter()
+                .map(|resolved| resolved.rule.severity.unwrap())
+                .collect::<Vec<_>>(),
+            [
+                Severity::Warning,
+                Severity::Warning,
+                Severity::Info,
+                Severity::Info,
+                Severity::Warning,
+            ]
+        );
+        assert_eq!(resolved.rules[2].rule.severity, Some(Severity::Debug));
+
+        let flattened = load(root.to_str().unwrap()).unwrap();
+        assert_eq!(flattened.patterns, ["root/*.sh"]);
+    }
+
+    #[test]
+    fn completed_includes_are_deduplicated_after_depth_first_resolution() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("leaf.yaml"),
+            "patterns: [leaf/*.sh]\nrules:\n  - name: leaf\n    check: echo leaf\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("child.yaml"),
+            "\
+patterns: [child/*.sh]
+rules:
+  - name: child
+    check: echo child
+  - remote: leaf.yaml
+",
+        )
+        .unwrap();
+        let root = dir.path().join("root.yaml");
+        fs::write(
+            &root,
+            "\
+patterns: [root/*.sh]
+rules:
+  - remote: child.yaml
+  - remote: leaf.yaml
+  - remote: child.yaml
+",
+        )
+        .unwrap();
+
+        let resolved = load_resolved(root.to_str().unwrap()).unwrap();
+        assert_eq!(
+            resolved
+                .rules
+                .iter()
+                .map(|resolved| resolved.rule.name.as_deref().unwrap())
+                .collect::<Vec<_>>(),
+            ["child", "leaf"]
+        );
+        assert_eq!(
+            resolved
+                .pattern_groups
+                .iter()
+                .map(|group| group.patterns[0].as_str())
+                .collect::<Vec<_>>(),
+            ["root/*.sh", "child/*.sh", "leaf/*.sh"]
+        );
+    }
+
+    #[test]
+    fn stdin_resolution_is_self_contained_and_uses_the_callers_directory() {
+        let dir = TempDir::new().unwrap();
+        let base_dir = dir.path().canonicalize().unwrap();
+        let resolved = resolve_stdin(
+            "patterns: [scripts/*.sh]\nrules:\n  - check: pwd\n",
+            base_dir.clone(),
+        )
+        .unwrap();
+
+        assert_eq!(resolved.root_origin.config_path, Path::new("<stdin>"));
+        assert_eq!(resolved.root_origin.base_dir, base_dir);
+        assert_eq!(resolved.rules[0].origin, resolved.root_origin);
+        assert_eq!(resolved.pattern_groups[0].origin, resolved.root_origin);
+
+        let error = resolve_stdin("rules:\n  - remote: child.yaml\n", dir.path().to_path_buf())
+            .unwrap_err();
+        assert_eq!(
+            error,
+            "stdin configuration must be self-contained; `remote` includes are not supported"
+        );
     }
 
     #[test]

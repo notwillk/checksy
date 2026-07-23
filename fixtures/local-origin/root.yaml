@@ -1,0 +1,13 @@
+rules:
+  - name: root inline origin
+    check: |
+      set -eu
+      test "$(cat ./Brewfile)" = "root-brewfile"
+      test "$(cat ./template.txt)" = "root-template"
+      printf 'root-check\n' >> "$CHECKSY_LOCAL_ORIGIN_TRACE"
+  - remote: child/child.yaml
+
+patterns:
+  - patterns/*.sh
+  - "!patterns/excluded.sh"
+  - "!patterns/child.sh"

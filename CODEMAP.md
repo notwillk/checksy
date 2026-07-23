@@ -10,7 +10,7 @@
 │   ├── lib.rs              # Library exports
 │   ├── main.rs             # Binary entry point
 │   ├── cli.rs              # ~950 lines: Command parsing & orchestration
-│   ├── config.rs           # Strict loading & remote expansion
+│   ├── config.rs           # Strict loading, include expansion, and origins
 │   ├── cache.rs            # ~270 lines: Cache directory management
 │   ├── git.rs              # ~120 lines: Git shallow clone operations
 │   ├── check.rs            # ~450 lines: Rule execution & reporting
@@ -20,6 +20,7 @@
 │   ├── version.rs          # ~1 line: VERSION constant
 │   └── tests/
 │       ├── interactive_fix_contract.rs # Compiled-binary PTY/headless tests
+│       ├── local_origin_contract.rs # Defining-directory/include tests
 │       ├── p0_acceptance.rs        # Integrated public-CLI P0 acceptance gate
 │       ├── provisioning_contract.rs
 │       ├── provisioning_lock_contract.rs # Compiled-binary semaphore tests
@@ -42,6 +43,7 @@
 │   ├── default-severity/   # Default severity behavior
 │   ├── check-logs/         # Log output testing
 │   ├── hint-test/          # Hint message testing
+│   ├── local-origin/       # Defining-directory end-to-end contract
 │   └── remote-config/      # Remote inclusion tests
 │       ├── git/            # Git-based remote fixture
 │       ├── circular/       # Circular reference handling
@@ -143,26 +145,28 @@
 - Lines 750-950: Helper functions, tests
 
 ### config.rs
-**Role**: Shared strict configuration loading and remote expansion
+**Role**: Shared strict loading and origin-preserving include expansion
 **Key Functions**:
 - `resolve_path()`: Config file discovery
-- `load()`: Main entry for config loading
+- `load()`: Public flat compatibility entry
+- `load_resolved()`: Private CLI entry retaining defining origins
 - `decode_config()`: Closed typed decoder shared by CLI ingestion paths
-- `load_with_context()`: Recursive loader with circular detection
-- `expand_remotes()`: Remote rule expansion
+- Recursive resolver: Active-cycle rejection and completed-definition
+  deduplication
 - `parse_git_remote()`: Git URL parser
 - `resolve_remote_path()`: Git cache or file path resolution
 
 **Key Types**:
 - `GitRemote { repo, ref_, path }`: Parsed git URL
+- `DefinitionOrigin`, `ResolvedRule`, `ResolvedPatternGroup`, and
+  `ResolvedDefinition`: Private origin-aware execution projection
 
 **Sections**:
-- Lines 1-40: Path resolution
-- Lines 40-115: Contextual loading with circular detection
-- Lines 115-190: Remote expansion
-- Lines 190-245: Git URL parsing
-- Lines 245-270: Path resolution for git remotes
-- Lines 270-575: Tests
+- Lines 1-79: Resolved origin model and resolver state
+- Lines 80-150: Path discovery, public compatibility load, and strict decode
+- Lines 151-342: Stdin and recursive file/include resolution
+- Lines 343-455: Git locator parsing and cache-path resolution
+- Lines 456 onward: Loading, origin, cycle, deduplication, and Git tests
 
 ### cache.rs (~270 lines)
 **Role**: Cache directory structure management
@@ -197,7 +201,9 @@
 ### check.rs (~650 lines)
 **Role**: Rule execution and result collection
 **Key Types**:
-- `Options { config, workdir, min_severity, fail_severity }`: Execution context
+- `Options { config, workdir, min_severity, fail_severity }`: Public flat
+  execution context
+- Private resolved helpers: Per-rule and per-pattern defining work directories
 - `Report { rules, fail_severity }`: Aggregated results
 - `RuleResult { rule, outcome, err, stdout, stderr }`: Passed, skipped, or
   failed rule result
@@ -316,6 +322,13 @@ Fixtures organized by feature/scenario:
 - `invalid/`: Validation error tests
 - `git/`: Git-based remote with real clone
 
+**local-origin/** (Defining-origin contract)
+- Root and included configs own distinct same-named assets
+- Exercises predicate, check, repair, final recheck, and pattern working
+  directories
+- Proves root-first pattern groups, group-local negation, cycle rejection, and
+  completed deduplication
+
 **Pattern fixtures**
 - `rule-files/`: Tests glob pattern matching
 - `preconditions/`: Tests preconditions execution order
@@ -376,6 +389,8 @@ Inline at bottom of each source file:
 
 ### Integration Tests
 - `main.rs`: Single test for help command
+- `tests/local_origin_contract.rs`: Defining-directory, pattern-group, cycle,
+  completed-deduplication, and stdin contract
 - `tests/provisioning_contract.rs`: Public help, exit, and documentation contract
 - `tests/strict_configuration.rs`: Actual compiled-binary strict-loading and schema tests
 - `tests/process_runner_contract.rs`: Actual compiled-binary process-supervision tests
@@ -392,6 +407,7 @@ Inline at bottom of each source file:
 - `fixtures/skip-if/`: Closed network-free conditional-rule scenarios
 - `fixtures/interactive-fix/`: Closed network-free interactive-repair scenarios
 - `fixtures/provisioning-lock/`: Closed network-free semaphore scenarios
+- `fixtures/local-origin/`: Closed network-free defining-origin scenarios
 
 Provisioning-lock unit tests cover path derivation, exact modes and ownership,
 same-process and cross-process contention, stale contents, close-on-exec,

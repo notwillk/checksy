@@ -352,6 +352,11 @@ checksy install --prune
 
 Git remotes are cached in the `.checksy-cache/git/` directory (or the path specified by `cachePath` in your config). Each unique repository and ref combination gets a shallow clone (`--depth 1`).
 
+Origin-aware execution does not redesign legacy Git cache selection or
+acquisition. Once a cached definition resolves, its commands use that
+definition's directory; acquisition behavior remains unchanged and is tracked
+for deprecation separately.
+
 These severity options can also be set in the config file at the top level:
 
 ```yaml
@@ -416,16 +421,19 @@ terminal. If a failed rule needs an interactive repair in that mode, with
 `--non-interactive`, or without a usable foreground terminal, Checksy leaves the
 repair unexecuted and explains how to proceed.
 
-Commands, including `skip-if`, currently execute relative to the selected root
-configuration's directory. A predicate and its associated check always share
-that effective working directory. Preserving the defining directory of every
-nested local include is a separate origin-correctness milestone.
+For configuration loaded through the CLI, every file-backed `skip-if`, check,
+repair, final recheck, and pattern script executes relative to the directory
+of the configuration that defines it. A predicate and its associated check
+always share that working directory. Stdin configuration remains
+self-contained and uses the caller's current working directory. The public
+Rust `load()` and `diagnose(Options)` compatibility APIs remain flat;
+`diagnose` uses the single working directory supplied by its caller.
 
 ### Inline rules, preconditions, and patterns
 
 - **`preconditions`** — An array of rule objects that run **before** the main rules. They support the same conditional, failure, and ordinary/interactive repair behavior as regular rules. Useful for checks that apply only after a prerequisite condition is met.
 - **`rules`** — An array of rule objects, each with `name`, `check`, optional `skip-if`, `severity`, one of `fix` or `interactive-fix`, `hint`, and `timeout`. These run first in config order.
-- **`patterns`** — An array of glob-style patterns that select script files to run as rules (e.g. `tests/*.sh`). Success and failure are determined by the script's exit code, same as inline rules. There is no fix step or timeout override for file-based rules; they use the 15-minute default and run after inline rules in a deterministic order (alphabetically by file path). Pattern-only configurations execute normally. Patterns are resolved relative to the config file directory. You can use **positive** patterns (any match is included) and **negated** patterns (prefix with `!` to exclude). A file is included only if it matches at least one positive pattern and no negative pattern.
+- **`patterns`** — An array of glob-style patterns that select script files to run as rules (e.g. `tests/*.sh`). Success and failure are determined by the script's exit code, same as inline rules. There is no fix step or timeout override for file-based rules; they use the 15-minute default and run after inline rules. Pattern groups run root-first and then in first-seen depth-first include order; matches are alphabetical within each group, and negations apply only to their defining group. Pattern-only configurations execute normally. Patterns are resolved relative to the defining config file directory. You can use **positive** patterns (any match is included) and **negated** patterns (prefix with `!` to exclude). A file is included only if it matches at least one positive pattern and no negative pattern.
 
 ### Remote Config References
 
@@ -444,7 +452,13 @@ rules:
     check: echo "hello"
 ```
 
-When a remote rule is expanded, all its preconditions and rules are loaded inline and inherit the parent config's defaults. Circular references are automatically detected and skipped.
+When an include is expanded, all its preconditions and rules are loaded inline,
+inherit the parent config's defaults, and retain the included file's defining
+directory. Active include cycles fail before any configured command runs and
+report the ordered include chain. A definition reached again after its first
+complete expansion is deduplicated. The network-free
+[local-origin contract](fixtures/local-origin/README.md) exercises these
+behaviors through the compiled CLI.
 
 Example with preconditions:
 
