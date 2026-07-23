@@ -339,7 +339,6 @@ struct PtyProcess {
     _provisioning_guard: File,
     pid: rustix::process::Pid,
     writer: File,
-    slave: Option<std::os::fd::OwnedFd>,
     initial_terminal: TerminalSnapshot,
     status: mpsc::Receiver<std::io::Result<ExitStatus>>,
     output: mpsc::Receiver<PtyRead>,
@@ -373,11 +372,10 @@ impl PtyProcess {
             rustix::fs::Mode::empty(),
         )
         .unwrap();
-        let observer = dup_cloexec(&slave);
         let child_stdin = dup_cloexec(&slave);
         let child_stdout = dup_cloexec(&slave);
         let child_stderr = dup_cloexec(&slave);
-        let initial_terminal = terminal_snapshot(&observer);
+        let initial_terminal = terminal_snapshot(&master);
         command
             .stdin(Stdio::from(child_stdin))
             .stdout(Stdio::from(child_stdout))
@@ -430,7 +428,6 @@ impl PtyProcess {
             _provisioning_guard: provisioning_guard,
             pid,
             writer: File::from(master),
-            slave: Some(observer),
             initial_terminal,
             status: status_receive,
             output: output_receive,
@@ -466,7 +463,7 @@ impl PtyProcess {
 
     fn set_window_size(&self, rows: u16, columns: u16) {
         rustix::termios::tcsetwinsize(
-            self.slave.as_ref().unwrap(),
+            &self.writer,
             rustix::termios::Winsize {
                 ws_row: rows,
                 ws_col: columns,
@@ -488,8 +485,7 @@ impl PtyProcess {
                 }
             }
         };
-        let final_terminal = terminal_snapshot(self.slave.as_ref().unwrap());
-        drop(self.slave.take());
+        let final_terminal = terminal_snapshot(&self.writer);
         drop(self.writer);
 
         let mut output = std::mem::take(&mut self.collected_output);

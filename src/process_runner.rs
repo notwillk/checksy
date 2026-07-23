@@ -585,6 +585,20 @@ mod supported {
                 if let Some(LeaderObservation::Signaled(signal)) = observation {
                     if cause.is_none() && first_parent_signal.is_none() {
                         cause = Some(TerminationCause::ChildSignal(signal));
+                        // `waitid(..., NOWAIT)` leaves the terminally observed
+                        // leader as a zombie. Darwin excludes zombies while
+                        // signalling an explicit process group and reports
+                        // EPERM when that leaves no signalable members. Reap
+                        // the ready leader first: live descendants retain the
+                        // group, while a zombie-only group disappears.
+                        reap_ready_leader(&mut child, observer).map_err(|source| {
+                            supervision_with_output(
+                                source,
+                                &child,
+                                &stdout_capture,
+                                &stderr_capture,
+                            )
+                        })?;
                         signal_group(child.process_group(), Signal::Term).map_err(|source| {
                             supervision_with_output(
                                 source,
@@ -923,6 +937,12 @@ mod supported {
                     }
                     Some(value) => {
                         observation = Some(value);
+                        // Keep the leader's terminal status, but do not leave
+                        // it as the sole zombie member of its process group.
+                        // On Darwin, signalling or probing such a group yields
+                        // EPERM rather than ESRCH.
+                        reap_ready_leader(&mut child, &mut NoopObserver)
+                            .map_err(|source| interactive_supervision(source, &child))?;
                         if let LeaderObservation::Signaled(signal) = value {
                             if cause.is_none() && first_parent_signal.is_none() {
                                 cause = Some(TerminationCause::ChildSignal(signal));
@@ -971,27 +991,27 @@ mod supported {
                     continue;
                 }
             }
-            let group_exists = process_group_exists(child.process_group())
-                .map_err(|source| interactive_supervision(source, &child))?;
-
-            if !group_exists && child.status().is_some() && !master_output_open && output.is_empty()
-            {
-                let failed = first_parent_signal.is_some() || cause.is_some();
-                child.disarm();
-                return if failed {
-                    Err(interactive_termination_error(
-                        first_parent_signal,
-                        cause,
-                        limits.timeout,
-                        &child,
-                    ))
-                } else {
-                    Ok(CompletedProcess {
-                        status: child.status().expect("completed child has a status"),
-                        stdout: CapturedOutput::empty(),
-                        stderr: CapturedOutput::empty(),
-                    })
-                };
+            if child.status().is_some() && !master_output_open && output.is_empty() {
+                let group_exists = process_group_exists(child.process_group())
+                    .map_err(|source| interactive_supervision(source, &child))?;
+                if !group_exists {
+                    let failed = first_parent_signal.is_some() || cause.is_some();
+                    child.disarm();
+                    return if failed {
+                        Err(interactive_termination_error(
+                            first_parent_signal,
+                            cause,
+                            limits.timeout,
+                            &child,
+                        ))
+                    } else {
+                        Ok(CompletedProcess {
+                            status: child.status().expect("completed child has a status"),
+                            stdout: CapturedOutput::empty(),
+                            stderr: CapturedOutput::empty(),
+                        })
+                    };
+                }
             }
 
             if let Some(deadline) = kill_deadline {
@@ -2377,9 +2397,12 @@ mod tests {
 
     #[test]
     fn child_signal_is_distinct_and_retains_output() {
-        let result = run(
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let observed = Arc::clone(&events);
+        let result = run_observed(
             command("printf 'before-signal'; kill -TERM $$"),
             short_limits(Duration::from_secs(2)),
+            move |event| observed.lock().unwrap().push(event),
         );
         match result {
             Err(ProcessError::ChildSignaled { signal, output }) => {
@@ -2388,6 +2411,16 @@ mod tests {
             }
             other => panic!("expected child signal, got {other:?}"),
         }
+        let events = events.lock().unwrap();
+        assert!(matches!(
+            events.first(),
+            Some(ProcessTestEvent::Spawned { .. })
+        ));
+        assert_eq!(
+            &events[1..],
+            &[ProcessTestEvent::LeaderReaped, ProcessTestEvent::TermSent],
+            "the terminally observed leader must be reaped before descendant cleanup"
+        );
     }
 
     #[test]
