@@ -263,8 +263,9 @@ The base image, Docker-in-Docker, editor settings, and immutable Checksy Feature
 remain in `devcontainer.json`. They establish the container and bootstrap
 Checksy itself; Checksy owns Rustup, Rust, and the other guest userland tools
 provisioned after that environment and workspace exist. The remote environment
-prepends `/home/vscode/.cargo/bin` so lifecycle commands and terminals use the
-provisioned toolchain.
+prepends `/home/vscode/.local/bin` and `/home/vscode/.cargo/bin` so the
+user-owned Dev Container CLI and Rust toolchain are available to lifecycle
+commands and terminals.
 
 ### Cross-compiling
 

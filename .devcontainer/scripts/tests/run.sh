@@ -70,9 +70,21 @@ assert_equal "$CHECKSY_VERSION" "$feature_checksy_version" "Checksy Feature vers
 if grep -F 'devcontainer-features/rustup' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null; then
   fail "Rustup must be provisioned by Checksy rather than a devcontainer Feature"
 fi
-grep -F '"/home/vscode/.cargo/bin:${containerEnv:PATH}"' \
+grep -F '"/home/vscode/.local/bin:/home/vscode/.cargo/bin:${containerEnv:PATH}"' \
   "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
-  fail "devcontainer remote PATH must expose the Checksy-provisioned Rust tools"
+  fail "devcontainer remote PATH must expose user-installed Checksy provisioning tools"
+if grep -E 'sudo[^#]*npm[[:space:]]+install' \
+  "$SCRIPTS_DIR/devcontainer-cli/install.sh" >/dev/null; then
+  fail "Dev Container CLI npm lifecycle scripts must not run as root"
+fi
+grep -F -- '--prefix "$HOME/.local"' \
+  "$SCRIPTS_DIR/devcontainer-cli/install.sh" >/dev/null || \
+  fail "Dev Container CLI must install into the remote user's local prefix"
+ci_workflow="$(workspace_root)/.github/workflows/ci.yml"
+grep -F 'bash -o pipefail -c "find .devcontainer/scripts' "$ci_workflow" >/dev/null || \
+  fail "CI shell syntax discovery must enable pipeline failure propagation"
+grep -F "xargs -0 -r -n1 bash -n" "$ci_workflow" >/dev/null || \
+  fail "CI shell syntax discovery must not invoke Bash without a script"
 
 root_toolchain_file="$DEVCONTAINER_DIR/../rust-toolchain.toml"
 root_rust_version=$(rust_toolchain_from_file "$root_toolchain_file")

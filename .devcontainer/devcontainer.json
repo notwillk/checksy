@@ -13,7 +13,7 @@
 		"DEVCONTAINER": "true"
 	},
 	"remoteEnv": {
-		"PATH": "/home/vscode/.cargo/bin:${containerEnv:PATH}"
+		"PATH": "/home/vscode/.local/bin:/home/vscode/.cargo/bin:${containerEnv:PATH}"
 	},
 	"customizations": {
 		"vscode": {

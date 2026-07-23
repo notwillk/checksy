@@ -82,8 +82,8 @@
 
 - [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
   bootstraps the base image, Docker-in-Docker, and the canonical digest-pinned
-  Checksy Feature. It exposes the user-installed Rust path and runs the
-  provisioning definition after workspace creation.
+  Checksy Feature. It exposes the user-installed `.local` and Rust paths and
+  runs the provisioning definition after workspace creation.
 - [`.devcontainer/checksy.yaml`](.devcontainer/checksy.yaml) is the flat
   dogfooding configuration for Entr, Just `1.57.0`, Rustup `1.29.0` and Rust
   `1.94.1`, and Dev Container CLI `0.88.0`.

@@ -34,7 +34,7 @@ jobs:
           runCmd: >-
             checksy --config=.devcontainer/checksy.yaml check --fix --non-interactive &&
             checksy --config=.devcontainer/checksy.yaml check --non-interactive &&
-            find .devcontainer/scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n &&
+            bash -o pipefail -c "find .devcontainer/scripts -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n" &&
             bash .devcontainer/scripts/tests/run.sh &&
             cd src &&
             cargo fmt --all -- --check &&

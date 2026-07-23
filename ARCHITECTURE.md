@@ -31,13 +31,15 @@ uses [shared version data](.devcontainer/tool-versions.env) and
 `1.57.0`, Rustup `1.29.0` with Rust `1.94.1`, and Dev Container CLI `0.88.0`.
 The Rustup bootstrap binary and Just archives use versioned URLs with pinned
 architecture-specific SHA-256 values. The Rust toolchain includes `rustfmt` and
-`clippy`, and `.cargo/bin` is prepended through the remote environment so
-Quality CI and interactive terminals resolve that toolchain. Helpers are
-separated into prerequisite, Entr, Just, Rustup, and Dev Container CLI
-directories, with one [shared library](.devcontainer/scripts/shared/lib.sh) and
-a network-free [test runner](.devcontainer/scripts/tests/run.sh). Their paths
-are relative to the selected root configuration's `.devcontainer/` directory,
-matching the current root-origin execution model.
+`clippy`. The Dev Container CLI is installed into the remote user's `.local`
+prefix so npm lifecycle scripts do not run as root. `.local/bin` and
+`.cargo/bin` are prepended through the remote environment so Quality CI and
+interactive terminals resolve both user-owned toolchains. Helpers are separated
+into prerequisite, Entr, Just, Rustup, and Dev Container CLI directories, with
+one [shared library](.devcontainer/scripts/shared/lib.sh) and a network-free
+[test runner](.devcontainer/scripts/tests/run.sh). Their paths are relative to
+the selected root configuration's `.devcontainer/` directory, matching the
+current root-origin execution model.
 
 This is deliberately a guest-userland boundary. The base image,
 Docker-in-Docker, editor customization, and immutable Checksy Feature must exist
