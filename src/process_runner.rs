@@ -1983,9 +1983,20 @@ mod supported {
     }
 
     fn process_group_exists(process_group: Pid) -> Result<bool, io::Error> {
-        match test_kill_process_group(process_group) {
+        classify_process_group_probe(test_kill_process_group(process_group))
+    }
+
+    fn classify_process_group_probe(result: Result<(), Errno>) -> Result<bool, io::Error> {
+        match result {
             Ok(()) => Ok(true),
             Err(Errno::SRCH) => Ok(false),
+            // A signal-0 probe may return EPERM when the process group exists but
+            // none of its members are currently signalable. Darwin does this for
+            // groups containing only unreaped zombies. Keep supervising until the
+            // group disappears or the existing bounded deadline expires; only
+            // ESRCH proves absence. Actual TERM/KILL errors remain fatal in
+            // `signal_group` above.
+            Err(Errno::PERM) => Ok(true),
             Err(error) => Err(os_error(error)),
         }
     }
@@ -2311,6 +2322,16 @@ mod supported {
                 finalize_interactive_setup(job_control, handlers),
                 Err(ProcessError::Supervision { .. })
             ));
+        }
+
+        #[test]
+        fn process_group_probe_treats_permission_denied_as_existing() {
+            assert!(classify_process_group_probe(Ok(())).unwrap());
+            assert!(classify_process_group_probe(Err(Errno::PERM)).unwrap());
+            assert!(!classify_process_group_probe(Err(Errno::SRCH)).unwrap());
+
+            let error = classify_process_group_probe(Err(Errno::INVAL)).unwrap_err();
+            assert_eq!(error.raw_os_error(), Some(libc::EINVAL));
         }
     }
 }
