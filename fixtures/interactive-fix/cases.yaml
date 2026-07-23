@@ -1,0 +1,146 @@
+schemaVersion: 1
+cases:
+  - id: interactive-success
+    fixture: interactive-success.yaml
+    assets:
+      - scripts/prompt-repair.sh
+    mode: file-pty
+    test: interactive_fix_reads_stdin_and_dev_tty_then_rechecks
+    expectedExit: 0
+  - id: no-extra-pty-descriptors
+    fixture: no-extra-pty-descriptors.yaml
+    assets: []
+    mode: file-pty
+    test: interactive_fix_inherits_only_standard_pty_descriptors
+    expectedExit: 0
+  - id: passing-file-headless
+    fixture: passing-no-terminal.yaml
+    assets: []
+    mode: file-headless
+    test: passing_interactive_fix_never_probes_for_terminal
+    expectedExit: 0
+  - id: passing-stdin-headless
+    fixture: passing-no-terminal.yaml
+    assets: []
+    mode: stdin-config
+    test: passing_interactive_fix_never_probes_for_terminal
+    expectedExit: 0
+  - id: needed-file-headless
+    fixture: unavailable-interactive.yaml
+    assets: []
+    mode: file-headless
+    test: unavailable_interactive_fix_is_a_compliance_result
+    expectedExit: 3
+  - id: needed-check-only
+    fixture: unavailable-interactive.yaml
+    assets: []
+    mode: file-headless-check-only
+    test: check_only_ignores_interactive_fix
+    expectedExit: 3
+  - id: needed-explicit-non-interactive
+    fixture: unavailable-interactive.yaml
+    assets: []
+    mode: file-non-interactive
+    test: unavailable_interactive_fix_is_a_compliance_result
+    expectedExit: 3
+  - id: diagnose-explicit-non-interactive
+    fixture: unavailable-interactive.yaml
+    assets: []
+    mode: file-diagnose-non-interactive
+    test: deprecated_diagnose_accepts_non_interactive
+    expectedExit: 3
+  - id: needed-stdin-config
+    fixture: unavailable-interactive.yaml
+    assets: []
+    mode: stdin-config
+    test: stdin_configuration_never_opens_a_terminal
+    expectedExit: 3
+  - id: needed-config-dash
+    fixture: unavailable-interactive.yaml
+    assets: []
+    mode: config-dash
+    test: stdin_configuration_never_opens_a_terminal
+    expectedExit: 3
+  - id: needed-stdin-precedence
+    fixture: unavailable-interactive.yaml
+    assets: []
+    mode: stdin-config-non-interactive
+    test: stdin_diagnostic_takes_precedence
+    expectedExit: 3
+  - id: ordinary-fix-non-interactive
+    fixture: ordinary-fix-non-interactive.yaml
+    assets: []
+    mode: file-non-interactive
+    test: ordinary_fix_runs_under_non_interactive
+    expectedExit: 0
+  - id: failed-repair-continues
+    fixture: failed-repair-continues.yaml
+    assets: []
+    mode: file-pty
+    test: failed_interactive_fix_continues_and_honors_no_fail
+    expectedExit: 3
+  - id: failed-repair-no-fail
+    fixture: failed-repair-continues.yaml
+    assets: []
+    mode: file-pty-no-fail
+    test: failed_interactive_fix_continues_and_honors_no_fail
+    expectedExit: 0
+  - id: failed-repair-below-threshold
+    fixture: failed-repair-below-threshold.yaml
+    assets: []
+    mode: file-pty
+    test: failed_interactive_fix_continues_and_honors_no_fail
+    expectedExit: 0
+  - id: interactive-timeout-fail-fast
+    fixture: interactive-timeout-fail-fast.yaml
+    assets:
+      - scripts/term-resistant-repair.sh
+    mode: file-pty
+    test: interactive_fix_timeout_is_operational_and_fail_fast
+    expectedExit: 2
+  - id: interactive-suspension
+    fixture: interactive-suspension.yaml
+    assets: []
+    mode: file-pty
+    test: interactive_job_control_suspension_is_operational
+    expectedExit: 2
+  - id: interactive-parent-interrupt
+    fixture: interactive-parent-interrupt.yaml
+    assets:
+      - scripts/term-resistant-repair.sh
+    mode: file-pty-interrupt
+    test: ctrl_c_cleans_interactive_fix_tree_and_resignals_checksy
+    expectedExit: 130
+  - id: outer-job-control
+    fixture: interactive-parent-interrupt.yaml
+    assets:
+      - scripts/term-resistant-repair.sh
+    mode: file-pty-job-control
+    test: outer_job_control_cleans_the_tree_without_suspending_checksy
+    expectedExit: 2
+  - id: foreground-loss
+    fixture: foreground-loss.yaml
+    assets: []
+    mode: file-pty-foreground-loss
+    test: foreground_loss_stops_outer_relay_and_cleans_the_repair
+    expectedExit: 2
+  - id: terminal-restoration
+    fixture: terminal-restoration.yaml
+    assets:
+      - scripts/terminal-state-repair.sh
+    mode: file-pty
+    test: interactive_fix_streams_output_and_restores_terminal
+    expectedExit: 3
+  - id: terminal-resize
+    fixture: terminal-resize.yaml
+    assets: []
+    mode: file-pty
+    test: interactive_fix_receives_outer_terminal_resize
+    expectedExit: 0
+  - id: precondition-interactive
+    fixture: precondition-interactive.yaml
+    assets:
+      - scripts/prompt-repair.sh
+    mode: file-pty
+    test: precondition_interactive_fix_uses_the_same_workflow
+    expectedExit: 0

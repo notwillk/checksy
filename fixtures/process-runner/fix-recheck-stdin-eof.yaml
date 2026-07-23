@@ -1,0 +1,20 @@
+rules:
+  - name: fix and final recheck receive EOF
+    timeout: 2s
+    check: |
+      if IFS= read -r unexpected; then
+        printf 'unexpected check stdin: %s\n' "$unexpected" >&2
+        exit 91
+      fi
+      : > .initial-check-eof
+      if [ ! -f .fixed ]; then
+        exit 1
+      fi
+      : > .final-recheck-eof
+    fix: |
+      if IFS= read -r unexpected; then
+        printf 'unexpected fix stdin: %s\n' "$unexpected" >&2
+        exit 92
+      fi
+      : > .fix-eof
+      : > .fixed

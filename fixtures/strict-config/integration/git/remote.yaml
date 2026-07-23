@@ -1,0 +1,3 @@
+rules:
+  - name: Cached legacy Git include
+    check: 'true'

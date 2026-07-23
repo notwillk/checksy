@@ -1,0 +1,5 @@
+rules:
+  - name: includes and cache paths do not select the semaphore
+    check: |
+      printf 'included-cache-path-check\n' >> "$CHECKSY_PROVISION_TRACE"
+      true

@@ -1,0 +1,22 @@
+rules:
+  - name: filtered info rule
+    severity: info
+    skip-if: |
+      : > .unexpected-filtered-predicate
+      exit 0
+    check: |
+      : > .unexpected-filtered-check
+      exit 87
+  - name: skipped error rule
+    severity: error
+    skip-if: |
+      : > .high-severity-predicate
+      exit 0
+    check: |
+      : > .unexpected-high-severity-check
+      exit 88
+  - name: failing warning rule
+    severity: warn
+    check: |
+      : > .warning-check
+      exit 1

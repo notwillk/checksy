@@ -166,7 +166,7 @@ If you encounter an error not listed:
 
 4. **Enable all output:**
    ```bash
-   checksy check --check-severity=debug --no-fail
+   checksy check --check-severity debug --no-fail
    ```
 
 ---
@@ -182,10 +182,10 @@ Check severity hierarchy:
 checksy check
 
 # Only run warn+ rules
-checksy check --check-severity=warn
+checksy check --check-severity warn
 
 # Run debug+ but only fail on error
-checksy check --check-severity=debug --fail-severity=error
+checksy check --check-severity debug --fail-severity error
 ```
 
 ---

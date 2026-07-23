@@ -1,0 +1,3 @@
+cachePath: .provisioning-lock-legacy-cache
+rules:
+  - remote: git+./missing-provisioning-lock-repository#main:.checksy.yaml

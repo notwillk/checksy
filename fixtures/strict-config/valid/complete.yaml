@@ -1,0 +1,16 @@
+cachePath: .strict-cache
+checkSeverity: warn
+failSeverity: error
+preconditions:
+  - name: Required shell
+    check: command -v sh
+rules:
+  - remote: nested.yaml
+  - name: Repairable check
+    check: test -f ready
+    severity: info
+    fix: touch ready
+    hint: Run the configured fix
+patterns:
+  - scripts/*.sh
+  - '!scripts/skip.sh'

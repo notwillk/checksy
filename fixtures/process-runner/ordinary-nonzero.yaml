@@ -1,0 +1,8 @@
+rules:
+  - name: ordinary exit 23
+    severity: error
+    timeout: 2s
+    check: |
+      printf 'ordinary stdout sentinel\n'
+      printf 'ordinary stderr sentinel\n' >&2
+      exit 23

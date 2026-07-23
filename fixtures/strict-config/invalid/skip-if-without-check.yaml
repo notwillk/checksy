@@ -1,0 +1,2 @@
+rules:
+  - skip-if: command -v optional-tool

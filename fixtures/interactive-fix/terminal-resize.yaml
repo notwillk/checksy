@@ -1,0 +1,14 @@
+rules:
+  - name: outer terminal resize reaches interactive repair
+    severity: error
+    timeout: 3s
+    check: test -f .interactive-fixed
+    interactive-fix: |
+      printf 'window resize ready\n'
+      IFS= read -r continue_after_resize
+      read -r rows columns < <(stty size)
+      if [[ $rows != 37 || $columns != 91 ]]; then
+        printf 'unexpected inner PTY size: %s x %s\n' "$rows" "$columns" >&2
+        exit 26
+      fi
+      : > .interactive-fixed

@@ -1,15 +1,18 @@
 ---
 name: checksy-workflow
-description: Configure, run, and debug checksy workspace health checks. Use when creating or editing .checksy.yaml files, troubleshooting rule failures, setting up git-based remote configs, using --fix auto-repair, integrating into CI/CD, or generating JSON schemas for IDE validation. Covers severity levels (debug/info/warn/error), preconditions, patterns, caching, and common errors — even if the user just says "health checks", "workspace validation", or mentions YAML config issues without naming checksy explicitly. Does NOT handle infrastructure health checks (Kubernetes probes, Docker HEALTHCHECK, application monitoring) — use this skill specifically for checksy CLI configuration and workspace validation.
+description: Configure, run, and debug checksy workspace health checks. Use when creating or editing .checksy.yaml files, troubleshooting rule failures, setting up git-based remote configs, choosing ordinary or interactive --fix repairs, integrating into CI/CD, or generating JSON schemas for IDE validation. Covers severity levels (debug/info/warn/error), preconditions, patterns, caching, terminal/headless execution, and common errors — even if the user just says "health checks", "workspace validation", or mentions YAML config issues without naming checksy explicitly. Do NOT use for infrastructure health checks (Kubernetes probes, Docker HEALTHCHECK, application monitoring); use only for checksy CLI configuration and workspace validation.
 license: MIT
 compatibility: Requires checksy binary in PATH. Git required for remote configs. Bash required for rule execution.
 metadata:
   author: opencode
-  version: "1.0.0"
+  version: "1.0.1"
   category: dev-tools
   checksy_version_compatibility: ">=0.7.0"
-  last_updated: "2026-04-26"
+  last_updated: "2026-07-22"
   changelog:
+    - version: "1.0.1"
+      date: "2026-07-22"
+      notes: "Document interactive-fix and explicit non-interactive operation"
     - version: "1.0.0"
       date: "2026-04-26"
       notes: "Initial release"
@@ -45,7 +48,8 @@ This skill guides you through configuring, running, and debugging [checksy](http
 ```bash
 checksy check                    # Run all checks
 checksy check --fix             # Run with auto-fix
-checksy check --cs=warn --fs=error  # Filter by severity
+checksy check --fix --non-interactive  # Allow only headless repairs
+checksy check --cs warn --fs error  # Filter by severity
 checksy install                 # Cache git remotes
 checksy schema > .checksy.schema.json  # Generate IDE schema
 ```
@@ -56,10 +60,10 @@ debug < info < warn < error
 
 | Level | CLI Flag | Use For |
 |-------|----------|---------|
-| debug | `--cs=debug` | Verbose diagnostics |
-| info | `--cs=info` | Informational checks |
-| warn | `--cs=warn` | Non-blocking issues |
-| error | `--cs=error` | Blocking failures |
+| debug | `--cs debug` | Verbose diagnostics |
+| info | `--cs info` | Informational checks |
+| warn | `--cs warn` | Non-blocking issues |
+| error | `--cs error` | Blocking failures |
 
 ---
 
@@ -120,7 +124,9 @@ patterns:
 | `name` | No | Display name |
 | `check` | Yes* | Shell command |
 | `severity` | No | debug/info/warn/error |
-| `fix` | No | Auto-fix command |
+| `fix` | No | Non-interactive repair command |
+| `interactive-fix` | No | Terminal-capable repair command; mutually exclusive with `fix` |
+| `timeout` | No | Per-command timeout (`1ms` through `2h`) |
 | `remote` | Yes* | Config file path |
 
 *Either `check` OR `remote`, not both.
@@ -130,7 +136,7 @@ patterns:
 CLI flags → Rule-level → Top-level defaults:
 
 ```bash
-checksy check --cs=warn --fs=error
+checksy check --cs warn --fs error
 ```
 
 **For detailed examples** including production configs and patterns, see [references/config-examples.md](references/config-examples.md).
@@ -146,6 +152,7 @@ checksy check                          # Default config
 checksy --config=./team.yaml check     # Specific config
 cat config.yaml | checksy --stdin-config check  # From stdin
 checksy check --fix                    # Auto-fix failures
+checksy check --fix --non-interactive  # Ordinary fixes only; prohibit terminal repairs
 checksy check --no-fail                # Never exit with failure
 ```
 
@@ -201,7 +208,8 @@ rules:
 ### Remote Rules Limitations
 
 - Can ONLY have `remote` property
-- Cannot have `name`, `check`, `severity`, `fix`, or `hint`
+- Cannot have `name`, `check`, `severity`, `fix`, `interactive-fix`, `hint`, or
+  `timeout`
 - Circular references are automatically detected
 
 ---
@@ -213,8 +221,8 @@ rules:
 When `--fix` is enabled:
 
 1. Run `check` command
-2. If fails and `fix` exists, run `fix`
-3. If fix succeeds, re-run `check`
+2. If it fails, run its one configured `fix` or `interactive-fix`
+3. If the repair succeeds, re-run `check` non-interactively
 4. Report final result
 
 ### Example
@@ -226,11 +234,29 @@ rules:
     fix: npm ci
 ```
 
+Use `interactive-fix` only when the repair genuinely needs a terminal:
+
+```yaml
+rules:
+  - name: Local environment configured
+    check: test -f .env.local
+    interactive-fix: '${EDITOR:-vi} .env.local'
+```
+
+Checksy opens a terminal only after this check fails during `check --fix`; it
+does not add a confirmation prompt. File-backed runs require a usable foreground
+terminal. `--non-interactive`, `--stdin-config`, and `--config -` prohibit the
+interactive repair but do not disable ordinary `fix` commands. A required
+interactive repair that cannot run remains a normal severity-governed check
+failure, so CI should use `--non-interactive` explicitly.
+
 ### Limitations
 
 - Only works with inline rules (not patterns)
-- Failed fixes don't stop execution
+- A completed nonzero repair doesn't stop execution; operational supervision
+  errors do
 - Re-check runs after successful fix
+- `fix` and `interactive-fix` cannot appear on the same rule
 
 ---
 
@@ -282,7 +308,7 @@ checksy:
 ### Dry-Run Validation
 
 ```bash
-checksy check --check-severity=debug --no-fail
+checksy check --check-severity debug --no-fail
 ```
 
 ### Fixture-Based Testing
@@ -349,7 +375,7 @@ checksy schema > /tmp/schema.json
 |----------|--------|
 | Preconditions vs Rules? | Preconditions = must pass first; Rules = can fail independently |
 | Inline vs Remote? | Inline = project-specific; File = team; Git = cross-org |
-| When to use --fix? | Use in dev, not in CI/CD |
+| When to use --fix? | Use for provisioning; add `--non-interactive` in CI/headless automation |
 
 ### Severity Guidelines
 
@@ -385,7 +411,8 @@ rules:
 |---------|---------|
 | `checksy check` | Run all checks |
 | `checksy check --fix` | Run with auto-fix |
-| `checksy check --cs=warn --fs=error` | Filter by severity |
+| `checksy check --fix --non-interactive` | Run ordinary fixes but prohibit terminal repairs |
+| `checksy check --cs warn --fs error` | Filter by severity |
 | `checksy check --no-fail` | Never exit with failure |
 | `checksy install` | Cache git remotes |
 | `checksy install --prune` | Update and clean cache |

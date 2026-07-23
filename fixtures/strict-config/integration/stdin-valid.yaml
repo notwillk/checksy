@@ -1,0 +1,3 @@
+rules:
+  - name: Stdin strict load
+    check: 'test -n "$CHECKSY_TEST_MARKER" && printf stdin > "$CHECKSY_TEST_MARKER"'

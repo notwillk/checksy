@@ -1,0 +1,6 @@
+rules:
+  - name: interrupted interactive repair process tree
+    severity: error
+    timeout: 2h
+    check: "false"
+    interactive-fix: exec scripts/term-resistant-repair.sh

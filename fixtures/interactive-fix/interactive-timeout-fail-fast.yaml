@@ -1,0 +1,14 @@
+rules:
+  - name: timed out interactive repair
+    severity: debug
+    timeout: 3s
+    check: |
+      if [ -f "$CHECKSY_INTERACTIVE_FIX_STARTED" ]; then
+        : > "$CHECKSY_UNEXPECTED_RECHECK"
+      fi
+      exit 1
+    interactive-fix: exec scripts/term-resistant-repair.sh
+  - name: must not run after interactive operational failure
+    severity: error
+    timeout: 2s
+    check: ': > "$CHECKSY_UNEXPECTED_LATER_COMMAND"'

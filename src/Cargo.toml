@@ -2,19 +2,28 @@
 name = "checksy"
 version = "0.5.2"
 edition = "2021"
-description = "Inspect and troubleshoot development environments"
+description = "Provision the current machine from trusted configuration"
 repository = "https://github.com/notwillk/checksy"
 license = "MIT"
 
 [dependencies]
-serde = { version = "=1.0.152", features = ["derive"] }
-serde_json = "=1.0.91"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
 serde_yaml = "=0.9.11"
 glob = "=0.3.0"
+schemars = "=1.2.1"
 
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+libc = "=0.2.189"
+rustix = { version = "=0.37.28", features = ["fs", "process", "pty", "std", "termios"] }
+signal-hook = { version = "=0.4.4", features = ["iterator"] }
 
 [dev-dependencies]
+jsonschema = { version = "=0.48.2", default-features = false }
 tempfile = "=3.5.0"
+
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dev-dependencies]
+rustix = { version = "=0.37.28", features = ["fs", "process", "pty", "std", "termios"] }
 
 [profile.release]
 lto = true

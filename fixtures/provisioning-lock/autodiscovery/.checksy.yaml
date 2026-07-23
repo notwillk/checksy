@@ -1,0 +1,6 @@
+rules:
+  - name: auto-discovered provisioning
+    check: |
+      printf 'check\n' >> "$CHECKSY_PROVISION_TRACE"
+      test -f "$CHECKSY_PROVISION_FIXED"
+    fix: bash ../scripts/record-fix.sh

@@ -1,0 +1,4 @@
+rules:
+  - name: 'true'
+    check: '123'
+    hint: 'false'

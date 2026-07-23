@@ -1,0 +1,12 @@
+rules:
+  - name: predicate child signal
+    skip-if: |
+      printf 'predicate signal retained stdout\n'
+      printf 'predicate signal retained stderr\n' >&2
+      kill -TERM "$$"
+    check: |
+      : > .unexpected-signal-check
+      exit 94
+  - name: must not run after predicate signal
+    check: |
+      : > .unexpected-after-signal

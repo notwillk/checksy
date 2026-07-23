@@ -1,0 +1,13 @@
+rules:
+  - name: bounded output
+    severity: error
+    timeout: 10s
+    check: |
+      chunk=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      i=0
+      while [ "$i" -lt 16384 ]; do
+        printf '%s' "$chunk"
+        i=$((i + 1))
+      done
+      printf 'Z'
+      exit 1

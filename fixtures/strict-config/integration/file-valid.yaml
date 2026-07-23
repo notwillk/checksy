@@ -1,0 +1,3 @@
+rules:
+  - name: File-backed strict load
+    check: 'test -n "$CHECKSY_TEST_MARKER" && printf file > "$CHECKSY_TEST_MARKER"'

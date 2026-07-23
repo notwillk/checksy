@@ -1,0 +1,14 @@
+rules:
+  - name: child is detached from caller terminal
+    severity: error
+    timeout: 2s
+    check: |
+      if [ -t 0 ]; then
+        printf 'runner stdin unexpectedly remained a tty\n' >&2
+        exit 94
+      fi
+      if : </dev/tty 2>/dev/null; then
+        printf 'runner unexpectedly opened /dev/tty\n' >&2
+        exit 95
+      fi
+      : > .tty-isolated

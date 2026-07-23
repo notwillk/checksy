@@ -38,6 +38,16 @@ pub fn load(path: &str) -> Result<Config, String> {
     load_with_context(path, None, &mut HashSet::new())
 }
 
+pub(crate) fn decode_config(data: &str) -> Result<Config, String> {
+    // Keep the generic YAML parse as the authority for YAML-format errors such
+    // as duplicate mapping keys and multiple documents. The typed pass then
+    // enforces Checksy's closed configuration model.
+    serde_yaml::from_str::<serde_yaml::Value>(data)
+        .map_err(|error| format!("decode config YAML: {}", error))?;
+
+    serde_yaml::from_str(data).map_err(|error| format!("decode config: {}", error))
+}
+
 fn load_with_context(
     path: &str,
     parent_defaults: Option<(Option<Severity>, Option<Severity>)>,
@@ -74,14 +84,20 @@ fn load_with_context(
         fs::read_to_string(path).map_err(|e| format!("read config: {}", e))?
     };
 
-    let json_data = serde_yaml::from_str::<serde_yaml::Value>(&data)
-        .map_err(|e| format!("decode config YAML: {}", e))?;
+    let mut cfg = decode_config(&data)?;
 
-    let _json_str =
-        serde_json::to_string(&json_data).map_err(|e| format!("convert config to JSON: {}", e))?;
-
-    let mut cfg: Config =
-        serde_yaml::from_str(&data).map_err(|e| format!("decode config: {}", e))?;
+    if path == "-"
+        && cfg
+            .preconditions
+            .iter()
+            .chain(cfg.rules.iter())
+            .any(|rule| rule.is_remote())
+    {
+        return Err(
+            "stdin configuration must be self-contained; `remote` includes are not supported"
+                .to_string(),
+        );
+    }
 
     // Apply inherited defaults if parent provided them
     if let Some((check_sev, fail_sev)) = parent_defaults {
@@ -354,18 +370,24 @@ mod tests {
                 Rule {
                     name: None,
                     check: Some("echo hi".to_string()),
+                    skip_if: None,
                     severity: None,
                     fix: None,
+                    interactive_fix: None,
                     hint: None,
                     remote: None,
+                    timeout: None,
                 },
                 Rule {
                     name: None,
                     check: Some("echo warn".to_string()),
+                    skip_if: None,
                     severity: Some(Severity::Warning),
                     fix: None,
+                    interactive_fix: None,
                     hint: None,
                     remote: None,
+                    timeout: None,
                 },
             ],
             patterns: vec![],

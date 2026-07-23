@@ -1,0 +1,19 @@
+rules:
+  - name: predicate exits one
+    skip-if: |
+      printf 'hidden exit one stdout\n'
+      printf 'hidden exit one stderr\n' >&2
+      exit 1
+    check: printf 'exit-1-check\n' >> .trace
+  - name: predicate exits twenty-three
+    skip-if: |
+      printf 'hidden exit twenty-three stdout\n'
+      printf 'hidden exit twenty-three stderr\n' >&2
+      exit 23
+    check: printf 'exit-23-check\n' >> .trace
+  - name: predicate reaches shell-level 127
+    skip-if: |
+      printf 'hidden exit one-twenty-seven stdout\n'
+      printf 'hidden exit one-twenty-seven stderr\n' >&2
+      checksy-command-that-must-not-exist-for-skip-if-contract
+    check: printf 'exit-127-check\n' >> .trace

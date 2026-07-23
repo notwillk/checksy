@@ -1,0 +1,25 @@
+rules:
+  - name: skipped ordinary repair
+    skip-if: |
+      printf 'hidden zero ordinary stdout\n'
+      printf 'hidden zero ordinary stderr\n' >&2
+      printf 'ordinary-predicate\n' >> .trace
+      exit 0
+    check: |
+      : > .unexpected-ordinary-check
+      exit 81
+    fix: |
+      : > .unexpected-ordinary-fix
+      exit 82
+  - name: skipped interactive repair
+    skip-if: |
+      printf 'hidden zero interactive stdout\n'
+      printf 'hidden zero interactive stderr\n' >&2
+      printf 'interactive-predicate\n' >> .trace
+      exit 0
+    check: |
+      : > .unexpected-interactive-check
+      exit 83
+    interactive-fix: |
+      : > .unexpected-interactive-fix
+      exit 84

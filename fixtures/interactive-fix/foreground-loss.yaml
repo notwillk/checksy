@@ -1,0 +1,15 @@
+rules:
+  - name: foreground ownership is retained during interactive repair
+    severity: error
+    timeout: 5s
+    check: "false"
+    interactive-fix: |
+      trap 'printf "forbidden relay after foreground loss\n"; exit 0' TERM
+      printf 'foreground loss repair ready\n'
+      while :; do
+        IFS= read -r ignored || :
+      done
+  - name: must not run after foreground loss
+    severity: error
+    timeout: 2s
+    check: ': > "$CHECKSY_UNEXPECTED_LATER_COMMAND"'

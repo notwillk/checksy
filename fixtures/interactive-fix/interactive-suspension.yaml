@@ -1,0 +1,12 @@
+rules:
+  - name: suspended interactive repair
+    severity: debug
+    timeout: 5s
+    check: "false"
+    interactive-fix: |
+      printf 'interactive suspension sentinel\n'
+      kill -STOP "$$"
+  - name: must not run after interactive suspension
+    severity: error
+    timeout: 2s
+    check: ': > "$CHECKSY_UNEXPECTED_LATER_COMMAND"'

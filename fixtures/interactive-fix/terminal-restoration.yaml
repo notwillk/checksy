@@ -1,0 +1,6 @@
+rules:
+  - name: terminal state is restored after failed repair
+    severity: error
+    timeout: 2s
+    check: "false"
+    interactive-fix: exec scripts/terminal-state-repair.sh

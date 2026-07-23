@@ -1,0 +1,6 @@
+rules:
+  - name: Must not execute before later validation failure
+    check: 'test -n "$CHECKSY_TEST_MARKER" && printf ran > "$CHECKSY_TEST_MARKER"'
+  - check: 'false'
+    fix: touch ready
+    interactive-fix: read -r answer

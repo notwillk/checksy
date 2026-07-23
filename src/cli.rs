@@ -1,12 +1,13 @@
 use crate::cache::CacheManager;
-use crate::check::{self, Options, Report, RuleResult};
-use crate::config::{load, parse_git_remote, resolve_path};
+use crate::check::{self, DiagnoseError, Options, Report, RuleResult};
+use crate::config::{decode_config, load, parse_git_remote, resolve_path, resolve_remote_path};
 use crate::git::GitCache;
-use crate::schema::{Config, Rule, Severity};
+use crate::provision_lock::{ProvisioningLock, ProvisioningLockError};
+use crate::schema::{configuration_schema, Config, Rule, Severity};
 use crate::version::VERSION;
 use std::collections::HashSet;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const DEFAULT_INIT_CONFIG_FILENAME: &str = ".checksy.config.yaml";
 const DEFAULT_INIT_CONFIG_TEMPLATE: &str = r#"# checksy configuration
@@ -18,6 +19,16 @@ rules:
 "#;
 
 pub fn run(args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    let mut acquire_lock = ProvisioningLock::acquire;
+    run_with_lock_acquirer(args, stdout, stderr, &mut acquire_lock)
+}
+
+fn run_with_lock_acquirer(
+    args: Vec<String>,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+    acquire_lock: &mut dyn FnMut() -> Result<ProvisioningLock, ProvisioningLockError>,
+) -> i32 {
     if args.is_empty() || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
         print_usage(stdout);
         return if args.is_empty() { 1 } else { 0 };
@@ -40,8 +51,8 @@ pub fn run(args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write) ->
     let cmd_args = &remaining[1..];
 
     match cmd.as_str() {
-        "check" => run_check(cmd_args.to_vec(), globals, stdout, stderr),
-        "diagnose" => run_diagnose(cmd_args.to_vec(), globals, stdout, stderr),
+        "check" => run_check(cmd_args.to_vec(), globals, stdout, stderr, acquire_lock),
+        "diagnose" => run_diagnose(cmd_args.to_vec(), globals, stdout, stderr, acquire_lock),
         "init" => run_init(cmd_args.to_vec(), globals, stdout, stderr),
         "install" => run_install(cmd_args.to_vec(), globals, stdout, stderr),
         "schema" => run_schema(cmd_args.to_vec(), stdout, stderr),
@@ -61,6 +72,13 @@ pub fn run(args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write) ->
 struct GlobalFlags {
     config_path: Option<String>,
     stdin_config: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InteractionMode {
+    Permitted,
+    Prohibited,
+    Stdin,
 }
 
 fn parse_global_flags(args: &[String]) -> Result<(GlobalFlags, Vec<String>), String> {
@@ -108,12 +126,13 @@ fn run_diagnose(
     globals: GlobalFlags,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
+    acquire_lock: &mut dyn FnMut() -> Result<ProvisioningLock, ProvisioningLockError>,
 ) -> i32 {
     let _ = writeln!(
         stderr,
         "⚠️  \"checksy diagnose\" is deprecated, please use \"checksy check\" instead"
     );
-    run_check(args, globals, stdout, stderr)
+    run_check(args, globals, stdout, stderr, acquire_lock)
 }
 
 fn run_check(
@@ -121,12 +140,14 @@ fn run_check(
     globals: GlobalFlags,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
+    acquire_lock: &mut dyn FnMut() -> Result<ProvisioningLock, ProvisioningLockError>,
 ) -> i32 {
     let mut config_path = None;
     let mut no_fail = false;
     let mut check_severity = None;
     let mut fail_severity = None;
     let mut apply_fixes = false;
+    let mut non_interactive = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -163,6 +184,10 @@ fn run_check(
                 apply_fixes = true;
                 i += 1;
             }
+            "--non-interactive" => {
+                non_interactive = true;
+                i += 1;
+            }
             _ => {
                 writeln!(stderr, "Unknown flag: {}", args[i]).ok();
                 return 2;
@@ -189,7 +214,8 @@ fn run_check(
         }
     };
 
-    let abs_config_path = if resolved == "-" {
+    let stdin_config = resolved == "-";
+    let abs_config_path = if stdin_config {
         "-".to_string()
     } else {
         match std::fs::canonicalize(&resolved) {
@@ -201,41 +227,80 @@ fn run_check(
         }
     };
 
-    let cfg = match load_with_fix(&abs_config_path, apply_fixes, stdout, stderr) {
-        Ok(c) => c,
+    let check_severity_override = match check_severity.as_deref() {
+        Some(value) => match parse_severity(value) {
+            Ok(severity) => Some(severity),
+            Err(error) => {
+                writeln!(stderr, "{}", error).ok();
+                return 2;
+            }
+        },
+        None => None,
+    };
+    let fail_severity_override = match fail_severity.as_deref() {
+        Some(value) => match parse_severity(value) {
+            Ok(severity) => Some(severity),
+            Err(error) => {
+                writeln!(stderr, "{}", error).ok();
+                return 2;
+            }
+        },
+        None => None,
+    };
+
+    let prepared = match prepare_config(&abs_config_path, apply_fixes) {
+        Ok(prepared) => prepared,
         Err(e) => {
             writeln!(stderr, "failed to load config '{}': {}", abs_config_path, e).ok();
             return 2;
         }
     };
 
-    let check_severity = if let Some(ref s) = check_severity {
-        match parse_severity(s) {
-            Ok(sev) => sev,
-            Err(e) => {
-                writeln!(stderr, "{}", e).ok();
+    let provisioning_lock = if apply_fixes {
+        match acquire_lock() {
+            Ok(lock) => Some(lock),
+            Err(ProvisioningLockError::Held) => {
+                let _ = writeln!(
+                    stderr,
+                    "provisioning lock held: another checksy check --fix is already running for this user"
+                );
+                return 4;
+            }
+            Err(ProvisioningLockError::State(error)) => {
+                let _ = writeln!(stderr, "unable to acquire provisioning lock: {error}");
+                return 2;
+            }
+            Err(ProvisioningLockError::UnsupportedPlatform) => {
+                let _ = writeln!(
+                    stderr,
+                    "unable to acquire provisioning lock: unsupported platform"
+                );
                 return 2;
             }
         }
-    } else if let Some(s) = cfg.check_severity {
-        s
     } else {
-        Severity::Debug
+        None
     };
 
-    let fail_severity = if let Some(ref s) = fail_severity {
-        match parse_severity(s) {
-            Ok(sev) => sev,
-            Err(e) => {
-                writeln!(stderr, "{}", e).ok();
-                return 2;
-            }
+    let cfg = match finish_prepared_config(prepared, &abs_config_path, stdout) {
+        Ok(config) => config,
+        Err(error) => {
+            writeln!(
+                stderr,
+                "failed to load config '{}': {}",
+                abs_config_path, error
+            )
+            .ok();
+            return 2;
         }
-    } else if let Some(s) = cfg.fail_severity {
-        s
-    } else {
-        Severity::Error
     };
+
+    let check_severity = check_severity_override
+        .or(cfg.check_severity)
+        .unwrap_or(Severity::Debug);
+    let fail_severity = fail_severity_override
+        .or(cfg.fail_severity)
+        .unwrap_or(Severity::Error);
 
     let min_severity = check::min_severity(check_severity, fail_severity);
 
@@ -252,19 +317,24 @@ fn run_check(
     };
 
     let report = if apply_fixes {
-        match check_with_fixes(opts, stdout, stderr) {
+        let interaction = if stdin_config {
+            InteractionMode::Stdin
+        } else if non_interactive {
+            InteractionMode::Prohibited
+        } else {
+            InteractionMode::Permitted
+        };
+        match check_with_fixes(opts, interaction, stdout, stderr) {
             Ok(r) => r,
-            Err(e) => {
-                writeln!(stderr, "check failed: {}", e).ok();
-                return 2;
+            Err(mut e) => {
+                return report_check_error(&mut e, stdout, stderr);
             }
         }
     } else {
-        match check::diagnose(opts) {
+        match check::diagnose_supervised(opts) {
             Ok(r) => r,
-            Err(e) => {
-                writeln!(stderr, "check failed: {}", e).ok();
-                return 2;
+            Err(mut e) => {
+                return report_check_error(&mut e, stdout, stderr);
             }
         }
     };
@@ -273,73 +343,94 @@ fn run_check(
         print_report_results(&report, stdout, stderr);
     }
 
-    summarize_report(&report, no_fail, stdout)
+    let exit = summarize_report(&report, no_fail, stdout);
+    drop(provisioning_lock);
+    exit
 }
 
-/// Load config, optionally fixing missing git remotes
-fn load_with_fix(
-    abs_config_path: &str,
-    apply_fixes: bool,
-    stdout: &mut dyn Write,
-    _stderr: &mut dyn Write,
-) -> Result<Config, String> {
+enum PreparedConfig {
+    Ready(Config),
+    NeedsLegacyGit {
+        config_dir: PathBuf,
+        cache_path: Option<String>,
+        remotes: Vec<(String, String)>,
+    },
+}
+
+/// Validate every locally available definition without mutating the legacy Git cache.
+fn prepare_config(abs_config_path: &str, apply_fixes: bool) -> Result<PreparedConfig, String> {
     match load(abs_config_path) {
-        Ok(c) => Ok(c),
+        Ok(config) => Ok(PreparedConfig::Ready(config)),
         Err(e) => {
-            // Check if this is a "not cached" error and --fix is enabled
             if !apply_fixes || !e.contains("git remote not cached") {
                 return Err(e);
             }
 
-            // Need to cache git remotes
-            writeln!(stdout, "🔧 Caching missing git remotes...").ok();
-
             let config_dir = if abs_config_path == "-" {
-                std::path::PathBuf::from(".")
+                PathBuf::from(".")
             } else {
-                std::path::Path::new(abs_config_path)
+                Path::new(abs_config_path)
                     .parent()
                     .map(|p| p.to_path_buf())
-                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .unwrap_or_else(|| PathBuf::from("."))
             };
 
-            // Load config without expanding to collect git remotes
-            let cfg = match load_without_remote_expansion(std::path::Path::new(abs_config_path)) {
-                Ok(c) => c,
-                Err(e2) => {
-                    return Err(format!("{} (and failed to parse for fix: {})", e, e2));
-                }
-            };
+            let config = load_without_remote_expansion(Path::new(abs_config_path))
+                .map_err(|error| format!("{e} (and failed to parse for fix: {error})"))?;
+            let remotes =
+                collect_git_remotes_recursive(&config, &config_dir, &config.cache_path)
+                    .map_err(|error| format!("{e} (and failed to collect remotes: {error})"))?;
 
-            // Collect all git remotes
-            let git_remotes =
-                match collect_git_remotes_recursive(&cfg, &config_dir, &cfg.cache_path) {
-                    Ok(remotes) => remotes,
-                    Err(e2) => {
-                        return Err(format!("{} (and failed to collect remotes: {})", e, e2));
-                    }
-                };
-
-            if git_remotes.is_empty() {
-                return Err(e); // No git remotes to fix, return original error
+            if remotes.is_empty() {
+                return Err(e);
             }
 
-            // Cache each remote
-            let cache_mgr = CacheManager::new(&config_dir, cfg.cache_path.as_deref());
+            Ok(PreparedConfig::NeedsLegacyGit {
+                config_dir,
+                cache_path: config.cache_path,
+                remotes,
+            })
+        }
+    }
+}
 
-            for (i, (repo, ref_)) in git_remotes.iter().enumerate() {
+/// Complete legacy missing-cache acquisition after the provisioning lock is held.
+fn finish_prepared_config(
+    prepared: PreparedConfig,
+    abs_config_path: &str,
+    stdout: &mut dyn Write,
+) -> Result<Config, String> {
+    match prepared {
+        PreparedConfig::Ready(config) => Ok(config),
+        PreparedConfig::NeedsLegacyGit { .. } => {
+            // Re-read under the semaphore: another completed run may have
+            // filled the cache, or the local definition may have changed while
+            // this invocation was acquiring the lock.
+            let (config_dir, cache_path, remotes) = match prepare_config(abs_config_path, true)? {
+                PreparedConfig::Ready(config) => return Ok(config),
+                PreparedConfig::NeedsLegacyGit {
+                    config_dir,
+                    cache_path,
+                    remotes,
+                } => (config_dir, cache_path, remotes),
+            };
+
+            let cache_mgr = CacheManager::new(&config_dir, cache_path.as_deref());
+            if remotes
+                .iter()
+                .all(|(repo, ref_)| cache_mgr.is_cached(repo, ref_))
+            {
+                return load(abs_config_path);
+            }
+
+            writeln!(stdout, "🔧 Caching missing git remotes...").ok();
+
+            for (i, (repo, ref_)) in remotes.iter().enumerate() {
                 if cache_mgr.is_cached(repo, ref_) {
                     continue;
                 }
 
-                let _ = write!(
-                    stdout,
-                    "  [{}/{}] {}#{} ",
-                    i + 1,
-                    git_remotes.len(),
-                    repo,
-                    ref_
-                );
+                let _ = write!(stdout, "  [{}/{}] {}#{} ", i + 1, remotes.len(), repo, ref_);
 
                 let dest = cache_mgr.ref_cache_path(repo, ref_);
                 match GitCache::shallow_clone(repo, ref_, &dest) {
@@ -354,8 +445,6 @@ fn load_with_fix(
             }
 
             writeln!(stdout, "✅ Git remotes cached, retrying...").ok();
-
-            // Retry loading the config
             load(abs_config_path)
         }
     }
@@ -614,10 +703,7 @@ fn run_install(
 /// Load config without expanding remote references
 fn load_without_remote_expansion(path: &std::path::Path) -> Result<Config, String> {
     let data = std::fs::read_to_string(path).map_err(|e| format!("read config: {}", e))?;
-
-    let cfg: Config = serde_yaml::from_str(&data).map_err(|e| format!("decode config: {}", e))?;
-
-    Ok(cfg)
+    decode_config(&data)
 }
 
 /// Collect all git remotes recursively from a config
@@ -656,34 +742,20 @@ fn collect_from_config(
             if let Some(git_remote) = parse_git_remote(remote_path) {
                 remotes.push((git_remote.repo.clone(), git_remote.ref_.clone()));
             } else {
-                // Regular file remote - check if it points to another config that might have git remotes
-                let resolved = config_dir.join(remote_path);
-                if resolved.exists() && resolved.is_file() {
-                    let canonical = resolved.canonicalize().ok();
-                    if let Some(path) = canonical {
-                        if !visited.contains(&path) {
-                            visited.insert(path.clone());
-                            // Load this remote config and recurse
-                            match load_without_remote_expansion(&path) {
-                                Ok(remote_cfg) => {
-                                    let remote_dir = path
-                                        .parent()
-                                        .map(|p| p.to_path_buf())
-                                        .unwrap_or_else(|| config_dir.to_path_buf());
-                                    collect_from_config(
-                                        &remote_cfg,
-                                        &remote_dir,
-                                        cache_path,
-                                        remotes,
-                                        visited,
-                                    )?;
-                                }
-                                Err(_) => {
-                                    // Ignore configs we can't parse
-                                }
-                            }
-                        }
-                    }
+                let path = resolve_remote_path(config_dir, cache_path.as_deref(), remote_path)?;
+                if visited.insert(path.clone()) {
+                    let remote_cfg = load_without_remote_expansion(&path).map_err(|error| {
+                        format!(
+                            "failed to load nested config '{}': {}",
+                            path.display(),
+                            error
+                        )
+                    })?;
+                    let remote_dir = path
+                        .parent()
+                        .map(|parent| parent.to_path_buf())
+                        .unwrap_or_else(|| config_dir.to_path_buf());
+                    collect_from_config(&remote_cfg, &remote_dir, cache_path, remotes, visited)?;
                 }
             }
         }
@@ -692,106 +764,31 @@ fn collect_from_config(
     Ok(())
 }
 
-fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, _stderr: &mut dyn Write) -> i32 {
-    let schema_json = r#"{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "checksy configuration",
-  "type": "object",
-  "properties": {
-    "cachePath": {
-      "type": "string",
-      "description": "Path to cache directory for git-based remotes (defaults to .checksy-cache)",
-      "default": ".checksy-cache"
-    },
-    "checkSeverity": {
-      "type": "string",
-      "enum": ["debug", "info", "warn", "error"]
-    },
-    "failSeverity": {
-      "type": "string",
-      "enum": ["debug", "info", "warn", "error"]
-    },
-    "preconditions": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "oneOf": [
-          {
-            "description": "Remote rule - only 'remote' property allowed. Supports file paths or git+https:// URLs (requires 'checksy install' first)",
-            "required": ["remote"],
-            "properties": {
-              "remote": { 
-                "type": "string", 
-                "description": "Relative path to another config file, or git+URL#ref:path for git-based remotes (e.g., git+https://github.com/org/repo.git#main:.checksy.yaml)"
-              }
-            },
-            "additionalProperties": false
-          },
-          {
-            "description": "Inline rule - requires 'check' property",
-            "required": ["check"],
-            "properties": {
-              "name": { "type": "string" },
-              "check": { "type": "string" },
-              "severity": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "error" },
-              "fix": { "type": "string" },
-              "hint": { "type": "string" },
-              "remote": { "type": "string" }
-            },
-            "additionalProperties": false
-          }
-        ]
-      }
-    },
-    "rules": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "oneOf": [
-          {
-            "description": "Remote rule - only 'remote' property allowed. Supports file paths or git+https:// URLs (requires 'checksy install' first)",
-            "required": ["remote"],
-            "properties": {
-              "remote": { 
-                "type": "string", 
-                "description": "Relative path to another config file, or git+URL#ref:path for git-based remotes (e.g., git+https://github.com/org/repo.git#main:.checksy.yaml)"
-              }
-            },
-            "additionalProperties": false
-          },
-          {
-            "description": "Inline rule - requires 'check' property",
-            "required": ["check"],
-            "properties": {
-              "name": { "type": "string" },
-              "check": { "type": "string" },
-              "severity": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "error" },
-              "fix": { "type": "string" },
-              "hint": { "type": "string" },
-              "remote": { "type": "string" }
-            },
-            "additionalProperties": false
-          }
-        ]
-      }
-    },
-    "patterns": {
-      "type": "array",
-      "items": { "type": "string" }
-    }
-  },
-  "required": ["rules"],
-  "additionalProperties": false
-}"#;
+fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    let mut output = match serde_json::to_vec_pretty(&configuration_schema()) {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = writeln!(
+                stderr,
+                "failed to serialize configuration schema: {}",
+                error
+            );
+            return 2;
+        }
+    };
+    output.push(b'\n');
 
-    writeln!(stdout, "{}", schema_json).ok();
+    if let Err(error) = stdout.write_all(&output).and_then(|_| stdout.flush()) {
+        let _ = writeln!(stderr, "failed to write configuration schema: {}", error);
+        return 2;
+    }
+
     0
 }
-
 fn print_usage(stdout: &mut dyn Write) {
     let _ = writeln!(
         stdout,
-        "checksy - inspect and troubleshoot development environments"
+        "checksy - provision the current machine from trusted configuration"
     );
     let _ = writeln!(stdout);
     let _ = writeln!(stdout, "Usage:");
@@ -805,18 +802,45 @@ fn print_usage(stdout: &mut dyn Write) {
     let _ = writeln!(stdout, "  --stdin-config    read config from stdin");
     let _ = writeln!(stdout);
     let _ = writeln!(stdout, "Available Commands:");
-    let _ = writeln!(stdout, "  check      Run checks for config-defined rules");
+    let _ = writeln!(
+        stdout,
+        "  check      Run checks; add --fix to provision the machine"
+    );
     let _ = writeln!(
         stdout,
         "  diagnose   Run checks (deprecated, use 'check' instead)"
     );
     let _ = writeln!(stdout, "  install    Cache git-based remote configs");
+    let _ = writeln!(stdout, "  init       Create a starter configuration file");
     let _ = writeln!(
         stdout,
-        "  schema     Print the JSON schema for configuration file"
+        "  schema     Print the generated Draft 7 configuration schema"
     );
     let _ = writeln!(stdout, "  version    Print the current build version");
     let _ = writeln!(stdout, "  help       Show this message");
+    let _ = writeln!(stdout);
+    let _ = writeln!(stdout, "Check Flags:");
+    let _ = writeln!(
+        stdout,
+        "  --fix                run configured repairs and final checks"
+    );
+    let _ = writeln!(
+        stdout,
+        "  --non-interactive    prohibit interactive-fix terminal use"
+    );
+    let _ = writeln!(stdout);
+    let _ = writeln!(
+        stdout,
+        "  skip-if runs once before check: exit 0 skips; completed nonzero runs check"
+    );
+    let _ = writeln!(
+        stdout,
+        "  A skip prints '⏭️ <name> (skipped)' and runs no check, repair, or recheck"
+    );
+    let _ = writeln!(
+        stdout,
+        "  A skip-if process failure stops the run with operational exit 2"
+    );
 }
 
 fn parse_severity(value: &str) -> Result<Severity, String> {
@@ -884,12 +908,20 @@ fn print_rule_warning(result: &RuleResult, stdout: &mut dyn Write, stderr: &mut 
     print_rule_status(result, "⚠️ ", true, stdout, stderr);
 }
 
+fn print_rule_skipped(result: &RuleResult, stdout: &mut dyn Write) {
+    let _ = writeln!(stdout, "⏭️ {} (skipped)", result.name());
+}
+
 fn print_rule_outcome(
     result: &RuleResult,
     fail_severity: Severity,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) {
+    if result.skipped() {
+        print_rule_skipped(result, stdout);
+        return;
+    }
     if result.success() {
         print_rule_success(result, stdout, stderr);
         return;
@@ -902,13 +934,29 @@ fn print_rule_outcome(
 }
 
 fn summarize_report(report: &Report, no_fail: bool, stdout: &mut dyn Write) -> i32 {
+    let skipped = report.skipped_count();
     if !report.has_failures() {
-        let _ = writeln!(stdout, "😎 All rules validated");
+        if skipped == 0 {
+            let _ = writeln!(stdout, "😎 All rules validated");
+        } else {
+            let _ = writeln!(
+                stdout,
+                "😎 All applicable rules validated; {skipped} skipped"
+            );
+        }
         return 0;
     }
 
     let failures = report.failures();
-    let _ = writeln!(stdout, "😭 {} rules failed validation", failures.len());
+    if skipped == 0 {
+        let _ = writeln!(stdout, "😭 {} rules failed validation", failures.len());
+    } else {
+        let _ = writeln!(
+            stdout,
+            "😭 {} rules failed validation; {skipped} skipped",
+            failures.len()
+        );
+    }
     for failure in &failures {
         let _ = writeln!(stdout, "- {}", failure.name());
     }
@@ -920,17 +968,66 @@ fn summarize_report(report: &Report, no_fail: bool, stdout: &mut dyn Write) -> i
     3
 }
 
-fn check_with_fixes(
-    opts: Options,
+fn report_check_error(
+    error: &mut DiagnoseError,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
-) -> Result<Report, String> {
-    if opts.config.rules.is_empty() && opts.config.preconditions.is_empty() {
-        return Ok(Report {
-            rules: vec![],
-            fail_severity: opts.fail_severity,
-        });
+) -> i32 {
+    if let Some(execution) = error.execution() {
+        let command_name = execution.command_name();
+        let command_stdout = execution.stdout();
+        let command_stderr = execution.stderr();
+        if !command_stdout.is_empty() {
+            let _ = writeln!(stderr, "{} stdout:\n{}", command_name, command_stdout);
+        }
+        if !command_stderr.is_empty() {
+            let _ = writeln!(stderr, "{} stderr:\n{}", command_name, command_stderr);
+        }
     }
+
+    let _ = writeln!(stderr, "check failed: {}", error);
+
+    if let Some(signal) = error
+        .execution()
+        .and_then(|execution| execution.interrupted_signal())
+    {
+        let _ = stdout.flush();
+        let _ = stderr.flush();
+        if let Some(execution) = error.execution_mut() {
+            let _ = execution.restore_signal_handlers();
+        }
+        return reraise_parent_signal(signal);
+    }
+
+    2
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn reraise_parent_signal(signal: i32) -> i32 {
+    // The runner has already dropped its temporary handlers before returning.
+    // Invoke the default action only after caller-visible diagnostics have
+    // been flushed so the invoking shell observes conventional signal status.
+    // signal-hook deliberately leaves its dispatcher installed after the last
+    // registration is removed. Emulate the platform default so the parent
+    // observes signal termination instead of an ordinary Checksy exit code.
+    let _ = signal_hook::low_level::emulate_default_handler(signal);
+    2
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn reraise_parent_signal(_signal: i32) -> i32 {
+    2
+}
+
+fn check_with_fixes(
+    opts: Options,
+    interaction: InteractionMode,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<Report, DiagnoseError> {
+    opts.config
+        .validate()
+        .map_err(DiagnoseError::Configuration)?;
 
     let workdir = if opts.workdir.is_empty() {
         "."
@@ -940,88 +1037,22 @@ fn check_with_fixes(
     let mut results = vec![];
 
     let preconditions = check::filter_preconditions(&opts.config, opts.min_severity);
-    for rule in preconditions {
-        let result = check::run_rule(rule.clone(), workdir);
-        if result.success() {
-            print_rule_success(&result, stdout, stderr);
-            results.push(result);
-            continue;
-        }
-
-        if rule.fix.as_ref().map(|s| s.trim()).unwrap_or("").is_empty() {
-            print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-            results.push(result);
-            continue;
-        }
-
-        print_rule_status(&result, "⚠️ ", false, stdout, stderr);
-
-        let fix_rule = Rule {
-            name: Some(format!("{} fix", rule_display_name(&rule))),
-            check: Some(rule.fix.clone().unwrap_or_default()),
-            severity: rule.severity.clone(),
-            fix: None,
-            hint: rule.hint.clone(),
-            remote: None,
-        };
-        let fix_result = check::run_rule(fix_rule, workdir);
-        if !fix_result.success() {
-            print_rule_failure(&fix_result, stdout, stderr);
-            print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-            results.push(result);
-            continue;
-        }
-
-        print_rule_success(&fix_result, stdout, stderr);
-
-        let result = check::run_rule(rule, workdir);
-        print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-        results.push(result);
-    }
-
     let rules = check::filter_rules(&opts.config, opts.min_severity);
-    for rule in rules {
-        let result = check::run_rule(rule.clone(), workdir);
-        if result.success() {
-            print_rule_success(&result, stdout, stderr);
-            results.push(result);
-            continue;
-        }
-
-        if rule.fix.as_ref().map(|s| s.trim()).unwrap_or("").is_empty() {
-            print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-            results.push(result);
-            continue;
-        }
-
-        print_rule_status(&result, "⚠️ ", false, stdout, stderr);
-
-        let fix_rule = Rule {
-            name: Some(format!("{} fix", rule_display_name(&rule))),
-            check: Some(rule.fix.clone().unwrap_or_default()),
-            severity: rule.severity.clone(),
-            fix: None,
-            hint: rule.hint.clone(),
-            remote: None,
-        };
-        let fix_result = check::run_rule(fix_rule, workdir);
-        if !fix_result.success() {
-            print_rule_failure(&fix_result, stdout, stderr);
-            print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-            results.push(result);
-            continue;
-        }
-
-        print_rule_success(&fix_result, stdout, stderr);
-
-        let result = check::run_rule(rule, workdir);
-        print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-        results.push(result);
+    for rule in preconditions.into_iter().chain(rules) {
+        results.push(run_rule_with_fixes(
+            rule,
+            workdir,
+            opts.fail_severity,
+            interaction,
+            stdout,
+            stderr,
+        )?);
     }
 
-    let file_paths = check::expand_rule_files(workdir, &opts.config.patterns)?;
+    let file_paths = check::expand_rule_files(workdir, &opts.config.patterns)
+        .map_err(DiagnoseError::Configuration)?;
     for rel_path in file_paths {
-        let result = check::run_rule_file(workdir, &rel_path);
+        let result = check::run_rule_file_supervised(workdir, &rel_path)?;
         print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
         results.push(result);
     }
@@ -1030,6 +1061,115 @@ fn check_with_fixes(
         rules: results,
         fail_severity: opts.fail_severity,
     })
+}
+
+fn run_rule_with_fixes(
+    rule: Rule,
+    workdir: &str,
+    fail_severity: Severity,
+    interaction: InteractionMode,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<RuleResult, DiagnoseError> {
+    let original = check::run_rule_supervised(rule.clone(), workdir)?;
+    if original.skipped() {
+        print_rule_skipped(&original, stdout);
+        return Ok(original);
+    }
+    if original.success() {
+        print_rule_success(&original, stdout, stderr);
+        return Ok(original);
+    }
+
+    if let Some(fix) = rule
+        .fix
+        .as_deref()
+        .filter(|command| !command.trim().is_empty())
+    {
+        print_rule_status(&original, "⚠️ ", false, stdout, stderr);
+        let fix_result = check::run_rule_supervised(repair_rule(&rule, fix), workdir)?;
+        if !fix_result.success() {
+            print_rule_failure(&fix_result, stdout, stderr);
+            print_rule_outcome(&original, fail_severity, stdout, stderr);
+            return Ok(original);
+        }
+
+        print_rule_success(&fix_result, stdout, stderr);
+        let final_result = check::run_rule_check_supervised(rule, workdir)?;
+        print_rule_outcome(&final_result, fail_severity, stdout, stderr);
+        return Ok(final_result);
+    }
+
+    let Some(interactive_fix) = rule.interactive_fix.as_deref() else {
+        print_rule_outcome(&original, fail_severity, stdout, stderr);
+        return Ok(original);
+    };
+
+    if interaction != InteractionMode::Permitted {
+        print_rule_outcome(&original, fail_severity, stdout, stderr);
+        print_interactive_repair_required(&rule, interaction, stderr);
+        return Ok(original);
+    }
+
+    let _ = stdout.flush();
+    let _ = stderr.flush();
+    let repair = repair_rule(&rule, interactive_fix);
+    let fix_result = match check::run_rule_interactive_supervised(repair, workdir) {
+        Ok(result) => result,
+        Err(check::InteractiveExecutionError::Unavailable) => {
+            print_interactive_repair_required(&rule, InteractionMode::Permitted, stderr);
+            print_rule_outcome(&original, fail_severity, stdout, stderr);
+            return Ok(original);
+        }
+        Err(check::InteractiveExecutionError::Execution(error)) => return Err(error.into()),
+    };
+
+    if !fix_result.success() {
+        print_rule_failure(&fix_result, stdout, stderr);
+        print_rule_outcome(&original, fail_severity, stdout, stderr);
+        return Ok(original);
+    }
+
+    print_rule_success(&fix_result, stdout, stderr);
+    let final_result = check::run_rule_check_supervised(rule, workdir)?;
+    print_rule_outcome(&final_result, fail_severity, stdout, stderr);
+    Ok(final_result)
+}
+
+fn repair_rule(rule: &Rule, command: &str) -> Rule {
+    Rule {
+        name: Some(format!("{} fix", rule_display_name(rule))),
+        check: Some(command.to_string()),
+        severity: rule.severity,
+        fix: None,
+        interactive_fix: None,
+        skip_if: None,
+        hint: rule.hint.clone(),
+        remote: None,
+        timeout: rule.timeout.clone(),
+    }
+}
+
+fn print_interactive_repair_required(
+    rule: &Rule,
+    interaction: InteractionMode,
+    stderr: &mut dyn Write,
+) {
+    let name = rule_display_name(rule);
+    let reason = match interaction {
+        InteractionMode::Stdin => concat!(
+            "stdin configuration is always non-interactive; save it to a local file and ",
+            "rerun check --fix from a terminal"
+        ),
+        InteractionMode::Prohibited => concat!(
+            "--non-interactive prohibits terminal use; rerun without --non-interactive ",
+            "from a terminal"
+        ),
+        InteractionMode::Permitted => {
+            "no usable controlling terminal is available; rerun check --fix from a terminal"
+        }
+    };
+    let _ = writeln!(stderr, "{name}: interactive repair required, but {reason}");
 }
 
 fn rule_display_name(rule: &Rule) -> String {
@@ -1044,6 +1184,143 @@ fn rule_display_name(rule: &Rule) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io;
+
+    fn invoke(args: &[&str]) -> (i32, String, String) {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = run(
+            args.iter().map(|arg| (*arg).to_string()).collect(),
+            &mut stdout,
+            &mut stderr,
+        );
+        (
+            code,
+            String::from_utf8(stdout).unwrap(),
+            String::from_utf8(stderr).unwrap(),
+        )
+    }
+
+    struct WriteFailure;
+
+    impl Write for WriteFailure {
+        fn write(&mut self, _buffer: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "write failed"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct FlushFailure {
+        bytes: Vec<u8>,
+    }
+
+    impl Write for FlushFailure {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            self.bytes.extend_from_slice(buffer);
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "flush failed"))
+        }
+    }
+
+    #[test]
+    fn help_describes_the_provisioning_cli() {
+        let (code, stdout, stderr) = invoke(&["help"]);
+
+        assert_eq!(code, 0);
+        assert!(stderr.is_empty());
+        assert!(stdout.contains("provision the current machine"));
+        assert!(stdout.contains("--fix"));
+        for command in ["check", "diagnose", "install", "init", "schema", "version"] {
+            assert!(stdout.contains(command), "help omitted {command}");
+        }
+        assert!(stdout.contains("--non-interactive"));
+        assert!(stdout.contains("interactive-fix"));
+        assert!(!stdout.contains("apply"));
+    }
+
+    #[test]
+    fn schema_command_matches_direct_generation_and_is_deterministic() {
+        let (first_code, first_stdout, first_stderr) = invoke(&["schema"]);
+        let (second_code, second_stdout, second_stderr) = invoke(&["schema"]);
+
+        assert_eq!(first_code, 0);
+        assert_eq!(second_code, 0);
+        assert!(first_stderr.is_empty());
+        assert!(second_stderr.is_empty());
+        assert_eq!(first_stdout, second_stdout);
+
+        let mut expected = serde_json::to_vec_pretty(&configuration_schema()).unwrap();
+        expected.push(b'\n');
+        assert_eq!(first_stdout.as_bytes(), expected);
+        assert!(first_stdout.ends_with('\n'));
+        assert!(!first_stdout.ends_with("\n\n"));
+    }
+
+    #[test]
+    fn schema_command_reports_write_and_flush_failures() {
+        for (mut stdout, expected_message) in [
+            (Box::new(WriteFailure) as Box<dyn Write>, "write failed"),
+            (
+                Box::new(FlushFailure::default()) as Box<dyn Write>,
+                "flush failed",
+            ),
+        ] {
+            let mut stderr = Vec::new();
+            let code = run(vec!["schema".to_string()], stdout.as_mut(), &mut stderr);
+
+            assert_eq!(code, 2);
+            let stderr = String::from_utf8(stderr).unwrap();
+            assert!(stderr.contains("failed to write configuration schema"));
+            assert!(stderr.contains(expected_message));
+        }
+    }
+
+    #[test]
+    fn stable_exit_classes_cover_usage_operations_and_compliance() {
+        let (code, _, _) = invoke(&[]);
+        assert_eq!(code, 1);
+
+        let (code, _, _) = invoke(&["unknown-command"]);
+        assert_eq!(code, 2);
+
+        let directory = tempfile::tempdir().unwrap();
+        let missing = directory.path().join("missing.yaml");
+        let missing = missing.to_string_lossy().into_owned();
+        let (code, _, _) = invoke(&["--config", &missing, "check"]);
+        assert_eq!(code, 2);
+        let (code, _, _) = invoke(&["--config", &missing, "check", "--no-fail"]);
+        assert_eq!(code, 2);
+
+        let passing = directory.path().join("passing.yaml");
+        std::fs::write(
+            &passing,
+            "rules:\n  - name: passing\n    check: 'true'\n    severity: error\n",
+        )
+        .unwrap();
+        let passing = passing.to_string_lossy().into_owned();
+        let (code, _, _) = invoke(&["--config", &passing, "check"]);
+        assert_eq!(code, 0);
+
+        let failing = directory.path().join("failing.yaml");
+        std::fs::write(
+            &failing,
+            "rules:\n  - name: failing\n    check: 'false'\n    severity: error\n",
+        )
+        .unwrap();
+        let failing = failing.to_string_lossy().into_owned();
+        let (code, _, _) = invoke(&["--config", &failing, "check"]);
+        assert_eq!(code, 3);
+
+        let (code, _, _) = invoke(&["--config", &failing, "check", "--no-fail"]);
+        assert_eq!(code, 0);
+    }
 
     #[test]
     fn test_parse_severity() {
@@ -1057,14 +1334,285 @@ mod tests {
     }
 
     #[test]
+    fn non_interactive_is_a_bare_check_flag_and_does_not_imply_fix() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("passing.yaml");
+        std::fs::write(
+            &config,
+            concat!(
+                "rules:\n",
+                "  - check: 'true'\n",
+                "    interactive-fix: 'exit 99'\n"
+            ),
+        )
+        .unwrap();
+        let config = config.to_string_lossy();
+
+        let (code, stdout, stderr) =
+            invoke(&["--config", config.as_ref(), "check", "--non-interactive"]);
+        assert_eq!(code, 0);
+        assert!(stdout.contains("All rules validated"));
+        assert!(stderr.is_empty());
+
+        let (code, _, stderr) = invoke(&[
+            "--config",
+            config.as_ref(),
+            "check",
+            "--non-interactive=true",
+        ]);
+        assert_eq!(code, 2);
+        assert!(stderr.contains("Unknown flag"));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn fix_lock_failures_are_distinct_fail_fast_and_not_masked() {
+        let _serial = crate::provision_lock::test_guard();
+        let directory = tempfile::tempdir().unwrap();
+        let lock_directory = directory.path().join("lock");
+        let uid = rustix::process::geteuid().as_raw();
+        let held = ProvisioningLock::acquire_at(&lock_directory, uid).unwrap();
+        let marker = directory.path().join("must-not-run");
+        let config = directory.path().join("config.yaml");
+        std::fs::write(
+            &config,
+            format!("rules:\n  - check: 'touch \"{}\"'\n", marker.display()),
+        )
+        .unwrap();
+        let config = config.to_string_lossy().into_owned();
+
+        for extra in [&[][..], &["--no-fail"][..]] {
+            let mut arguments = vec![
+                "--config".to_string(),
+                config.clone(),
+                "check".to_string(),
+                "--fix".to_string(),
+            ];
+            arguments.extend(extra.iter().map(|value| (*value).to_string()));
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            let mut acquire = || ProvisioningLock::acquire_at(&lock_directory, uid);
+            let code = run_with_lock_acquirer(arguments, &mut stdout, &mut stderr, &mut acquire);
+
+            assert_eq!(code, 4);
+            assert!(stdout.is_empty());
+            assert_eq!(
+                String::from_utf8(stderr).unwrap(),
+                concat!(
+                    "provisioning lock held: another checksy check --fix is already running ",
+                    "for this user\n"
+                )
+            );
+            assert!(!marker.exists());
+        }
+
+        drop(held);
+        let mut acquire = || {
+            Err(ProvisioningLockError::State(
+                "integrity sentinel".to_string(),
+            ))
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = run_with_lock_acquirer(
+            vec![
+                "--config".to_string(),
+                config,
+                "check".to_string(),
+                "--fix".to_string(),
+                "--no-fail".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+            &mut acquire,
+        );
+        assert_eq!(code, 2);
+        assert!(stdout.is_empty());
+        assert!(String::from_utf8(stderr)
+            .unwrap()
+            .contains("unable to acquire provisioning lock: integrity sentinel"));
+        assert!(!marker.exists());
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn validation_and_check_only_execution_do_not_acquire_the_lock() {
+        let _serial = crate::provision_lock::test_guard();
+        let directory = tempfile::tempdir().unwrap();
+        let valid = directory.path().join("valid.yaml");
+        std::fs::write(&valid, "rules:\n  - check: 'true'\n").unwrap();
+        let invalid = directory.path().join("invalid.yaml");
+        std::fs::write(
+            &invalid,
+            "rules:\n  - check: 'true'\n    unknownProvisioningField: true\n",
+        )
+        .unwrap();
+
+        let calls = std::cell::Cell::new(0_u8);
+        let mut acquire = || {
+            calls.set(calls.get() + 1);
+            Err(ProvisioningLockError::Held)
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = run_with_lock_acquirer(
+            vec![
+                "--config".to_string(),
+                valid.to_string_lossy().into_owned(),
+                "check".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+            &mut acquire,
+        );
+        assert_eq!(code, 0);
+        assert_eq!(calls.get(), 0);
+
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = run_with_lock_acquirer(
+            vec![
+                "--config".to_string(),
+                invalid.to_string_lossy().into_owned(),
+                "check".to_string(),
+                "--fix".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+            &mut acquire,
+        );
+        assert_eq!(code, 2);
+        assert_eq!(calls.get(), 0);
+        assert!(!String::from_utf8(stderr)
+            .unwrap()
+            .contains("provisioning lock held"));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    struct ReportingLockProbe {
+        bytes: Vec<u8>,
+        lock_directory: std::path::PathBuf,
+        uid: u32,
+        observed_contention: bool,
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    impl Write for ReportingLockProbe {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            self.bytes.extend_from_slice(buffer);
+            if !self.observed_contention
+                && self
+                    .bytes
+                    .windows(b"All rules validated".len())
+                    .any(|window| window == b"All rules validated")
+            {
+                self.observed_contention = matches!(
+                    ProvisioningLock::acquire_at(&self.lock_directory, self.uid),
+                    Err(ProvisioningLockError::Held)
+                );
+            }
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn provisioning_lock_is_held_through_summary_reporting_then_released() {
+        let _serial = crate::provision_lock::test_guard();
+        let directory = tempfile::tempdir().unwrap();
+        let lock_directory = directory.path().join("lock");
+        let uid = rustix::process::geteuid().as_raw();
+        let config = directory.path().join("config.yaml");
+        std::fs::write(&config, "rules:\n  - check: 'true'\n").unwrap();
+        let mut stdout = ReportingLockProbe {
+            bytes: Vec::new(),
+            lock_directory: lock_directory.clone(),
+            uid,
+            observed_contention: false,
+        };
+        let mut stderr = Vec::new();
+        let mut acquire = || ProvisioningLock::acquire_at(&lock_directory, uid);
+        let code = run_with_lock_acquirer(
+            vec![
+                "--config".to_string(),
+                config.to_string_lossy().into_owned(),
+                "check".to_string(),
+                "--fix".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+            &mut acquire,
+        );
+
+        assert_eq!(code, 0);
+        assert!(stderr.is_empty());
+        assert!(stdout.observed_contention);
+    }
+
+    #[test]
+    fn fix_workflow_evaluates_skip_if_only_before_the_initial_check() {
+        let directory = tempfile::tempdir().unwrap();
+        let trace = directory.path().join("trace");
+        let fixed = directory.path().join("fixed");
+        let rule = Rule {
+            name: Some("once-only predicate".to_string()),
+            check: Some(format!(
+                "printf 'check\\n' >> '{}'; test -f '{}'",
+                trace.display(),
+                fixed.display()
+            )),
+            skip_if: Some(format!(
+                "printf 'predicate\\n' >> '{}'; exit 23",
+                trace.display()
+            )),
+            severity: Some(Severity::Error),
+            fix: Some(format!(
+                "printf 'fix\\n' >> '{}'; : > '{}'",
+                trace.display(),
+                fixed.display()
+            )),
+            interactive_fix: None,
+            hint: None,
+            remote: None,
+            timeout: Some("2s".to_string()),
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let result = run_rule_with_fixes(
+            rule,
+            directory.path().to_str().unwrap(),
+            Severity::Error,
+            InteractionMode::Prohibited,
+            &mut stdout,
+            &mut stderr,
+        )
+        .unwrap();
+
+        assert_eq!(result.outcome, crate::check::RuleOutcome::Passed);
+        assert_eq!(
+            std::fs::read_to_string(trace).unwrap(),
+            "predicate\ncheck\nfix\ncheck\n"
+        );
+        assert!(stderr.is_empty());
+    }
+
+    #[test]
     fn test_rule_display_name() {
         let rule = Rule {
             name: None,
             check: Some("echo hi".to_string()),
             severity: None,
             fix: None,
+            interactive_fix: None,
+            skip_if: None,
             hint: None,
             remote: None,
+            timeout: None,
         };
         assert!(rule_display_name(&rule).contains("echo hi"));
 
@@ -1073,8 +1621,11 @@ mod tests {
             check: Some("echo hi".to_string()),
             severity: None,
             fix: None,
+            interactive_fix: None,
+            skip_if: None,
             hint: None,
             remote: None,
+            timeout: None,
         };
         assert_eq!(rule_display_name(&rule), "custom");
     }

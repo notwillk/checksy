@@ -1,0 +1,7 @@
+rules:
+  - name: inherited environment gate
+    skip-if: test "${CHECKSY_SKIP_IF_ENV_GATE:-}" = enabled
+    check: printf 'environment-check\n' >> .trace
+  - name: inherited command availability gate
+    skip-if: command -v checksy-skip-if-contract-gate >/dev/null 2>&1
+    check: printf 'command-check\n' >> .trace

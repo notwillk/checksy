@@ -1,0 +1,22 @@
+preconditions:
+  - name: predicate timeout
+    timeout: 2s
+    skip-if: |
+      chunk=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      i=0
+      while [ "$i" -lt 16384 ]; do
+        printf '%s' "$chunk"
+        i=$((i + 1))
+      done
+      printf 'Z'
+      printf 'predicate timeout retained stderr\n' >&2
+      while :; do
+        :
+      done
+    check: |
+      : > .unexpected-timeout-check
+      exit 93
+rules:
+  - name: must not run after predicate timeout
+    check: |
+      : > .unexpected-after-timeout

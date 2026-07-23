@@ -1,0 +1,8 @@
+checkSeverity: Debug
+failSeverity: ERROR
+preconditions:
+  - check: 'true'
+    severity: InFo
+rules:
+  - check: 'true'
+    severity: WaRnInG

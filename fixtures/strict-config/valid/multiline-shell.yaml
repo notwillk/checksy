@@ -1,0 +1,7 @@
+rules:
+  - name: Multiline shell is opaque configuration text
+    check: |
+      value='hello world'
+      printf '%s\n' "$value"
+    fix: |
+      printf '%s\n' 'a fix may also be multiline'

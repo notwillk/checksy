@@ -1,0 +1,6 @@
+rules:
+  - name: ordinary repair remains headless-capable
+    severity: error
+    timeout: 2s
+    check: test -f .ordinary-fixed
+    fix: ': > .ordinary-fixed'
