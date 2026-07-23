@@ -29,17 +29,21 @@ the remote user. The [flat provisioning definition](.devcontainer/checksy.yaml)
 uses [shared version data](.devcontainer/tool-versions.env) and
 [repository-local helpers](.devcontainer/scripts/) to provision Entr, Just
 `1.57.0`, Rustup `1.29.0` with Rust `1.94.1`, and Dev Container CLI `0.88.0`.
+Local development also receives Codex CLI `0.145.0`; its rule uses the
+propagated GitHub Actions marker to skip installation in CI. It installs into
+the dedicated user-owned `.local/opt/codex-cli` prefix without touching an
+app-managed `.local/bin/codex`; authentication remains a first-use user action.
 The Rustup bootstrap binary and Just archives use versioned URLs with pinned
 architecture-specific SHA-256 values. The Rust toolchain includes `rustfmt` and
 `clippy`. The Dev Container CLI is installed into the remote user's `.local`
 prefix so npm lifecycle scripts do not run as root. `.local/bin` and
 `.cargo/bin` are prepended through the remote environment so Quality CI and
-interactive terminals resolve both user-owned toolchains. Helpers are separated
-into prerequisite, Entr, Just, Rustup, and Dev Container CLI directories, with
-one [shared library](.devcontainer/scripts/shared/lib.sh) and a network-free
-[test runner](.devcontainer/scripts/tests/run.sh). Their paths are relative to
-the selected root configuration's `.devcontainer/` directory, matching the
-current root-origin execution model.
+interactive terminals resolve the user-owned tools. Helpers are separated into
+prerequisite, Entr, Just, Rustup, Dev Container CLI, and Codex CLI directories,
+with one [shared library](.devcontainer/scripts/shared/lib.sh) and a
+network-free [test runner](.devcontainer/scripts/tests/run.sh). Their paths are
+relative to the selected root configuration's `.devcontainer/` directory,
+matching the current root-origin execution model.
 
 This is deliberately a guest-userland boundary. The base image,
 Docker-in-Docker, editor customization, and immutable Checksy Feature must exist
@@ -469,15 +473,17 @@ run_install() [cli.rs]
 
 - The network-free [helper tests](.devcontainer/scripts/tests/run.sh) cover
   version loading, supported architecture mapping, exact Just release
-  selection, checksum rejection, Rustup/toolchain/component selection, and the
-  Node.js requirement for Dev Container CLI.
+  selection, checksum rejection, Rustup/toolchain/component selection, the
+  Node.js requirement for npm-installed tools, and local-versus-Actions Codex
+  CLI selection.
 - Quality CI runs the provisioning definition with ordinary fixes, immediately
   runs it check-only, and only then proceeds to formatting, Clippy, and
   installer syntax checks.
-- Fresh-container validation asserts Checksy `0.7.6`, Entr availability, Just
+- Manual fresh-container validation asserts Checksy `0.7.6`, Entr availability, Just
   `1.57.0`, Rust `1.94.1` with `rustfmt` and `clippy`, Dev Container CLI
-  `0.88.0`, and Node.js 20 or newer. A second convergence and check-only pass
-  prove the fixes are idempotent.
+  `0.88.0`, Codex CLI `0.145.0` for local development, and Node.js 20 or newer.
+  A second convergence and check-only pass prove the fixes are idempotent;
+  simulated GitHub Actions validation proves Codex remains absent and skipped.
 
 ## External Dependencies & Integrations
 

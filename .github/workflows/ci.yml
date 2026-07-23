@@ -32,8 +32,11 @@ jobs:
         with:
           push: never
           runCmd: >-
+            test "${GITHUB_ACTIONS:-}" = true &&
             checksy --config=.devcontainer/checksy.yaml check --fix --non-interactive &&
             checksy --config=.devcontainer/checksy.yaml check --non-interactive &&
+            test ! -e "$HOME/.local/opt/codex-cli/bin/codex" &&
+            test ! -L "$HOME/.local/opt/codex-cli/bin/codex" &&
             bash -o pipefail -c "find .devcontainer/scripts -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n" &&
             bash .devcontainer/scripts/tests/run.sh &&
             cd src &&

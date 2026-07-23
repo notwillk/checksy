@@ -10,10 +10,11 @@
 		}
 	},
 	"containerEnv": {
-		"DEVCONTAINER": "true"
+		"DEVCONTAINER": "true",
+		"GITHUB_ACTIONS": "${localEnv:GITHUB_ACTIONS}"
 	},
 	"remoteEnv": {
-		"PATH": "/home/vscode/.local/bin:/home/vscode/.cargo/bin:${containerEnv:PATH}"
+		"PATH": "/home/vscode/.local/opt/codex-cli/bin:/home/vscode/.local/bin:/home/vscode/.cargo/bin:${containerEnv:PATH}"
 	},
 	"customizations": {
 		"vscode": {
