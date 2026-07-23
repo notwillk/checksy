@@ -1086,8 +1086,23 @@ mod supported {
                 }
             }
             if outer_relay_enabled && terminal_input_open && input.is_empty() {
-                terminal_input_open = read_pending(terminal, &mut input, false)
-                    .map_err(|source| interactive_supervision(source, &child))?;
+                match read_outer_terminal(terminal, &mut input)
+                    .map_err(|source| interactive_supervision(source, &child))?
+                {
+                    OuterTerminalRead::Open(open) => terminal_input_open = open,
+                    OuterTerminalRead::ForegroundOwnershipLost => {
+                        outer_relay_enabled = false;
+                        terminal_input_open = false;
+                        input.clear();
+                        output.clear();
+                        if cause.is_none() && first_parent_signal.is_none() {
+                            cause = Some(TerminationCause::ForegroundOwnershipLost);
+                            signal_group(child.process_group(), Signal::Term)
+                                .map_err(|source| interactive_supervision(source, &child))?;
+                            term_deadline = Some(deadline_from(Instant::now(), limits.term_grace));
+                        }
+                    }
+                }
             }
             if master_output_open && output.is_empty() {
                 match read_pending(&master, &mut output, true) {
@@ -1299,6 +1314,34 @@ mod supported {
                 Err(Errno::IO) if eio_is_eof => return Ok(false),
                 Err(error) => return Err(os_error(error)),
             }
+        }
+    }
+
+    enum OuterTerminalRead {
+        Open(bool),
+        ForegroundOwnershipLost,
+    }
+
+    fn read_outer_terminal(
+        terminal: &OwnedFd,
+        pending: &mut PendingBytes,
+    ) -> io::Result<OuterTerminalRead> {
+        match read_pending(terminal, pending, false) {
+            Ok(open) => Ok(OuterTerminalRead::Open(open)),
+            Err(source) if source.raw_os_error() == Some(libc::EIO) => {
+                // The foreground group can change after the relay's explicit
+                // ownership check and before this read. With SIGTTIN ignored,
+                // Darwin reports EIO for that background-terminal read. Confirm
+                // ownership was actually lost before using the actionable
+                // foreground-loss path; unrelated EIO remains a supervision
+                // failure.
+                if owns_foreground_terminal(terminal).map_err(os_error)? {
+                    Err(source)
+                } else {
+                    Ok(OuterTerminalRead::ForegroundOwnershipLost)
+                }
+            }
+            Err(source) => Err(source),
         }
     }
 
