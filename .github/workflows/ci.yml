@@ -32,6 +32,10 @@ jobs:
         with:
           push: never
           runCmd: >-
+            checksy --config=.devcontainer/checksy.yaml check --fix --non-interactive &&
+            checksy --config=.devcontainer/checksy.yaml check --non-interactive &&
+            bash -o pipefail -c "find .devcontainer/scripts -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n" &&
+            bash .devcontainer/scripts/tests/run.sh &&
             cd src &&
             cargo fmt --all -- --check &&
             cargo clippy --locked --all-targets --all-features &&

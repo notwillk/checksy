@@ -1,0 +1,26 @@
+preconditions:
+  - name: Devcontainer provisioning prerequisites are installed
+    check: exec bash ./scripts/prerequisites/check.sh
+    fix: exec bash ./scripts/prerequisites/install.sh
+    timeout: 10m
+
+rules:
+  - name: Entr is installed
+    check: exec bash ./scripts/entr/check.sh
+    fix: exec bash ./scripts/entr/install.sh
+    timeout: 10m
+
+  - name: Just is pinned to the workspace version
+    check: exec bash ./scripts/just/check.sh
+    fix: exec bash ./scripts/just/install.sh
+    timeout: 10m
+
+  - name: Rust is pinned with development components
+    check: exec bash ./scripts/rustup/check.sh
+    fix: exec bash ./scripts/rustup/install.sh
+    timeout: 15m
+
+  - name: Dev Container CLI is pinned to the workspace version
+    check: exec bash ./scripts/devcontainer-cli/check.sh
+    fix: exec bash ./scripts/devcontainer-cli/install.sh
+    timeout: 15m

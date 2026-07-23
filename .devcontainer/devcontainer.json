@@ -2,16 +2,18 @@
 	"name": "checksy",
 	"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
 	"features": {
-		"./features/entr": {},
 		"ghcr.io/devcontainers/features/docker-in-docker:2": {
 			"moby": false
 		},
-		"ghcr.io/notwillk/devcontainer-features/devcontainer-cli": {},
-		"ghcr.io/notwillk/devcontainer-features/rustup": {},
-		"ghcr.io/notwillk/devcontainer-features/just": {}
+		"ghcr.io/notwillk/checksy/checksy@sha256:55818189d558943f00a3769579278fbf2c936d66c4c54e82e45d598ee9c38018": {
+			"version": "0.7.6"
+		}
 	},
 	"containerEnv": {
 		"DEVCONTAINER": "true"
+	},
+	"remoteEnv": {
+		"PATH": "/home/vscode/.local/bin:/home/vscode/.cargo/bin:${containerEnv:PATH}"
 	},
 	"customizations": {
 		"vscode": {
@@ -23,5 +25,6 @@
 			]
 		}
 	},
+	"postCreateCommand": "checksy --config=.devcontainer/checksy.yaml check --fix --non-interactive",
 	"remoteUser": "vscode"
 }

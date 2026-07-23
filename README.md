@@ -229,6 +229,44 @@ src/
 The resulting binary can be copied anywhere on your `PATH` if desired. Cargo
 commands run from `src/`; the root `justfile` provides the common project tasks.
 
+### Devcontainer provisioning
+
+This repository dogfoods Checksy for its development environment. The
+[devcontainer configuration](.devcontainer/devcontainer.json) bootstraps
+Checksy `0.7.6` through Feature `1.0.1`, referenced by its immutable canonical
+OCI manifest digest. The digest pins the Feature implementation, while its
+`version` option pins the Checksy release selected by that implementation.
+
+After the workspace is created, the
+[Checksy configuration](.devcontainer/checksy.yaml) provisions Entr, Just
+`1.57.0`, Rustup `1.29.0` with the exact Rust `1.94.1` toolchain, and Dev
+Container CLI `0.88.0`. The Rustup bootstrap binary and Just archives use
+versioned URLs with pinned architecture-specific SHA-256 values. The Rust
+toolchain includes the `rustfmt` and `clippy` components used by Quality CI.
+Shared pins live in
+[tool-versions.env](.devcontainer/tool-versions.env), and checks and fixes are
+grouped by tool under the focused
+[provisioning helpers](.devcontainer/scripts/). Shared behavior lives in
+[`shared/lib.sh`](.devcontainer/scripts/shared/lib.sh), with network-free
+coverage in [`tests/run.sh`](.devcontainer/scripts/tests/run.sh).
+
+The container lifecycle runs provisioning automatically. From the repository
+root, use these exact commands to converge it again or verify it without
+applying fixes:
+
+```bash
+checksy --config=.devcontainer/checksy.yaml check --fix --non-interactive
+checksy --config=.devcontainer/checksy.yaml check --non-interactive
+```
+
+The base image, Docker-in-Docker, editor settings, and immutable Checksy Feature
+remain in `devcontainer.json`. They establish the container and bootstrap
+Checksy itself; Checksy owns Rustup, Rust, and the other guest userland tools
+provisioned after that environment and workspace exist. The remote environment
+prepends `/home/vscode/.local/bin` and `/home/vscode/.cargo/bin` so the
+user-owned Dev Container CLI and Rust toolchain are available to lifecycle
+commands and terminals.
+
 ### Cross-compiling
 
 `just cross-compile <target>`
