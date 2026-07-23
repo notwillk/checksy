@@ -32,6 +32,10 @@ jobs:
         with:
           push: never
           runCmd: >-
+            checksy --config=.devcontainer/checksy.yaml check --fix --non-interactive &&
+            checksy --config=.devcontainer/checksy.yaml check --non-interactive &&
+            bash -n .devcontainer/scripts/*.sh &&
+            bash .devcontainer/scripts/test-provisioning-helpers.sh &&
             cd src &&
             cargo fmt --all -- --check &&
             cargo clippy --locked --all-targets --all-features &&

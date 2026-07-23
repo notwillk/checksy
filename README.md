@@ -229,6 +229,33 @@ src/
 The resulting binary can be copied anywhere on your `PATH` if desired. Cargo
 commands run from `src/`; the root `justfile` provides the common project tasks.
 
+### Devcontainer provisioning
+
+This repository dogfoods Checksy for its development environment. The
+[devcontainer configuration](.devcontainer/devcontainer.json) bootstraps
+Checksy `0.7.6` through Feature `1.0.1`, referenced by its immutable canonical
+OCI manifest digest. The digest pins the Feature implementation, while its
+`version` option pins the Checksy release selected by that implementation.
+
+After the workspace is created, the
+[Checksy configuration](.devcontainer/checksy.yaml) provisions Entr, Just
+`1.57.0`, and Dev Container CLI `0.88.0`. Shared pins live in
+[tool-versions.env](.devcontainer/tool-versions.env), and the checks and fixes
+delegate to the focused [provisioning helpers](.devcontainer/scripts/).
+
+The container lifecycle runs provisioning automatically. To converge it again
+or verify it without applying fixes:
+
+```bash
+checksy --config=.devcontainer/checksy.yaml check --fix --non-interactive
+checksy --config=.devcontainer/checksy.yaml check --non-interactive
+```
+
+The base image, Docker-in-Docker, Rustup, and editor settings remain in
+`devcontainer.json`. They establish the container and its bootstrap/runtime
+environment; Checksy owns the guest userland tools provisioned after that
+environment and workspace exist.
+
 ### Cross-compiling
 
 `just cross-compile <target>`

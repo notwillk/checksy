@@ -1,0 +1,25 @@
+preconditions:
+  - name: Devcontainer provisioning prerequisites are installed
+    check: |
+      command -v sudo >/dev/null &&
+        command -v curl >/dev/null &&
+        command -v tar >/dev/null &&
+        command -v sha256sum >/dev/null
+    fix: exec bash ./scripts/install-prerequisites.sh
+    timeout: 10m
+
+rules:
+  - name: Entr is installed
+    check: command -v entr >/dev/null
+    fix: exec bash ./scripts/install-entr.sh
+    timeout: 10m
+
+  - name: Just is pinned to the workspace version
+    check: exec bash ./scripts/check-just.sh
+    fix: exec bash ./scripts/install-just.sh
+    timeout: 10m
+
+  - name: Dev Container CLI is pinned to the workspace version
+    check: exec bash ./scripts/check-devcontainer-cli.sh
+    fix: exec bash ./scripts/install-devcontainer-cli.sh
+    timeout: 15m

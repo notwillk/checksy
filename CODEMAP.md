@@ -48,11 +48,26 @@
 │       ├── nested/         # Nested remote expansion
 │       └── invalid/        # Validation error tests
 │
+├── .devcontainer/          # Development environment and Checksy dogfooding
+│   ├── devcontainer.json   # Container bootstrap and Checksy Feature pin
+│   ├── checksy.yaml        # Entr, Just, and Dev Container CLI convergence
+│   ├── tool-versions.env   # Shared exact tool versions and Just checksums
+│   └── scripts/
+│       ├── provision-lib.sh              # Shared version/architecture helpers
+│       ├── install-prerequisites.sh      # Required apt tools
+│       ├── install-entr.sh               # Entr apt provisioning
+│       ├── check-just.sh                  # Exact Just version check
+│       ├── install-just.sh                # Verified Just release install
+│       ├── check-devcontainer-cli.sh      # Node and CLI version check
+│       ├── install-devcontainer-cli.sh    # Exact npm package install
+│       └── test-provisioning-helpers.sh   # Network-free helper contract
+│
 ├── scripts/                # Installation scripts
 │   ├── install.sh          # Install checksy binary
 │   └── uninstall.sh        # Remove checksy binary
 │
 ├── .github/workflows/      # CI/CD
+│   ├── ci.yml              # PR/push tests and devcontainer convergence
 │   └── release.yml         # Release automation
 │
 ├── justfile                # Just command runner recipes
@@ -61,6 +76,23 @@
 ├── rust-toolchain.toml     # Rust version specification
 └── CODEMAP.md              # This file
 ```
+
+## Devcontainer Provisioning
+
+- [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
+  bootstraps the base image, Docker-in-Docker, Rustup, and the canonical
+  digest-pinned Checksy Feature. It runs the provisioning definition after
+  workspace creation.
+- [`.devcontainer/checksy.yaml`](.devcontainer/checksy.yaml) is the flat
+  dogfooding configuration for Entr, Just `1.57.0`, and Dev Container CLI
+  `0.88.0`.
+- [`.devcontainer/tool-versions.env`](.devcontainer/tool-versions.env) is the
+  single source for exact tool pins and architecture-specific Just checksums.
+- [`.devcontainer/scripts/`](.devcontainer/scripts/) contains small check,
+  install, validation, and network-free test helpers. The flat configuration
+  addresses them relative to its own `.devcontainer/` directory.
+- [`.github/workflows/ci.yml`](.github/workflows/ci.yml) converges the
+  definition and follows it with a check-only pass before code-quality checks.
 
 ## Source Files Deep Dive
 
