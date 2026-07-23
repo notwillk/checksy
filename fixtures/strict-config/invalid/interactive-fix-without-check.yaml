@@ -1,3 +1,2 @@
 rules:
   - interactive-fix: read -r answer
-

@@ -2,4 +2,3 @@ rules:
   - name: Interactive repair
     check: test -f ready
     interactive-fix: read -r answer
-
