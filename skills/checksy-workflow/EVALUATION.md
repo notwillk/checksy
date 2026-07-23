@@ -375,7 +375,7 @@ If you encounter an error not listed above:
 
 4. **Enable verbose output:**
    ```bash
-   checksy check --check-severity=debug  # See all rules including debug
+   checksy check --check-severity debug  # See all rules including debug
    ```
 ```
 

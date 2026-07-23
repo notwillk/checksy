@@ -49,7 +49,7 @@ This skill guides you through configuring, running, and debugging [checksy](http
 checksy check                    # Run all checks
 checksy check --fix             # Run with auto-fix
 checksy check --fix --non-interactive  # Allow only headless repairs
-checksy check --cs=warn --fs=error  # Filter by severity
+checksy check --cs warn --fs error  # Filter by severity
 checksy install                 # Cache git remotes
 checksy schema > .checksy.schema.json  # Generate IDE schema
 ```
@@ -60,10 +60,10 @@ debug < info < warn < error
 
 | Level | CLI Flag | Use For |
 |-------|----------|---------|
-| debug | `--cs=debug` | Verbose diagnostics |
-| info | `--cs=info` | Informational checks |
-| warn | `--cs=warn` | Non-blocking issues |
-| error | `--cs=error` | Blocking failures |
+| debug | `--cs debug` | Verbose diagnostics |
+| info | `--cs info` | Informational checks |
+| warn | `--cs warn` | Non-blocking issues |
+| error | `--cs error` | Blocking failures |
 
 ---
 
@@ -136,7 +136,7 @@ patterns:
 CLI flags → Rule-level → Top-level defaults:
 
 ```bash
-checksy check --cs=warn --fs=error
+checksy check --cs warn --fs error
 ```
 
 **For detailed examples** including production configs and patterns, see [references/config-examples.md](references/config-examples.md).
@@ -308,7 +308,7 @@ checksy:
 ### Dry-Run Validation
 
 ```bash
-checksy check --check-severity=debug --no-fail
+checksy check --check-severity debug --no-fail
 ```
 
 ### Fixture-Based Testing
@@ -412,7 +412,7 @@ rules:
 | `checksy check` | Run all checks |
 | `checksy check --fix` | Run with auto-fix |
 | `checksy check --fix --non-interactive` | Run ordinary fixes but prohibit terminal repairs |
-| `checksy check --cs=warn --fs=error` | Filter by severity |
+| `checksy check --cs warn --fs error` | Filter by severity |
 | `checksy check --no-fail` | Never exit with failure |
 | `checksy install` | Cache git remotes |
 | `checksy install --prune` | Update and clean cache |

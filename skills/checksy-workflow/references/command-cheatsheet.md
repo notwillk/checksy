@@ -9,7 +9,7 @@ Quick reference for common checksy commands and configuration patterns.
 | `checksy check` | Run all checks with default config |
 | `checksy check --fix` | Run checks with auto-fix for failures |
 | `checksy check --fix --non-interactive` | Run ordinary fixes but prohibit terminal repairs |
-| `checksy check --cs=warn --fs=error` | Run warn+ rules, fail only on errors |
+| `checksy check --cs warn --fs error` | Run warn+ rules, fail only on errors |
 | `checksy check --no-fail` | Run checks, always exit 0 |
 | `checksy install` | Cache all git-based remote configs |
 | `checksy install --prune` | Update caches and remove unused |
@@ -50,10 +50,10 @@ Hierarchy (lowest to highest): `debug` < `info` < `warn` < `error`
 
 | Level | CLI Flag | Config Key | Use Case |
 |-------|----------|------------|----------|
-| debug | `--cs=debug` | `checkSeverity: debug` | Verbose diagnostics |
-| info | `--cs=info` | `checkSeverity: info` | Informational checks |
-| warn | `--cs=warn` | `checkSeverity: warn` | Non-blocking issues |
-| error | `--cs=error` | `checkSeverity: error` | Blocking failures |
+| debug | `--cs debug` | `checkSeverity: debug` | Verbose diagnostics |
+| info | `--cs info` | `checkSeverity: info` | Informational checks |
+| warn | `--cs warn` | `checkSeverity: warn` | Non-blocking issues |
+| error | `--cs error` | `checkSeverity: error` | Blocking failures |
 
 ## Config File Structure
 

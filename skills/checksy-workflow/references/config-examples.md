@@ -292,8 +292,8 @@ checksy check --fix          # Run with auto-fix
 
 # Daily development
 checksy check                # Quick validation
-checksy check --cs=error     # Only blocking checks
+checksy check --cs error     # Only blocking checks
 
 # CI/CD pipeline
-checksy check --cs=warn --fs=error  # Run warn+, fail on error
+checksy check --cs warn --fs error  # Run warn+, fail on error
 ```
