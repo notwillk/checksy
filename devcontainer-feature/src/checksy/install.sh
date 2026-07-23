@@ -6,10 +6,11 @@ REQUESTED_VERSION="${VERSION:-latest}"
 
 case "$REQUESTED_VERSION" in
   latest|current)
-    TAG="$(
-      curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
-        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p'
-    )"
+    if LATEST_RELEASE="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest")"; then
+      TAG="$(printf '%s\n' "$LATEST_RELEASE" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')"
+    else
+      TAG=""
+    fi
     ;;
   v*)
     TAG="$REQUESTED_VERSION"

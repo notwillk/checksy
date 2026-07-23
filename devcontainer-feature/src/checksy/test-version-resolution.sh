@@ -24,6 +24,9 @@ printf 'curl-url=%s\n' "$url" >>"$MOCK_LOG"
 
 case "$url" in
   https://api.github.com/repos/notwillk/checksy/releases/latest)
+    if [ "${MOCK_LATEST_EXIT:-0}" -ne 0 ]; then
+      exit "$MOCK_LATEST_EXIT"
+    fi
     printf '{"tag_name":"%s"}\n' "$MOCK_LATEST_TAG"
     ;;
   https://raw.githubusercontent.com/notwillk/checksy/*/scripts/install.sh)
@@ -136,6 +139,37 @@ if ! grep -Fx \
   "$TEST_ROOT/version-mismatch.output" >/dev/null; then
   cat "$TEST_ROOT/version-mismatch.output" >&2
   fail "mismatched checksy version did not emit the expected diagnostic"
+fi
+
+: >"$MOCK_LOG"
+set +e
+PATH="$MOCK_BIN:/usr/bin:/bin" \
+  VERSION="latest" \
+  MOCK_LOG="$MOCK_LOG" \
+  MOCK_LATEST_TAG="$LATEST_TAG" \
+  MOCK_LATEST_EXIT=22 \
+  "$REAL_BASH" "$INSTALLER" >"$TEST_ROOT/latest-lookup-failure.output" 2>&1
+lookup_status=$?
+set -e
+
+if [ "$lookup_status" -ne 1 ]; then
+  cat "$TEST_ROOT/latest-lookup-failure.output" >&2
+  fail "failed latest lookup returned $lookup_status instead of 1"
+fi
+
+if ! grep -Fx \
+  "Unable to determine the latest checksy release tag" \
+  "$TEST_ROOT/latest-lookup-failure.output" >/dev/null; then
+  cat "$TEST_ROOT/latest-lookup-failure.output" >&2
+  fail "failed latest lookup did not emit the expected diagnostic"
+fi
+
+if [ "$(wc -l <"$MOCK_LOG")" -ne 1 ] || \
+  ! grep -Fx \
+    "curl-url=https://api.github.com/repos/notwillk/checksy/releases/latest" \
+    "$MOCK_LOG" >/dev/null; then
+  cat "$MOCK_LOG" >&2
+  fail "failed latest lookup continued past release resolution"
 fi
 
 printf 'Feature installer unit tests passed\n'
