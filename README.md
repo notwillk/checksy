@@ -239,22 +239,32 @@ OCI manifest digest. The digest pins the Feature implementation, while its
 
 After the workspace is created, the
 [Checksy configuration](.devcontainer/checksy.yaml) provisions Entr, Just
-`1.57.0`, and Dev Container CLI `0.88.0`. Shared pins live in
-[tool-versions.env](.devcontainer/tool-versions.env), and the checks and fixes
-delegate to the focused [provisioning helpers](.devcontainer/scripts/).
+`1.57.0`, Rustup `1.29.0` with the exact Rust `1.94.1` toolchain, and Dev
+Container CLI `0.88.0`. The Rustup bootstrap binary and Just archives use
+versioned URLs with pinned architecture-specific SHA-256 values. The Rust
+toolchain includes the `rustfmt` and `clippy` components used by Quality CI.
+Shared pins live in
+[tool-versions.env](.devcontainer/tool-versions.env), and checks and fixes are
+grouped by tool under the focused
+[provisioning helpers](.devcontainer/scripts/). Shared behavior lives in
+[`shared/lib.sh`](.devcontainer/scripts/shared/lib.sh), with network-free
+coverage in [`tests/run.sh`](.devcontainer/scripts/tests/run.sh).
 
-The container lifecycle runs provisioning automatically. To converge it again
-or verify it without applying fixes:
+The container lifecycle runs provisioning automatically. From the repository
+root, use these exact commands to converge it again or verify it without
+applying fixes:
 
 ```bash
 checksy --config=.devcontainer/checksy.yaml check --fix --non-interactive
 checksy --config=.devcontainer/checksy.yaml check --non-interactive
 ```
 
-The base image, Docker-in-Docker, Rustup, and editor settings remain in
-`devcontainer.json`. They establish the container and its bootstrap/runtime
-environment; Checksy owns the guest userland tools provisioned after that
-environment and workspace exist.
+The base image, Docker-in-Docker, editor settings, and immutable Checksy Feature
+remain in `devcontainer.json`. They establish the container and bootstrap
+Checksy itself; Checksy owns Rustup, Rust, and the other guest userland tools
+provisioned after that environment and workspace exist. The remote environment
+prepends `/home/vscode/.cargo/bin` so lifecycle commands and terminals use the
+provisioned toolchain.
 
 ### Cross-compiling
 

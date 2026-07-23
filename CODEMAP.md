@@ -50,17 +50,18 @@
 │
 ├── .devcontainer/          # Development environment and Checksy dogfooding
 │   ├── devcontainer.json   # Container bootstrap and Checksy Feature pin
-│   ├── checksy.yaml        # Entr, Just, and Dev Container CLI convergence
-│   ├── tool-versions.env   # Shared exact tool versions and Just checksums
+│   ├── checksy.yaml        # Entr, Just, Rust, and Dev Container CLI convergence
+│   ├── tool-versions.env   # Shared exact toolchain pins and checksums
 │   └── scripts/
-│       ├── provision-lib.sh              # Shared version/architecture helpers
-│       ├── install-prerequisites.sh      # Required apt tools
-│       ├── install-entr.sh               # Entr apt provisioning
-│       ├── check-just.sh                  # Exact Just version check
-│       ├── install-just.sh                # Verified Just release install
-│       ├── check-devcontainer-cli.sh      # Node and CLI version check
-│       ├── install-devcontainer-cli.sh    # Exact npm package install
-│       └── test-provisioning-helpers.sh   # Network-free helper contract
+│       ├── prerequisites/          # Required apt-tool provisioning
+│       ├── entr/                   # Entr check and apt installation
+│       ├── just/                   # Exact Just check and verified install
+│       ├── rustup/                 # Rustup and exact Rust toolchain lifecycle
+│       ├── devcontainer-cli/       # Node and exact CLI lifecycle
+│       ├── shared/
+│       │   └── lib.sh              # Shared version/architecture helpers
+│       └── tests/
+│           └── run.sh              # Network-free helper contract
 │
 ├── scripts/                # Installation scripts
 │   ├── install.sh          # Install checksy binary
@@ -80,17 +81,20 @@
 ## Devcontainer Provisioning
 
 - [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
-  bootstraps the base image, Docker-in-Docker, Rustup, and the canonical
-  digest-pinned Checksy Feature. It runs the provisioning definition after
-  workspace creation.
+  bootstraps the base image, Docker-in-Docker, and the canonical digest-pinned
+  Checksy Feature. It exposes the user-installed Rust path and runs the
+  provisioning definition after workspace creation.
 - [`.devcontainer/checksy.yaml`](.devcontainer/checksy.yaml) is the flat
-  dogfooding configuration for Entr, Just `1.57.0`, and Dev Container CLI
-  `0.88.0`.
+  dogfooding configuration for Entr, Just `1.57.0`, Rustup `1.29.0` and Rust
+  `1.94.1`, and Dev Container CLI `0.88.0`.
 - [`.devcontainer/tool-versions.env`](.devcontainer/tool-versions.env) is the
-  single source for exact tool pins and architecture-specific Just checksums.
-- [`.devcontainer/scripts/`](.devcontainer/scripts/) contains small check,
-  install, validation, and network-free test helpers. The flat configuration
-  addresses them relative to its own `.devcontainer/` directory.
+  single source for exact toolchain pins and architecture-specific checksums.
+- [`.devcontainer/scripts/`](.devcontainer/scripts/) separates prerequisite,
+  Entr, Just, Rustup, and Dev Container CLI checks and installers by tool.
+  [`shared/lib.sh`](.devcontainer/scripts/shared/lib.sh) centralizes common
+  validation, while [`tests/run.sh`](.devcontainer/scripts/tests/run.sh)
+  provides the network-free contract. The flat configuration addresses helpers
+  relative to its own `.devcontainer/` directory.
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml) converges the
   definition and follows it with a check-only pass before code-quality checks.
 

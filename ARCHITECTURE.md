@@ -28,16 +28,24 @@ Once the workspace exists, `postCreateCommand` runs
 the remote user. The [flat provisioning definition](.devcontainer/checksy.yaml)
 uses [shared version data](.devcontainer/tool-versions.env) and
 [repository-local helpers](.devcontainer/scripts/) to provision Entr, Just
-`1.57.0`, and Dev Container CLI `0.88.0`. Helper paths are relative to the
-selected root configuration's `.devcontainer/` directory, which is compatible
-with the current root-origin execution model.
+`1.57.0`, Rustup `1.29.0` with Rust `1.94.1`, and Dev Container CLI `0.88.0`.
+The Rustup bootstrap binary and Just archives use versioned URLs with pinned
+architecture-specific SHA-256 values. The Rust toolchain includes `rustfmt` and
+`clippy`, and `.cargo/bin` is prepended through the remote environment so
+Quality CI and interactive terminals resolve that toolchain. Helpers are
+separated into prerequisite, Entr, Just, Rustup, and Dev Container CLI
+directories, with one [shared library](.devcontainer/scripts/shared/lib.sh) and
+a network-free [test runner](.devcontainer/scripts/tests/run.sh). Their paths
+are relative to the selected root configuration's `.devcontainer/` directory,
+matching the current root-origin execution model.
 
 This is deliberately a guest-userland boundary. The base image,
-Docker-in-Docker, Rustup, and editor customization must exist before Checksy can
-run or belong to the container/editor lifecycle, so they remain declared
-outside Checksy. Quality CI first converges the same definition and then runs it
-check-only before Rust and installer checks, proving both provisioning and
-idempotence through the public CLI.
+Docker-in-Docker, editor customization, and immutable Checksy Feature must exist
+before Checksy can run or belong to the container/editor lifecycle, so they
+remain declared outside Checksy. Rustup and Rust are provisioned inside that
+boundary. Quality CI first converges the same definition and then runs it
+check-only before invoking the provisioned `cargo`, `rustfmt`, and `clippy`,
+proving provisioning and idempotence through the public CLI.
 
 ## Security and mutation boundary
 
@@ -457,16 +465,17 @@ run_install() [cli.rs]
 
 ### Devcontainer provisioning test coverage
 
-- The network-free [helper tests](.devcontainer/scripts/test-provisioning-helpers.sh)
-  cover version loading, supported architecture mapping, exact Just release
-  selection, checksum rejection, and the Node.js requirement for Dev Container
-  CLI.
+- The network-free [helper tests](.devcontainer/scripts/tests/run.sh) cover
+  version loading, supported architecture mapping, exact Just release
+  selection, checksum rejection, Rustup/toolchain/component selection, and the
+  Node.js requirement for Dev Container CLI.
 - Quality CI runs the provisioning definition with ordinary fixes, immediately
   runs it check-only, and only then proceeds to formatting, Clippy, and
   installer syntax checks.
 - Fresh-container validation asserts Checksy `0.7.6`, Entr availability, Just
-  `1.57.0`, Dev Container CLI `0.88.0`, and Node.js 20 or newer. A second
-  convergence and check-only pass prove the fixes are idempotent.
+  `1.57.0`, Rust `1.94.1` with `rustfmt` and `clippy`, Dev Container CLI
+  `0.88.0`, and Node.js 20 or newer. A second convergence and check-only pass
+  prove the fixes are idempotent.
 
 ## External Dependencies & Integrations
 

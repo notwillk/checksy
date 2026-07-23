@@ -220,17 +220,20 @@ feature's edge cases.
 - [x] Provision the development container's userland tools through Checksy.
   - Bootstrap Checksy `0.7.6` through Feature `1.0.1` at its immutable
     canonical OCI digest.
-  - Provision Entr, Just `1.57.0`, and Dev Container CLI `0.88.0` from one
-    checked-in configuration.
+  - Provision Entr, Just `1.57.0`, Rustup `1.29.0` with the exact Rust `1.94.1`
+    toolchain and required `rustfmt`/`clippy` components, and Dev Container CLI
+    `0.88.0` from one checked-in configuration.
   - Run non-interactive convergence during container creation and in CI, then
     run the same configuration check-only to prove idempotence.
-  - Keep the base image, Docker-in-Docker, Rustup, and editor customization
-    outside Checksy as the deliberate bootstrap boundary.
-  - Cover version parsing, architectures, download selection, checksum
-    rejection, and Node.js compatibility with network-free helper tests.
+  - Keep the base image, Docker-in-Docker, editor customization, and immutable
+    Checksy Feature outside Checksy as the deliberate bootstrap boundary.
+  - Organize helpers by provisioned tool and cover version parsing,
+    architectures, download selection, checksum rejection, Rust toolchain
+    selection, and Node.js compatibility with network-free tests.
 
-This item is complete. Checksy now provisions its own development userland
-without absorbing container bootstrap or editor lifecycle concerns.
+This item is complete. Checksy now provisions its own development userland,
+including its Rust quality toolchain, without absorbing container bootstrap or
+editor lifecycle concerns.
 
 ### Correct local configuration origins
 

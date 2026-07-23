@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=provision-lib.sh
-source "$SCRIPT_DIR/provision-lib.sh"
+# shellcheck source=../shared/lib.sh
+source "$SCRIPT_DIR/../shared/lib.sh"
 
 if ! command -v sudo >/dev/null; then
   provision_error "sudo is required to install provisioning prerequisites"
