@@ -50,7 +50,7 @@
 │
 ├── .devcontainer/          # Development environment and Checksy dogfooding
 │   ├── devcontainer.json   # Container bootstrap and Checksy Feature pin
-│   ├── checksy.yaml        # Entr, Just, Rust, and Dev Container CLI convergence
+│   ├── checksy.yaml        # Entr, Just, Rust, Dev Container CLI, and local Codex convergence
 │   ├── tool-versions.env   # Shared exact toolchain pins and checksums
 │   └── scripts/
 │       ├── prerequisites/          # Required apt-tool provisioning
@@ -58,6 +58,7 @@
 │       ├── just/                   # Exact Just check and verified install
 │       ├── rustup/                 # Rustup and exact Rust toolchain lifecycle
 │       ├── devcontainer-cli/       # Node and exact CLI lifecycle
+│       ├── codex-cli/              # Local-only exact Codex CLI lifecycle
 │       ├── shared/
 │       │   └── lib.sh              # Shared version/architecture helpers
 │       └── tests/
@@ -86,7 +87,7 @@
   runs the provisioning definition after workspace creation.
 - [`.devcontainer/checksy.yaml`](.devcontainer/checksy.yaml) is the flat
   dogfooding configuration for Entr, Just `1.57.0`, Rustup `1.29.0` and Rust
-  `1.94.1`, and Dev Container CLI `0.88.0`.
+  `1.94.1`, Dev Container CLI `0.88.0`, and local-only Codex CLI `0.145.0`.
 - [`.devcontainer/tool-versions.env`](.devcontainer/tool-versions.env) is the
   single source for exact toolchain pins and architecture-specific checksums.
 - [`.devcontainer/scripts/`](.devcontainer/scripts/) separates prerequisite,

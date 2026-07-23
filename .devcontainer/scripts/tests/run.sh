@@ -34,6 +34,7 @@ assert_fails() {
 }
 
 assert_equal 0.7.6 "$CHECKSY_VERSION" "Checksy version pin"
+assert_equal 0.145.0 "$CODEX_CLI_VERSION" "Codex CLI version pin"
 assert_equal 1.57.0 "$JUST_VERSION" "Just version pin"
 assert_equal 1.29.0 "$RUSTUP_VERSION" "Rustup version pin"
 assert_equal 1.94.1 "$RUST_TOOLCHAIN_VERSION" "Rust toolchain version pin"
@@ -70,7 +71,7 @@ assert_equal "$CHECKSY_VERSION" "$feature_checksy_version" "Checksy Feature vers
 if grep -F 'devcontainer-features/rustup' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null; then
   fail "Rustup must be provisioned by Checksy rather than a devcontainer Feature"
 fi
-grep -F '"/home/vscode/.local/bin:/home/vscode/.cargo/bin:${containerEnv:PATH}"' \
+grep -F '"/home/vscode/.local/opt/codex-cli/bin:/home/vscode/.local/bin:/home/vscode/.cargo/bin:${containerEnv:PATH}"' \
   "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
   fail "devcontainer remote PATH must expose user-installed Checksy provisioning tools"
 if grep -E 'sudo[^#]*npm[[:space:]]+install' \
@@ -85,6 +86,77 @@ grep -F 'bash -o pipefail -c "find .devcontainer/scripts' "$ci_workflow" >/dev/n
   fail "CI shell syntax discovery must enable pipeline failure propagation"
 grep -F "xargs -0 -r -n1 bash -n" "$ci_workflow" >/dev/null || \
   fail "CI shell syntax discovery must not invoke Bash without a script"
+grep -F 'test "${GITHUB_ACTIONS:-}" = true' "$ci_workflow" >/dev/null || \
+  fail "CI must prove the GitHub Actions marker reaches the devcontainer"
+grep -F 'test ! -e "$HOME/.local/opt/codex-cli/bin/codex"' "$ci_workflow" >/dev/null || \
+  fail "CI must prove the local-only Codex CLI was not installed"
+grep -F '"GITHUB_ACTIONS": "${localEnv:GITHUB_ACTIONS}"' \
+  "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
+  fail "devcontainer must propagate the GitHub Actions marker"
+grep -F 'skip-if: '\''[ "${GITHUB_ACTIONS:-}" = "true" ]'\''' \
+  "$DEVCONTAINER_DIR/checksy.yaml" >/dev/null || \
+  fail "Codex CLI rule must skip only in GitHub Actions"
+GITHUB_ACTIONS=true bash -c '[ "${GITHUB_ACTIONS:-}" = "true" ]' || \
+  fail "Codex CLI predicate did not skip GitHub Actions"
+if env -u GITHUB_ACTIONS bash -c '[ "${GITHUB_ACTIONS:-}" = "true" ]'; then
+  fail "Codex CLI predicate skipped local development"
+fi
+
+mock_home="$TEST_ROOT/codex-home"
+mock_codex_bin="$mock_home/.local/opt/codex-cli/bin"
+mkdir -p "$mock_codex_bin"
+cat >"$mock_codex_bin/codex" <<'EOF'
+#!/usr/bin/env bash
+printf 'codex-cli 0.145.0\n'
+EOF
+chmod 0755 "$mock_codex_bin/codex"
+HOME="$mock_home" PATH="$mock_codex_bin:$PATH" bash "$SCRIPTS_DIR/codex-cli/check.sh" || \
+  fail "Codex CLI check rejected the pinned version"
+foreign_bin="$TEST_ROOT/codex-foreign-bin"
+mkdir -p "$foreign_bin"
+cat >"$foreign_bin/codex" <<'EOF'
+#!/usr/bin/env bash
+printf 'codex-cli 99.0.0\n'
+EOF
+chmod 0755 "$foreign_bin/codex"
+HOME="$mock_home" PATH="$foreign_bin:$mock_codex_bin:$PATH" \
+  bash "$SCRIPTS_DIR/codex-cli/check.sh" || \
+  fail "ambient Codex CLI shadowing changed managed-install compliance"
+cat >"$mock_codex_bin/codex" <<'EOF'
+#!/usr/bin/env bash
+printf 'codex-cli 0.144.0\n'
+EOF
+chmod 0755 "$mock_codex_bin/codex"
+assert_fails \
+  "mismatched Codex CLI version" \
+  env HOME="$mock_home" PATH="$mock_codex_bin:$PATH" bash "$SCRIPTS_DIR/codex-cli/check.sh"
+
+mock_install_home="$TEST_ROOT/codex-install-home"
+mock_bin="$TEST_ROOT/codex-mock-bin"
+mock_npm_log="$TEST_ROOT/codex-npm-args"
+foreign_codex="$mock_install_home/.local/bin/codex"
+mkdir -p "$mock_install_home/.local/bin" "$mock_bin"
+printf 'foreign codex sentinel\n' >"$foreign_codex"
+cat >"$mock_bin/node" <<'EOF'
+#!/usr/bin/env bash
+printf 'v22.0.0\n'
+EOF
+cat >"$mock_bin/npm" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"$MOCK_NPM_LOG"
+EOF
+chmod 0755 "$mock_bin/node" "$mock_bin/npm"
+HOME="$mock_install_home" \
+  MOCK_NPM_LOG="$mock_npm_log" \
+  PATH="$mock_bin:/usr/bin:/bin" \
+  bash "$SCRIPTS_DIR/codex-cli/install.sh"
+expected_npm_args=$'install\n--global\n--prefix\n'"$mock_install_home"$'/.local/opt/codex-cli\n--no-audit\n--no-fund\n--ignore-scripts\n@openai/codex@0.145.0'
+assert_equal "$expected_npm_args" "$(<"$mock_npm_log")" "Codex CLI npm invocation"
+assert_equal "foreign codex sentinel" "$(<"$foreign_codex")" "foreign Codex CLI preservation"
+if grep -E 'sudo[^#]*npm[[:space:]]+install' \
+  "$SCRIPTS_DIR/codex-cli/install.sh" >/dev/null; then
+  fail "Codex CLI npm lifecycle scripts must not run as root"
+fi
 
 root_toolchain_file="$DEVCONTAINER_DIR/../rust-toolchain.toml"
 root_rust_version=$(rust_toolchain_from_file "$root_toolchain_file")
@@ -223,6 +295,8 @@ assert_fails "old Node version" node_version_is_supported v19.9.0
 assert_fails "malformed Node version" node_version_is_supported 20.x
 
 expected_files=(
+  codex-cli/check.sh
+  codex-cli/install.sh
   devcontainer-cli/check.sh
   devcontainer-cli/install.sh
   entr/check.sh
@@ -248,7 +322,7 @@ for index in "${!expected_files[@]}"; do
   assert_equal "${expected_files[$index]}" "${actual_files[$index]}" "script layout entry $index"
 done
 
-expected_tools=(prerequisites entr just rustup devcontainer-cli)
+expected_tools=(prerequisites entr just rustup devcontainer-cli codex-cli)
 for tool in "${expected_tools[@]}"; do
   grep -F "check: exec bash ./scripts/$tool/check.sh" "$DEVCONTAINER_DIR/checksy.yaml" >/dev/null || \
     fail "checksy.yaml does not reference ./scripts/$tool/check.sh"

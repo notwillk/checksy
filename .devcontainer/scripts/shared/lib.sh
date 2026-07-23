@@ -40,6 +40,7 @@ load_tool_versions() {
   local required
   for required in \
     CHECKSY_VERSION \
+    CODEX_CLI_VERSION \
     JUST_VERSION \
     JUST_X86_64_SHA256 \
     JUST_AARCH64_SHA256 \
@@ -56,6 +57,7 @@ load_tool_versions() {
   done
 
   if ! is_release_version "$CHECKSY_VERSION" || \
+    ! is_release_version "$CODEX_CLI_VERSION" || \
     ! is_release_version "$JUST_VERSION" || \
     ! is_release_version "$RUSTUP_VERSION" || \
     ! is_release_version "$RUST_TOOLCHAIN_VERSION" || \

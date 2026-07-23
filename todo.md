@@ -221,8 +221,9 @@ feature's edge cases.
   - Bootstrap Checksy `0.7.6` through Feature `1.0.1` at its immutable
     canonical OCI digest.
   - Provision Entr, Just `1.57.0`, Rustup `1.29.0` with the exact Rust `1.94.1`
-    toolchain and required `rustfmt`/`clippy` components, and Dev Container CLI
-    `0.88.0` from one checked-in configuration.
+    toolchain and required `rustfmt`/`clippy` components, Dev Container CLI
+    `0.88.0`, and local-development Codex CLI `0.145.0` from one checked-in
+    configuration. Skip Codex CLI when GitHub Actions is provisioning CI.
   - Run non-interactive convergence during container creation and in CI, then
     run the same configuration check-only to prove idempotence.
   - Keep the base image, Docker-in-Docker, editor customization, and immutable
