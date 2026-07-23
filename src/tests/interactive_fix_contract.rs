@@ -1012,6 +1012,11 @@ fn interactive_foreground_thief_helper() {
 
     let mut trigger = [0_u8; 16];
     command.recv(&mut trigger).unwrap();
+    // SAFETY: this dedicated helper must stay alive after Checksy, the outer
+    // session leader, exits. The test's RAII guard owns its lifetime and
+    // verifies explicit SIGKILL cleanup.
+    let previous_hangup = unsafe { libc::signal(libc::SIGHUP, libc::SIG_IGN) };
+    assert_ne!(previous_hangup, libc::SIG_ERR);
     // SAFETY: this helper is a dedicated subprocess. Ignoring SIGTTOU permits
     // its same-session background process group to claim the outer PTY.
     let previous = unsafe { libc::signal(libc::SIGTTOU, libc::SIG_IGN) };
