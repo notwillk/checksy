@@ -254,16 +254,19 @@ fn resolve_file(
     }
 
     apply_rule_defaults(&mut config);
-    let base_dir = match mode {
-        ResolutionMode::CanonicalOrigins => canonical
-            .parent()
-            .expect("a canonical file path has a parent")
-            .to_path_buf(),
-        ResolutionMode::LegacyPublicPaths => path
-            .parent()
-            .expect("a configuration path has a parent")
-            .to_path_buf(),
+    let base_dir_source = match mode {
+        ResolutionMode::CanonicalOrigins => canonical.as_path(),
+        ResolutionMode::LegacyPublicPaths => path,
     };
+    let base_dir = base_dir_source
+        .parent()
+        .ok_or_else(|| {
+            format!(
+                "resolve config directory: '{}' has no parent",
+                base_dir_source.display()
+            )
+        })?
+        .to_path_buf();
     let origin = DefinitionOrigin {
         config_path: canonical.clone(),
         base_dir: base_dir.clone(),
