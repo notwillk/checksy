@@ -205,11 +205,9 @@ mod tests {
 
     #[test]
     fn test_get_remote_sha_invalid_repo() {
-        // Test against non-existent repo
-        let result = GitCache::get_remote_sha(
-            "https://github.com/nonexistent-user-12345/fake-repo.git",
-            "main",
-        );
+        let temp_dir = TempDir::new().unwrap();
+        let missing_repo = temp_dir.path().join("missing.git");
+        let result = GitCache::get_remote_sha(&missing_repo.to_string_lossy(), "main");
 
         assert!(result.is_err());
     }
