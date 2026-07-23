@@ -1,12 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-V="${VERSION:-latest}"
-if [ "$V" != "latest" ] && [ "$V" != "current" ]; then
-  V="${V#v}"
+REPO="notwillk/checksy"
+REQUESTED_VERSION="${VERSION:-latest}"
+
+case "$REQUESTED_VERSION" in
+  latest|current)
+    if LATEST_RELEASE="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest")"; then
+      TAG="$(printf '%s\n' "$LATEST_RELEASE" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')"
+    else
+      TAG=""
+    fi
+    ;;
+  v*)
+    TAG="$REQUESTED_VERSION"
+    ;;
+  *)
+    TAG="v$REQUESTED_VERSION"
+    ;;
+esac
+
+if [ -z "$TAG" ]; then
+  echo "Unable to determine the latest checksy release tag" >&2
+  exit 1
 fi
 
-# Install checksy via upstream installer, honoring CHECKSY_VERSION
-curl -fsSL https://raw.githubusercontent.com/notwillk/checksy/main/scripts/install.sh | CHECKSY_VERSION="$V" bash
+INSTALLER_URL="https://raw.githubusercontent.com/$REPO/$TAG/scripts/install.sh"
+curl -fsSL "$INSTALLER_URL" | CHECKSY_VERSION="$TAG" bash
 
-checksy --version || true
+EXPECTED_VERSION="checksy ${TAG#v}"
+if INSTALLED_VERSION="$(checksy --version)"; then
+  if [ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]; then
+    echo "Installed checksy version mismatch: expected '$EXPECTED_VERSION', got '$INSTALLED_VERSION'" >&2
+    exit 1
+  fi
+else
+  verification_status=$?
+  echo "Unable to verify the installed checksy version" >&2
+  exit "$verification_status"
+fi
