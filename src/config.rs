@@ -850,7 +850,10 @@ rules:
 
         let canonical_nested = nested.canonicalize().unwrap();
         let canonical_deeper = deeper.canonicalize().unwrap();
-        assert_eq!(resolved.preconditions[0].origin.base_dir, dir.path());
+        assert_eq!(
+            resolved.preconditions[0].origin.base_dir,
+            dir.path().canonicalize().unwrap()
+        );
         assert_eq!(resolved.preconditions[1].origin.base_dir, canonical_nested);
         assert_eq!(resolved.preconditions[2].origin.base_dir, canonical_deeper);
         assert_eq!(
