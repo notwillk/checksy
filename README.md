@@ -247,7 +247,7 @@ This repository dogfoods Checksy for its development environment. The
 Checksy `0.7.6` through Feature `1.0.1`, referenced by its immutable canonical
 OCI manifest digest. The digest pins the Feature implementation, while its
 `version` option pins the Checksy release selected by that implementation. The
-base is kept on the Ubuntu `24.04` release line so security rebuilds remain
+base is kept on the Ubuntu `26.04` release line so security rebuilds remain
 available without silently changing the container's Ubuntu release.
 
 After the workspace is created, the

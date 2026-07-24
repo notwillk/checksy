@@ -90,7 +90,7 @@
 ## Devcontainer Provisioning
 
 - [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
-  bootstraps the Ubuntu `24.04` base line, Docker-in-Docker, and the canonical
+  bootstraps the Ubuntu `26.04` base line, Docker-in-Docker, and the canonical
   digest-pinned Checksy Feature. It exposes the user-installed `.local` and
   Rust paths and runs the provisioning definition after workspace creation.
 - [`.devcontainer/checksy.yaml`](.devcontainer/checksy.yaml) is the flat
