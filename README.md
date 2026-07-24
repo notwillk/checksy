@@ -199,6 +199,17 @@ failure or lock contention.
 curl -fsSL https://raw.githubusercontent.com/notwillk/checksy/main/scripts/install.sh | bash
 ```
 
+Beginning with Checksy `0.7.7`, official Linux release archives are statically
+linked musl executables for `x86_64` and `aarch64`; they do not inherit a glibc
+version requirement from the release runner. Archive names remain
+`checksy_linux_x86_64.tar.gz` and `checksy_linux_aarch64.tar.gz`.
+
+The static builds resolve provisioning-lock homes for root and users present in
+the machine's local `/etc/passwd` database. Accounts available only through
+glibc NSS modules such as LDAP or SSSD are not supported by the official
+binary; build Checksy from source for a GNU target when that integration is
+required.
+
 ## Uninstallation
 
 ```bash
@@ -235,7 +246,9 @@ This repository dogfoods Checksy for its development environment. The
 [devcontainer configuration](.devcontainer/devcontainer.json) bootstraps
 Checksy `0.7.6` through Feature `1.0.1`, referenced by its immutable canonical
 OCI manifest digest. The digest pins the Feature implementation, while its
-`version` option pins the Checksy release selected by that implementation.
+`version` option pins the Checksy release selected by that implementation. The
+base is kept on the Ubuntu `26.04` release line so security rebuilds remain
+available without silently changing the container's Ubuntu release.
 
 After the workspace is created, the
 [Checksy configuration](.devcontainer/checksy.yaml) provisions Entr, Just
@@ -275,7 +288,9 @@ commands and terminals.
 
 `just cross-compile <target>`
 
-Cross-compile for a different architecture/target (e.g., `aarch64-unknown-linux-gnu`). The binary is output to `dist/checksy_<OS>_<ARCH>`.
+Cross-compile for a different architecture/target (for example,
+`aarch64-unknown-linux-musl`). Linux release targets must use musl; the binary
+is output to `dist/checksy_<OS>_<ARCH>`.
 
 ## Running
 

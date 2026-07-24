@@ -490,16 +490,31 @@ run_install() [cli.rs]
 - The network-free [helper tests](.devcontainer/scripts/tests/run.sh) cover
   version loading, supported architecture mapping, exact Just release
   selection, checksum rejection, Rustup/toolchain/component selection, the
-  Node.js requirement for npm-installed tools, and local-versus-Actions Codex
-  CLI selection.
+  pinned Ubuntu release line, the Node.js requirement for npm-installed tools,
+  and local-versus-Actions Codex CLI selection.
 - Quality CI runs the provisioning definition with ordinary fixes, immediately
   runs it check-only, and only then proceeds to formatting, Clippy, and
-  installer syntax checks.
+  installer syntax checks. A separate native ARM64 job rebuilds the actual
+  devcontainer and checks its pinned bootstrap binary, covering the Docker
+  Desktop on Apple Silicon architecture path.
 - Manual fresh-container validation asserts Checksy `0.7.6`, Entr availability, Just
   `1.57.0`, Rust `1.94.1` with `rustfmt` and `clippy`, Dev Container CLI
   `0.88.0`, Codex CLI `0.145.0` for local development, and Node.js 20 or newer.
   A second convergence and check-only pass prove the fixes are idempotent;
   simulated GitHub Actions validation proves Codex remains absent and skipped.
+
+### Linux release portability
+
+- The release pipeline produces statically linked musl artifacts for x86_64
+  and aarch64 while preserving the existing archive names consumed by the
+  installer and Checksy Feature. This becomes the published Linux contract
+  with Checksy `0.7.7`.
+- Cross itself and both cross-build images are pinned. CI and release
+  publication reject Linux artifacts with an ELF interpreter, dynamic library
+  dependencies, or GLIBC version requirements.
+- Native x86_64 and aarch64 smoke jobs run the packaged artifacts before
+  release. Static account lookup supports root and local `/etc/passwd` users;
+  glibc NSS-only identities require a source-built GNU binary.
 
 ## External Dependencies & Integrations
 
