@@ -7,6 +7,7 @@
 ├── src/                    # Rust source code
 │   ├── Cargo.toml          # Package manifest
 │   ├── Cargo.lock          # Pinned dependency lock
+│   ├── Cross.toml          # Digest-pinned Linux cross-build images
 │   ├── lib.rs              # Library exports
 │   ├── main.rs             # Binary entry point
 │   ├── cli.rs              # ~950 lines: Command parsing & orchestration
@@ -67,7 +68,12 @@
 │           └── run.sh              # Network-free helper contract
 │
 ├── scripts/                # Installation scripts
+│   ├── cross-compile.sh    # Pinned cross-build and release packaging
 │   ├── install.sh          # Install checksy binary
+│   ├── tests/
+│   │   ├── release-portability.sh # Pinned target/workflow contract
+│   │   └── verify-static-linux-binary.sh # Network-free verifier tests
+│   ├── verify-static-linux-binary.sh # Static release contract
 │   └── uninstall.sh        # Remove checksy binary
 │
 ├── .github/workflows/      # CI/CD
@@ -84,9 +90,9 @@
 ## Devcontainer Provisioning
 
 - [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
-  bootstraps the base image, Docker-in-Docker, and the canonical digest-pinned
-  Checksy Feature. It exposes the user-installed `.local` and Rust paths and
-  runs the provisioning definition after workspace creation.
+  bootstraps the Ubuntu `24.04` base line, Docker-in-Docker, and the canonical
+  digest-pinned Checksy Feature. It exposes the user-installed `.local` and
+  Rust paths and runs the provisioning definition after workspace creation.
 - [`.devcontainer/checksy.yaml`](.devcontainer/checksy.yaml) is the flat
   dogfooding configuration for Entr, Just `1.57.0`, Rustup `1.29.0` and Rust
   `1.94.1`, Dev Container CLI `0.88.0`, and local-only Codex CLI `0.145.0`.
@@ -100,6 +106,8 @@
   relative to its own `.devcontainer/` directory.
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml) converges the
   definition and follows it with a check-only pass before code-quality checks.
+  It also rebuilds the devcontainer on ARM64 and builds and smoke-tests both
+  static Linux release architectures.
 
 ## Source Files Deep Dive
 
@@ -513,6 +521,4 @@ lib.rs
 
 ## Uncertain Areas
 
-1. **CI/CD details**: `.github/workflows/release.yml` specifics not examined
-2. **Cross-compilation**: `justfile` recipes for cross-comp not detailed
-3. **Windows support**: Native Windows is outside the current product boundary
+1. **Windows support**: Native Windows is outside the current product boundary

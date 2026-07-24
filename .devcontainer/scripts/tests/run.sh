@@ -68,6 +68,14 @@ feature_checksy_version=$(
   ' "$DEVCONTAINER_DIR/devcontainer.json"
 )
 assert_equal "$CHECKSY_VERSION" "$feature_checksy_version" "Checksy Feature version option"
+devcontainer_base=$(
+  sed -nE 's/^[[:space:]]*"image":[[:space:]]*"([^"]+)",?$/\1/p' \
+    "$DEVCONTAINER_DIR/devcontainer.json"
+)
+assert_equal \
+  "mcr.microsoft.com/devcontainers/base:ubuntu-24.04" \
+  "$devcontainer_base" \
+  "devcontainer base image"
 if grep -F 'devcontainer-features/rustup' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null; then
   fail "Rustup must be provisioned by Checksy rather than a devcontainer Feature"
 fi

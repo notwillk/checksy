@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cmds=(cargo gpg sha256sum)
+cmds=(cargo rustup sha256sum tar)
 missing=()
 for cmd in "${cmds[@]}"; do
-  if ! which "$cmd" >/dev/null 2>&1; then
+  if ! command -v "$cmd" >/dev/null 2>&1; then
     missing+=("$cmd")
   fi
 done
@@ -35,13 +35,16 @@ mkdir -p dist
 if [ "$os" = "darwin" ]; then
   echo "Building for macOS natively..."
   rustup target add "$target"
-  cd src && cargo build --release --target "$target"
+  cd src && cargo build --locked --release --target "$target"
   cp "target/$target/release/checksy" "../dist/checksy_${os}_${arch}"
   cd ..
 else
   echo "Cross-compiling via Docker..."
-  cargo install cross --git https://github.com/cross-rs/cross
-  cd src && cross build --release --target "$target"
+  installed_cross_version=$(cross --version 2>/dev/null | sed -n '1p' || true)
+  if [ "$installed_cross_version" != "cross 0.2.5" ]; then
+    cargo install cross --version 0.2.5 --locked --force
+  fi
+  cd src && cross build --locked --release --target "$target"
   cp "target/$target/release/checksy" "../dist/checksy_${os}_${arch}"
   cd ..
 fi

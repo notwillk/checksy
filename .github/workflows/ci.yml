@@ -37,8 +37,10 @@ jobs:
             checksy --config=.devcontainer/checksy.yaml check --non-interactive &&
             test ! -e "$HOME/.local/opt/codex-cli/bin/codex" &&
             test ! -L "$HOME/.local/opt/codex-cli/bin/codex" &&
-            bash -o pipefail -c "find .devcontainer/scripts -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n" &&
+            bash -o pipefail -c "find .devcontainer/scripts scripts -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n" &&
             bash .devcontainer/scripts/tests/run.sh &&
+            bash scripts/tests/verify-static-linux-binary.sh &&
+            bash scripts/tests/release-portability.sh &&
             cd src &&
             cargo fmt --all -- --check &&
             cargo clippy --locked --all-targets --all-features &&
@@ -46,6 +48,26 @@ jobs:
             sh -n ../scripts/uninstall.sh &&
             bash -n ../devcontainer-feature/src/checksy/test-version-resolution.sh &&
             bash ../devcontainer-feature/src/checksy/test-version-resolution.sh
+
+  devcontainer-arm:
+    name: Devcontainer bootstrap (arm64)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Build and verify the ARM64 devcontainer
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
+        with:
+          push: never
+          runCmd: >-
+            test "$(uname -m)" = aarch64 &&
+            test "$(checksy --version)" = "checksy 0.7.6" &&
+            checksy --config=.devcontainer/checksy.yaml check --non-interactive
 
   tests:
     name: Tests (${{ matrix.os }})
@@ -74,3 +96,73 @@ jobs:
 
       - name: Run tests
         run: cargo test --locked --all-features --no-fail-fast
+
+  portability-build:
+    name: Portable Linux build (${{ matrix.arch }})
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            arch: x86_64
+          - target: aarch64-unknown-linux-musl
+            arch: aarch64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Build portable Linux release
+        run: ./scripts/cross-compile.sh "${{ matrix.target }}"
+
+      - name: Upload portable Linux release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: checksy-linux-${{ matrix.arch }}
+          path: dist/checksy_linux_${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  portability-smoke:
+    name: Portable Linux smoke (${{ matrix.arch }})
+    if: github.event_name == 'pull_request'
+    needs: portability-build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Download portable Linux release
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: checksy-linux-${{ matrix.arch }}
+          path: dist
+
+      - name: Verify and run portable Linux release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/smoke
+          tar -xzf "dist/checksy_linux_${{ matrix.arch }}.tar.gz" -C dist/smoke
+          expected_version="$(sed -n 's/^pub const VERSION: &str = "\(.*\)";$/\1/p' src/version.rs)"
+          test -n "$expected_version"
+          ./scripts/verify-static-linux-binary.sh dist/smoke/checksy "$expected_version"
+          smoke_config="$(mktemp)"
+          trap 'rm -f "$smoke_config"' EXIT
+          printf 'rules:\n  - name: static release smoke\n    check: test "$(uname -s)" = Linux\n' >"$smoke_config"
+          dist/smoke/checksy --config="$smoke_config" check --fix --non-interactive
