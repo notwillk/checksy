@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cmds=(cargo rustup sha256sum tar)
+cmds=(cargo sha256sum tar)
 missing=()
 for cmd in "${cmds[@]}"; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -33,6 +33,10 @@ cd "$repo_root"
 mkdir -p dist
 
 if [ "$os" = "darwin" ]; then
+  if ! command -v rustup >/dev/null 2>&1; then
+    echo "Missing required command for macOS builds: rustup" >&2
+    exit 1
+  fi
   echo "Building for macOS natively..."
   rustup target add "$target"
   cd src && cargo build --locked --release --target "$target"
