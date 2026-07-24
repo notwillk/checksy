@@ -73,7 +73,7 @@ devcontainer_base=$(
     "$DEVCONTAINER_DIR/devcontainer.json"
 )
 assert_equal \
-  "mcr.microsoft.com/devcontainers/base:ubuntu-26.04" \
+  "mcr.microsoft.com/devcontainers/base:ubuntu26.04" \
   "$devcontainer_base" \
   "devcontainer base image"
 if grep -F 'devcontainer-features/rustup' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null; then

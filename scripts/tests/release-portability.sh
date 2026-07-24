@@ -56,7 +56,7 @@ for test_script in \
   grep -F "bash $test_script" "$ci_workflow" >/dev/null ||
     fail "Quality CI does not run $test_script"
 done
-grep -F '"image": "mcr.microsoft.com/devcontainers/base:ubuntu-26.04"' \
+grep -F '"image": "mcr.microsoft.com/devcontainers/base:ubuntu26.04"' \
   "$devcontainer" >/dev/null ||
   fail "devcontainer base is not pinned to the Ubuntu 26.04 line"
 
