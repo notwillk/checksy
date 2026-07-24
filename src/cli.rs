@@ -1,6 +1,9 @@
 use crate::cache::CacheManager;
-use crate::check::{self, DiagnoseError, Options, Report, RuleResult};
-use crate::config::{decode_config, load, parse_git_remote, resolve_path, resolve_remote_path};
+use crate::check::{self, DiagnoseError, Report, RuleResult};
+use crate::config::{
+    decode_config, load_resolved, parse_git_remote, resolve_path, resolve_remote_path,
+    ResolvedDefinition,
+};
 use crate::git::GitCache;
 use crate::provision_lock::{ProvisioningLock, ProvisioningLockError};
 use crate::schema::{configuration_schema, Config, Rule, Severity};
@@ -304,18 +307,6 @@ fn run_check(
 
     let min_severity = check::min_severity(check_severity, fail_severity);
 
-    let workdir = Path::new(&abs_config_path)
-        .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| ".".to_string());
-
-    let opts = Options {
-        config: cfg,
-        workdir,
-        min_severity,
-        fail_severity,
-    };
-
     let report = if apply_fixes {
         let interaction = if stdin_config {
             InteractionMode::Stdin
@@ -324,14 +315,21 @@ fn run_check(
         } else {
             InteractionMode::Permitted
         };
-        match check_with_fixes(opts, interaction, stdout, stderr) {
+        match check_with_fixes(
+            cfg,
+            min_severity,
+            fail_severity,
+            interaction,
+            stdout,
+            stderr,
+        ) {
             Ok(r) => r,
             Err(mut e) => {
                 return report_check_error(&mut e, stdout, stderr);
             }
         }
     } else {
-        match check::diagnose_supervised(opts) {
+        match check::diagnose_resolved_supervised(cfg, min_severity, fail_severity) {
             Ok(r) => r,
             Err(mut e) => {
                 return report_check_error(&mut e, stdout, stderr);
@@ -349,7 +347,7 @@ fn run_check(
 }
 
 enum PreparedConfig {
-    Ready(Config),
+    Ready(ResolvedDefinition),
     NeedsLegacyGit {
         config_dir: PathBuf,
         cache_path: Option<String>,
@@ -359,7 +357,7 @@ enum PreparedConfig {
 
 /// Validate every locally available definition without mutating the legacy Git cache.
 fn prepare_config(abs_config_path: &str, apply_fixes: bool) -> Result<PreparedConfig, String> {
-    match load(abs_config_path) {
+    match load_resolved(abs_config_path) {
         Ok(config) => Ok(PreparedConfig::Ready(config)),
         Err(e) => {
             if !apply_fixes || !e.contains("git remote not cached") {
@@ -399,7 +397,7 @@ fn finish_prepared_config(
     prepared: PreparedConfig,
     abs_config_path: &str,
     stdout: &mut dyn Write,
-) -> Result<Config, String> {
+) -> Result<ResolvedDefinition, String> {
     match prepared {
         PreparedConfig::Ready(config) => Ok(config),
         PreparedConfig::NeedsLegacyGit { .. } => {
@@ -420,7 +418,7 @@ fn finish_prepared_config(
                 .iter()
                 .all(|(repo, ref_)| cache_mgr.is_cached(repo, ref_))
             {
-                return load(abs_config_path);
+                return load_resolved(abs_config_path);
             }
 
             writeln!(stdout, "🔧 Caching missing git remotes...").ok();
@@ -445,7 +443,7 @@ fn finish_prepared_config(
             }
 
             writeln!(stdout, "✅ Git remotes cached, retrying...").ok();
-            load(abs_config_path)
+            load_resolved(abs_config_path)
         }
     }
 }
@@ -1020,46 +1018,46 @@ fn reraise_parent_signal(_signal: i32) -> i32 {
 }
 
 fn check_with_fixes(
-    opts: Options,
+    definition: ResolvedDefinition,
+    min_severity: Severity,
+    fail_severity: Severity,
     interaction: InteractionMode,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> Result<Report, DiagnoseError> {
-    opts.config
-        .validate()
-        .map_err(DiagnoseError::Configuration)?;
-
-    let workdir = if opts.workdir.is_empty() {
-        "."
-    } else {
-        &opts.workdir
-    };
     let mut results = vec![];
 
-    let preconditions = check::filter_preconditions(&opts.config, opts.min_severity);
-    let rules = check::filter_rules(&opts.config, opts.min_severity);
-    for rule in preconditions.into_iter().chain(rules) {
+    for resolved in definition
+        .preconditions
+        .into_iter()
+        .chain(definition.rules)
+        .filter(|resolved| check::resolved_rule_meets_severity(resolved, min_severity))
+    {
+        let workdir = resolved.origin.base_dir.to_string_lossy();
         results.push(run_rule_with_fixes(
-            rule,
-            workdir,
-            opts.fail_severity,
+            resolved.rule,
+            workdir.as_ref(),
+            fail_severity,
             interaction,
             stdout,
             stderr,
         )?);
     }
 
-    let file_paths = check::expand_rule_files(workdir, &opts.config.patterns)
-        .map_err(DiagnoseError::Configuration)?;
-    for rel_path in file_paths {
-        let result = check::run_rule_file_supervised(workdir, &rel_path)?;
-        print_rule_outcome(&result, opts.fail_severity, stdout, stderr);
-        results.push(result);
+    for group in definition.pattern_groups {
+        let workdir = group.origin.base_dir.to_string_lossy();
+        let file_paths = check::expand_rule_files(workdir.as_ref(), &group.patterns)
+            .map_err(DiagnoseError::Configuration)?;
+        for rel_path in file_paths {
+            let result = check::run_rule_file_supervised(workdir.as_ref(), &rel_path)?;
+            print_rule_outcome(&result, fail_severity, stdout, stderr);
+            results.push(result);
+        }
     }
 
     Ok(Report {
         rules: results,
-        fail_severity: opts.fail_severity,
+        fail_severity,
     })
 }
 
@@ -1184,7 +1182,15 @@ fn rule_display_name(rule: &Rule) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DefinitionOrigin, ResolvedPatternGroup, ResolvedRule};
     use std::io;
+
+    fn origin(config_path: std::path::PathBuf) -> DefinitionOrigin {
+        DefinitionOrigin {
+            base_dir: config_path.parent().unwrap().to_path_buf(),
+            config_path,
+        }
+    }
 
     fn invoke(args: &[&str]) -> (i32, String, String) {
         let mut stdout = Vec::new();
@@ -1598,6 +1604,86 @@ mod tests {
             std::fs::read_to_string(trace).unwrap(),
             "predicate\ncheck\nfix\ncheck\n"
         );
+        assert!(stderr.is_empty());
+    }
+
+    #[test]
+    fn fix_workflow_uses_resolved_rule_and_pattern_origins() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("root");
+        let child = directory.path().join("child");
+        std::fs::create_dir_all(child.join("scripts")).unwrap();
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("root-only"), "root").unwrap();
+        std::fs::write(child.join("child-only"), "child").unwrap();
+        std::fs::write(child.join("scripts/child.sh"), "test -f child-only\n").unwrap();
+
+        let root_config = root.join("root.yaml");
+        let child_config = child.join("child.yaml");
+        let definition = ResolvedDefinition {
+            root_origin: origin(root_config.clone()),
+            cache_path: None,
+            check_severity: None,
+            fail_severity: None,
+            preconditions: Vec::new(),
+            rules: vec![
+                ResolvedRule {
+                    rule: Rule {
+                        name: Some("root rule".to_string()),
+                        check: Some("test -f root-only".to_string()),
+                        skip_if: None,
+                        severity: Some(Severity::Error),
+                        fix: None,
+                        interactive_fix: None,
+                        hint: None,
+                        remote: None,
+                        timeout: None,
+                    },
+                    origin: origin(root_config),
+                },
+                ResolvedRule {
+                    rule: Rule {
+                        name: Some("child repair".to_string()),
+                        check: Some("printf 'check\n' >> trace; test -f fixed".to_string()),
+                        skip_if: Some("test ! -f child-only".to_string()),
+                        severity: Some(Severity::Error),
+                        fix: Some(
+                            "printf 'fix\n' >> trace; test -f child-only; : > fixed".to_string(),
+                        ),
+                        interactive_fix: None,
+                        hint: None,
+                        remote: None,
+                        timeout: None,
+                    },
+                    origin: origin(child_config.clone()),
+                },
+            ],
+            pattern_groups: vec![ResolvedPatternGroup {
+                patterns: vec!["scripts/*.sh".to_string()],
+                origin: origin(child_config),
+            }],
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let report = check_with_fixes(
+            definition,
+            Severity::Debug,
+            Severity::Error,
+            InteractionMode::Prohibited,
+            &mut stdout,
+            &mut stderr,
+        )
+        .unwrap();
+
+        assert_eq!(report.rules.len(), 3);
+        assert!(report.rules.iter().all(RuleResult::success));
+        assert_eq!(
+            std::fs::read_to_string(child.join("trace")).unwrap(),
+            "check\nfix\ncheck\n"
+        );
+        assert!(child.join("fixed").is_file());
+        assert!(!root.join("trace").exists());
         assert!(stderr.is_empty());
     }
 

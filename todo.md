@@ -126,8 +126,9 @@ behavior except where explicitly documented.
   - Spawn failure, timeout, or signal termination is an operational error and
     prevents the rule's check from running.
   - Run it with `/dev/null`, the inherited environment, and the same effective
-    working directory as the associated check. The P1 origin milestone moves
-    both together to the defining configuration's directory.
+    working directory as the associated check. File-backed rules use their
+    defining configuration's directory; stdin uses the caller's current
+    directory.
   - A skipped rule is neither compliant nor failed and does not affect severity
     thresholds.
   - Reject empty `skip-if`, `skip-if` without `check`, and `skip-if` on an
@@ -238,7 +239,7 @@ editor lifecycle concerns.
 
 ### Correct local configuration origins
 
-- [ ] Preserve the defining origin of every local rule and pattern group.
+- [x] Preserve the defining origin of every local rule and pattern group.
   - Execute skip predicates, checks, fixes, final checks, patterns, scripts,
     Brewfiles, templates, and other assets relative to their defining config.
   - Preserve local include ordering and inherited severity semantics.
@@ -248,8 +249,10 @@ editor lifecycle concerns.
   - Add one checked-in root/include fixture with distinct assets and excluded
     patterns, plus end-to-end CLI assertions.
 
-This is unblocked after strict configuration. It is important for multi-file
-provisioning but not required for a self-contained file or stdin document.
+This is complete. File-backed includes now retain their defining working
+directories, pattern groups remain origin-scoped, active cycles fail before
+execution, and completed repeats are deduplicated. Stdin remains rooted at the
+caller's current working directory.
 
 ### Deprecate built-in Git acquisition
 

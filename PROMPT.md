@@ -122,7 +122,9 @@ Remote rules MUST only have `remote` property. Any other property (name, check,
 severity, fix, interactive-fix, hint, timeout) causes error.
 
 ### 2. Circular Reference Prevention
-Remote configs tracked via `visited: HashSet<PathBuf>` during expansion. Re-visiting same canonical path returns empty config (graceful skip).
+Local includes use canonical paths with two separate resolver states. Reaching
+a path in the active include chain is an error that reports the ordered cycle;
+reaching a fully completed path again is a no-op.
 
 ### 3. Git Remote Caching Requirement
 Git remotes must be cached via `checksy install` BEFORE running `checksy check`. Uncached git remotes error with clear message.
@@ -133,7 +135,10 @@ Git remotes must be cached via `checksy install` BEFORE running `checksy check`.
 - Remote configs inherit parent's `check_severity`/`fail_severity` defaults
 
 ### 5. Work Directory Execution
-All shell commands execute relative to the config file's directory (not CWD).
+CLI-resolved file-backed shell commands execute relative to the directory of
+the configuration that defines them. Stdin configuration is self-contained
+and executes relative to the caller's current working directory. Public flat
+execution uses the single working directory supplied in `Options`.
 
 ### 6. All-or-Nothing Install
 `checksy install` fails entirely if ANY git remote fails to clone.

@@ -1,0 +1,16 @@
+schemaVersion: 1
+cases:
+  - id: absolute-root-with-child
+    fixture: root.yaml
+    assets:
+      - Brewfile
+      - template.txt
+      - patterns/root.sh
+      - patterns/excluded.sh
+      - child/child.yaml
+      - child/Brewfile
+      - child/template.txt
+      - child/patterns/child.sh
+      - child/patterns/excluded.sh
+    mode: absolute-file-from-unrelated-cwd
+    test: absolute_local_includes_preserve_origins_end_to_end

@@ -224,13 +224,24 @@ fn process() -> Result<T, String> {
 ```
 
 ### Recursive Traversal
-Use `HashSet` for cycle detection:
+Distinguish active recursion from completed work:
 ```rust
-fn traverse(item: Item, visited: &mut HashSet<Item>) -> Result<(), String> {
-    if !visited.insert(item.clone()) {
-        return Ok(());  // Already seen
+fn traverse(
+    item: Item,
+    active: &mut Vec<Item>,
+    completed: &mut HashSet<Item>,
+) -> Result<(), String> {
+    if active.contains(&item) {
+        return Err("cycle with ordered chain".to_string());
     }
+    if completed.contains(&item) {
+        return Ok(());
+    }
+    active.push(item.clone());
     // Process children...
+    active.pop();
+    completed.insert(item);
+    Ok(())
 }
 ```
 

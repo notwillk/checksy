@@ -42,8 +42,7 @@ interactive terminals resolve the user-owned tools. Helpers are separated into
 prerequisite, Entr, Just, Rustup, Dev Container CLI, and Codex CLI directories,
 with one [shared library](.devcontainer/scripts/shared/lib.sh) and a
 network-free [test runner](.devcontainer/scripts/tests/run.sh). Their paths are
-relative to the selected root configuration's `.devcontainer/` directory,
-matching the current root-origin execution model.
+relative to the defining `.devcontainer/` configuration directory.
 
 This is deliberately a guest-userland boundary. The base image,
 Docker-in-Docker, editor customization, and immutable Checksy Feature must exist
@@ -142,10 +141,10 @@ Exit `0` produces `RuleOutcome::Skipped`, suppressing the check, either repair,
 and final check. Every completed nonzero exit proceeds to the check. Output from
 an ordinarily completed predicate is discarded as control output; operational
 failures retain bounded output for diagnostics. Spawn, timeout, child-signal,
-and supervision failures remain operational and abort before the check. At the
-current HEAD the predicate and check both use the selected root configuration
-directory; the later origin-correctness milestone will move them together to
-their defining configuration directory.
+and supervision failures remain operational and abort before the check. For
+file-backed definitions, the predicate and check both use their defining
+configuration directory. Stdin definitions use the caller's current working
+directory.
 
 `RuleResult` retains `Passed`, `Skipped`, or `Failed` explicitly. `success()` is
 true only for passed results, while failure and threshold calculations consider
@@ -305,7 +304,11 @@ and exercises the compiled binary without a public network.
 - **Strict YAML parsing**: One decoder for root, nested, stdin, fix, and install paths
 - **Stream validation**: Reject duplicate keys and multiple YAML documents
 - **Remote expansion**: Recursive config inclusion (file & git)
-- **Circular detection**: HashSet<PathBuf> tracks visited configs
+- **Include recursion**: An active canonical-path chain detects cycles while a
+  separate completed set deduplicates later repeated definitions
+- **Compatibility API**: Public `load()` still projects to a flat `Config`, and
+  public `diagnose(Options)` uses its caller-supplied single working directory;
+  origin-aware execution belongs to the CLI-resolved path
 - **Default application**: Applies inherited severity defaults
 - **Git URL parsing**: `parse_git_remote()` handles `git+<url>#<ref>:<path>` format
 
@@ -362,16 +365,17 @@ main.rs
   → cli::run()
     → run_check() [cli.rs]
       → resolve_path() [config.rs]      # Find config file
-      → load() [config.rs]              # Strictly decode & expand
-        → load_with_context()           # Recursive loading
-          → expand_remotes()            # Replace remote rules
+      → load_resolved() [config.rs]     # Strictly decode & retain origins
+        → resolve_file()                # Recursive loading
+          → resolve_rule_list()         # Expand includes with origin
             → resolve_remote_path()     # File or git cache path
-      → Options { config, workdir, min_severity, fail_severity }
-      → diagnose() / check_with_fixes() # Execute checks and requested repairs
-        → run_preconditions()           # Filter & run
+      → ResolvedDefinition              # Root policy plus origin-scoped work
+      → diagnose_resolved_supervised() / check_with_fixes()
+        → precondition phase            # Filter & run
         → run rules                     # Filter & supervise
           → skip-if                     # Skip or continue before initial check
-        → expand_rule_files()           # Glob patterns, including pattern-only configs
+        → pattern groups                # Root-first, depth-first include order
+          → expand_rule_files()         # Group-local globs and negations
         → process_runner                 # Headless pipes or interactive PTY
       → print_report_results() [cli.rs] # Print ✓/⚠/✗
       → summarize_report()              # Exit code
@@ -424,11 +428,23 @@ run_install() [cli.rs]
   [skip-if fixture corpus](fixtures/skip-if/README.md).
 - Cases cover command-availability and environment gates, file and stdin
   entrypoints, exit `0` versus arbitrary nonzero values, exact reporting and
-  summaries, shared working directory, a fresh timeout application, and
-  suppression of checks and both repair forms.
+  summaries, associated-check working directories, a fresh timeout
+  application, and suppression of checks and both repair forms.
 - Operational spawn, timeout, and signal cases retain available output, stop
   before the check and later commands, return exit `2`, and remain unmasked by
   `--no-fail`.
+
+### Local-origin test coverage
+
+- The compiled local-origin contract maps to the checked-in, network-free
+  [local-origin fixture](fixtures/local-origin/README.md).
+- It proves predicates, checks, repairs, final rechecks, and pattern scripts
+  use their defining directories even when the root is selected by absolute
+  path from an unrelated working directory.
+- Separate cases cover root-first origin-scoped pattern groups, local
+  negations, deterministic active-cycle errors, completed-definition
+  deduplication, stdin working-directory compatibility, and fixture
+  immutability.
 
 ### Interactive-repair test coverage
 
@@ -507,8 +523,11 @@ run_install() [cli.rs]
 ### File System Interactions
 - **Config discovery**: Looks for `.checksy.yaml`, `.checksy.yml` in CWD
 - **Cache directory**: Creates `<cache-path>/git/` structure
-- **Work directory**: Commands currently run in the selected root config's directory; nested defining origins are a pending correction
-- **Glob expansion**: Expands patterns relative to config directory
+- **Work directory**: CLI-resolved file-backed commands run in their defining
+  config's directory; stdin uses the caller's current directory. Public flat
+  execution uses the work directory supplied in `Options`
+- **Glob expansion**: Expands each origin-scoped pattern group relative to its
+  defining config
 
 ## Entry Points
 

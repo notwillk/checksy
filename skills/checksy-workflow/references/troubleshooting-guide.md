@@ -224,7 +224,7 @@ echo scripts/checks/*.sh
 
 ### Error: Rules missing from remote configs
 
-Circular references are automatically detected and skipped.
+Active include cycles are rejected before any configured command runs.
 
 Example chain:
 
@@ -234,7 +234,9 @@ Example chain:
 # c.yaml references a.yaml ← Circular!
 ```
 
-Checksy will load: A rules → B rules → C rules (skips C's reference back to A)
+Checksy reports the ordered `a.yaml -> b.yaml -> c.yaml -> a.yaml` include chain.
+If the same definition is reached again only after its first expansion
+completed, that later inclusion is deduplicated instead.
 
 ---
 

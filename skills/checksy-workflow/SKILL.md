@@ -210,7 +210,8 @@ rules:
 - Can ONLY have `remote` property
 - Cannot have `name`, `check`, `severity`, `fix`, `interactive-fix`, `hint`, or
   `timeout`
-- Circular references are automatically detected
+- Active include cycles fail with the ordered include chain; completed repeated
+  includes are deduplicated
 
 ---
 

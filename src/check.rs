@@ -1,3 +1,4 @@
+use crate::config::{ResolvedDefinition, ResolvedRule};
 use crate::process_runner::{self, ProcessError, ProcessLimits};
 use crate::schema::{severity_order, Config, Rule, Severity};
 use std::collections::HashSet;
@@ -297,6 +298,50 @@ pub(crate) fn diagnose_supervised(opts: Options) -> Result<Report, DiagnoseError
         rules: results,
         fail_severity: opts.fail_severity,
     })
+}
+
+pub(crate) fn diagnose_resolved_supervised(
+    definition: ResolvedDefinition,
+    min_severity: Severity,
+    fail_severity: Severity,
+) -> Result<Report, DiagnoseError> {
+    let mut results = Vec::new();
+
+    for resolved in definition
+        .preconditions
+        .into_iter()
+        .filter(|resolved| resolved_rule_meets_severity(resolved, min_severity))
+    {
+        let workdir = resolved.origin.base_dir.to_string_lossy();
+        results.push(run_rule_supervised(resolved.rule, workdir.as_ref())?);
+    }
+
+    for resolved in definition
+        .rules
+        .into_iter()
+        .filter(|resolved| resolved_rule_meets_severity(resolved, min_severity))
+    {
+        let workdir = resolved.origin.base_dir.to_string_lossy();
+        results.push(run_rule_supervised(resolved.rule, workdir.as_ref())?);
+    }
+
+    for group in definition.pattern_groups {
+        let workdir = group.origin.base_dir.to_string_lossy();
+        let file_paths = expand_rule_files(workdir.as_ref(), &group.patterns)
+            .map_err(DiagnoseError::Configuration)?;
+        for rel_path in file_paths {
+            results.push(run_rule_file_supervised(workdir.as_ref(), &rel_path)?);
+        }
+    }
+
+    Ok(Report {
+        rules: results,
+        fail_severity,
+    })
+}
+
+pub(crate) fn resolved_rule_meets_severity(resolved: &ResolvedRule, min: Severity) -> bool {
+    rule_meets_severity(&resolved.rule, normalize_min_severity(min))
 }
 
 fn run_preconditions_supervised(
@@ -642,6 +687,84 @@ pub fn min_severity(a: Severity, b: Severity) -> Severity {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DefinitionOrigin, ResolvedPatternGroup};
+
+    fn passing_rule(name: &str, check: &str, severity: Severity) -> Rule {
+        Rule {
+            name: Some(name.to_string()),
+            check: Some(check.to_string()),
+            severity: Some(severity),
+            fix: None,
+            interactive_fix: None,
+            skip_if: None,
+            hint: None,
+            remote: None,
+            timeout: None,
+        }
+    }
+
+    fn origin(config_path: std::path::PathBuf) -> DefinitionOrigin {
+        DefinitionOrigin {
+            base_dir: config_path.parent().unwrap().to_path_buf(),
+            config_path,
+        }
+    }
+
+    #[test]
+    fn resolved_execution_uses_each_rule_and_pattern_origin() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("root");
+        let child = directory.path().join("child");
+        std::fs::create_dir_all(root.join("scripts")).unwrap();
+        std::fs::create_dir_all(child.join("scripts")).unwrap();
+        std::fs::write(root.join("root-only"), "root").unwrap();
+        std::fs::write(child.join("child-only"), "child").unwrap();
+        std::fs::write(root.join("scripts/root.sh"), "test -f root-only\n").unwrap();
+        std::fs::write(child.join("scripts/child.sh"), "test -f child-only\n").unwrap();
+
+        let root_config = root.join("root.yaml");
+        let child_config = child.join("child.yaml");
+        let definition = ResolvedDefinition {
+            root_origin: origin(root_config.clone()),
+            cache_path: None,
+            check_severity: None,
+            fail_severity: None,
+            preconditions: vec![ResolvedRule {
+                rule: passing_rule("child precondition", "test -f child-only", Severity::Error),
+                origin: origin(child_config.clone()),
+            }],
+            rules: vec![
+                ResolvedRule {
+                    rule: passing_rule("root rule", "test -f root-only", Severity::Error),
+                    origin: origin(root_config.clone()),
+                },
+                ResolvedRule {
+                    rule: passing_rule("filtered child rule", "exit 99", Severity::Debug),
+                    origin: origin(child_config.clone()),
+                },
+            ],
+            pattern_groups: vec![
+                ResolvedPatternGroup {
+                    patterns: vec!["scripts/*.sh".to_string()],
+                    origin: origin(root_config),
+                },
+                ResolvedPatternGroup {
+                    patterns: vec!["scripts/*.sh".to_string()],
+                    origin: origin(child_config),
+                },
+            ],
+        };
+
+        let report =
+            diagnose_resolved_supervised(definition, Severity::Warning, Severity::Error).unwrap();
+
+        assert_eq!(report.rules.len(), 4);
+        assert!(report.rules.iter().all(RuleResult::success));
+        assert_eq!(report.rules[0].name(), "child precondition");
+        assert_eq!(report.rules[1].name(), "root rule");
+        assert_eq!(report.rules[2].name(), "scripts/root.sh");
+        assert_eq!(report.rules[3].name(), "scripts/child.sh");
+    }
 
     #[test]
     fn test_filter_rules_by_severity() {

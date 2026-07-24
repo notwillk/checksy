@@ -52,7 +52,9 @@ cd fixtures/remote-config/circular
 checksy check --config=a.yaml
 ```
 
-Expected: 3 rules (A, B, C - A's remote to B is skipped since A was already visited when C tries to reference it)
+Expected: configuration loading fails before any rule runs. The diagnostic
+contains `local include cycle detected` and the ordered
+`a.yaml -> b.yaml -> c.yaml -> a.yaml` chain.
 
 ## Invalid Cases (`invalid/`)
 

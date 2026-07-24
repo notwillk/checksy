@@ -139,7 +139,8 @@ Or set in `.gitattributes`:
 
 ## Circular Reference Handling
 
-Circular references are automatically detected and skipped.
+Active include cycles are detected and rejected before any configured command
+runs.
 
 Example chain:
 
@@ -149,7 +150,9 @@ Example chain:
 # c.yaml references a.yaml ← Circular!
 ```
 
-Checksy will load: A rules → B rules → C rules (skips C's reference back to A)
+Checksy reports the ordered `a.yaml -> b.yaml -> c.yaml -> a.yaml` include chain.
+Repeated includes encountered after a definition has completed are
+deduplicated instead.
 
 ---
 

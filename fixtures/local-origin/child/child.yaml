@@ -1,0 +1,25 @@
+rules:
+  - name: child relative repair
+    skip-if: |
+      set -eu
+      test "$(cat ./Brewfile)" = "child-brewfile"
+      test "$(cat ./template.txt)" = "child-template"
+      printf 'child-skip\n' >> "$CHECKSY_LOCAL_ORIGIN_TRACE"
+      exit 1
+    check: |
+      set -eu
+      test "$(cat ./Brewfile)" = "child-brewfile"
+      test "$(cat ./template.txt)" = "child-template"
+      printf 'child-check\n' >> "$CHECKSY_LOCAL_ORIGIN_TRACE"
+      test -f "$CHECKSY_LOCAL_ORIGIN_FIXED"
+    fix: |
+      set -eu
+      test "$(cat ./Brewfile)" = "child-brewfile"
+      test "$(cat ./template.txt)" = "child-template"
+      printf 'child-fix\n' >> "$CHECKSY_LOCAL_ORIGIN_TRACE"
+      : > "$CHECKSY_LOCAL_ORIGIN_FIXED"
+
+patterns:
+  - patterns/*.sh
+  - "!patterns/excluded.sh"
+  - "!patterns/root.sh"
