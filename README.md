@@ -10,6 +10,27 @@ and unpacking configuration are responsibilities of the surrounding shell or
 automation. Existing Git acquisition remains available temporarily for
 compatibility, but it is not part of the target architecture.
 
+## Proposed product family
+
+Checksy is the current implemented name. A
+[proposed product-family direction](docs/proposals/README.md) would rename this
+same focused provisioner to **Rulesy** and introduce two separate sibling
+products:
+
+- **RulesyOS** — a firmware-style Buildroot Linux substrate that owns verified
+  boot, configuration acquisition and authentication, persistent generations,
+  firmware updates, recovery, and boot-time invocation of Rulesy.
+- **Rulesy Compose** (`rulesy-compose`) — a host-side artifact composer that
+  builds, seals, validates, and explicitly publishes images by invoking the
+  real Rulesy evaluator.
+
+The [rename proposal](docs/proposals/rulesy-product-family.md) and full
+[RulesyOS/Compose implementation handoff](docs/proposals/rulesyos.md) are
+documentation only. No current command, configuration name, package, path,
+lock namespace, repository, or behavior has been renamed or added. Rulesy
+remains this same trusted local check/fix CLI; acquisition, authentication,
+firmware state, artifact building, and publication stay outside it.
+
 ## Provisioning contract
 
 `checksy check --fix` is Checksy's only provisioning lifecycle. Checksy does not

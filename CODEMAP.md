@@ -80,12 +80,32 @@
 │   ├── ci.yml              # PR/push tests and devcontainer convergence
 │   └── release.yml         # Release automation
 │
+├── docs/
+│   └── proposals/          # Unimplemented product-family designs
+│       ├── README.md       # Proposal index and status
+│       ├── rulesy-product-family.md # Rename and repository boundaries
+│       └── rulesyos.md     # RulesyOS and Rulesy Compose handoff
+│
 ├── justfile                # Just command runner recipes
 ├── README.md               # User documentation
 ├── LICENSE                 # MIT license
 ├── rust-toolchain.toml     # Rust version specification
 └── CODEMAP.md              # This file
 ```
+
+## Product proposal documentation
+
+- [`docs/proposals/README.md`](docs/proposals/README.md) indexes product work
+  that has been designed but not implemented.
+- [`rulesy-product-family.md`](docs/proposals/rulesy-product-family.md) records
+  the proposed Checksy-to-Rulesy rename, compatibility invariants and required
+  migration decisions, and the boundary between the three related products.
+- [`rulesyos.md`](docs/proposals/rulesyos.md) preserves the proposed RulesyOS
+  and Rulesy Compose product requirements, architecture, milestones, and test
+  plan.
+
+These documents add no runtime modules. The binary, crate, configuration
+filenames, on-disk paths, release artifacts, and public APIs remain Checksy.
 
 ## Devcontainer Provisioning
 

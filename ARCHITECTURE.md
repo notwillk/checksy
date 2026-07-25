@@ -15,6 +15,27 @@ Checksy. The current built-in Git cache and `install` command are legacy
 compatibility surfaces pending a separate deprecation milestone; they are not a
 foundation for new architecture.
 
+## Proposed sibling-product boundary
+
+The current Checksy architecture above remains normative until an explicitly
+approved rename lands. The [product-family
+proposal](docs/proposals/rulesy-product-family.md) would rename Checksy to
+Rulesy without changing its lifecycle and defines two separate sibling
+products:
+
+| Product | Owns | Must not add to this crate |
+| --- | --- | --- |
+| Checksy today / Rulesy after the proposed rename | Trusted local configuration decoding and the existing check, optional fix, and final-check lifecycle | OS policy, source providers, persistent generations, image formats, or publishers |
+| RulesyOS | Verified stage zero, acquisition and authentication, boot-time configuration generations, firmware updates, recovery, and status | A second rule evaluator or OS-specific Rulesy semantics |
+| Rulesy Compose | Host-side composition, sealing, exact-artifact validation, provenance, and explicit publication | A second Rulesy interpreter or hidden publication from a local build |
+
+The full [RulesyOS and Rulesy Compose
+handoff](docs/proposals/rulesyos.md) is proposed documentation, not an
+implemented subsystem. RulesyOS and Rulesy Compose belong outside this
+provisioner repository; Compose may be a sibling project or workspace within
+the future RulesyOS repository. Their provider, trust, state, image,
+publication, and OS concerns must not be backported into this provisioner.
+
 ## Devcontainer dogfooding
 
 The development container exercises the provisioning lifecycle against a real

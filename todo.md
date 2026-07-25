@@ -19,6 +19,14 @@ the current machine by running checks, applicable fixes, and final checks.
   manager, source-provider framework, recorded-status database, generation
   store, trust database, or rollback engine.
 
+## Proposed product family
+
+The [product-family proposal](docs/proposals/README.md) would rename this
+provisioner to Rulesy and defines RulesyOS and Rulesy Compose as separate future
+products. The proposal is documented but intentionally not implemented. Its
+OS, composition, and publication milestones belong in their own future
+repositories rather than in this provisioning roadmap.
+
 ## Compatibility guardrails
 
 - Preserve `checksy check`, `checksy check --fix`, local YAML, stdin
@@ -253,6 +261,29 @@ This is complete. File-backed includes now retain their defining working
 directories, pattern groups remain origin-scoped, active cycles fail before
 execution, and completed repeats are deduplicated. Stdin remains rooted at the
 caller's current working directory.
+
+### Rename Checksy to Rulesy
+
+- [ ] Complete the rename as one behavior-preserving, fully tested release
+  slice.
+  - Freeze the repository, binary, crate, version authority, configuration
+    filename, environment, cache/lock path, archive, installer, OCI Feature,
+    devcontainer, documentation, and skill compatibility plan.
+  - Define temporary `checksy` and `.checksy.*` aliases, discovery precedence,
+    ambiguity errors, warning behavior, and their removal release.
+  - Guarantee that old `checksy` and new `rulesy` processes use one
+    provisioning semaphore throughout any coexistence window.
+  - Preserve the existing CLI, configuration, exit, process-supervision, and
+    check/fix behavior.
+  - Do not combine the rename with Git acquisition removal or add RulesyOS or
+    Rulesy Compose behavior to this crate.
+  - Test source and package versions, installers, release artifacts, Linux and
+    macOS binaries, the OCI Feature, devcontainer bootstrap, aliases, and lock
+    interoperability end to end.
+
+This item is proposed but blocked on the compatibility decisions in the
+[rename proposal](docs/proposals/rulesy-product-family.md). No rename
+implementation is included in the documentation slice.
 
 ### Deprecate built-in Git acquisition
 
