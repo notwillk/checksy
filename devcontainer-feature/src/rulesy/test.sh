@@ -27,7 +27,7 @@ cat >"$TMP_PROJECT/test/rulesy/scenarios.json" <<'EOS'
     "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
     "features": {
       "rulesy": {
-        "version": "0.7.5"
+        "version": "0.8.1"
       }
     }
   }
@@ -42,7 +42,7 @@ set -euo pipefail
 source dev-container-features-test-lib
 
 check "bare version installs exact release" \
-  bash -c 'test "$(rulesy --version)" = "rulesy 0.7.5"'
+  bash -c 'test "$(rulesy --version)" = "rulesy 0.8.1"'
 
 reportResults
 EOS

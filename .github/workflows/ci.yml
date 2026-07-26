@@ -66,7 +66,7 @@ jobs:
           push: never
           runCmd: >-
             test "$(uname -m)" = aarch64 &&
-            test "$(rulesy --version)" = "rulesy 0.7.6" &&
+            test "$(rulesy --version)" = "rulesy 0.8.1" &&
             rulesy --config=.devcontainer/rulesy.yaml check --non-interactive
 
   tests:

@@ -226,7 +226,7 @@ feature's edge cases.
 ### Dogfood Rulesy in the development container
 
 - [x] Provision the development container's userland tools through Rulesy.
-  - Bootstrap Rulesy `0.7.6` through Feature `1.0.1` at its immutable
+  - Bootstrap Rulesy `0.8.1` through Feature `1.0.1` at its immutable
     canonical OCI digest.
   - Provision Entr, Just `1.57.0`, Rustup `1.29.0` with the exact Rust `1.94.1`
     toolchain and required `rustfmt`/`clippy` components, Dev Container CLI
