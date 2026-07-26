@@ -16,7 +16,8 @@ This repository is a monorepo for three separately released products.
 - **Rulesy** is the implemented Rust CLI. It provisions the current machine
   from trusted local configuration or stdin through `check` and optional
   `check --fix`.
-- **RulesyOS** is documentation-only. It owns verified stage zero, Buildroot,
+- **RulesyOS** has bootstrap-only KVM test infrastructure; its product
+  functionality remains proposed. It owns verified stage zero, Buildroot,
   boot, authenticated configuration, persistent state, firmware update,
   recovery, hardening, and OS status.
 - **Rulesy Compose** is documentation-only. It owns host-side composition

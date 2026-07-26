@@ -33,6 +33,7 @@ go.work.sum
 # .vscode/
 
 /products/rulesy/dist/
+/products/rulesyos/.cache/
 /devcontainer-features/dist/
 /.tmp/
 

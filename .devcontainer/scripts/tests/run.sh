@@ -322,6 +322,21 @@ grep -F 'failed to repair remote-user access to the existing $KVM_DEVICE' \
   fail "KVM installer must repair access to a verified container-owned KVM device"
 grep -F 'leaving it unchanged' "$SCRIPTS_DIR/kvm/install.sh" >/dev/null || \
   fail "KVM installer must preserve unexpected pre-existing paths"
+grep -F 'name: RulesyOS KVM test dependencies are installed' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must provision RulesyOS KVM test dependencies"
+grep -F 'command -v qemu-system-x86_64' \
+  "$SCRIPTS_DIR/rulesyos-tests/check.sh" >/dev/null || \
+  fail "QEMU check must require the x86-64 system emulator"
+grep -F "python3 -c 'import pexpect'" \
+  "$SCRIPTS_DIR/rulesyos-tests/check.sh" >/dev/null || \
+  fail "RulesyOS test dependency check must require Python pexpect"
+grep -F 'qemu-system-x86 python3-pexpect' \
+  "$SCRIPTS_DIR/rulesyos-tests/install.sh" >/dev/null || \
+  fail "RulesyOS test dependency installer must install QEMU and Python pexpect"
+if grep -F 'qemu-utils' "$SCRIPTS_DIR/rulesyos-tests/install.sh" >/dev/null; then
+  fail "RulesyOS bootstrap tests do not require qemu-utils"
+fi
 
 moon_x86_target=$(moon_target_for_arch x86_64)
 moon_arm_target=$(moon_target_for_arch aarch64)
@@ -468,6 +483,8 @@ expected_files=(
   moon/install.sh
   prerequisites/check.sh
   prerequisites/install.sh
+  rulesyos-tests/check.sh
+  rulesyos-tests/install.sh
   rustup/check.sh
   rustup/install.sh
   shared/lib.sh
@@ -485,7 +502,7 @@ for index in "${!expected_files[@]}"; do
   assert_equal "${expected_files[$index]}" "${actual_files[$index]}" "script layout entry $index"
 done
 
-expected_tools=(prerequisites kvm entr moon rustup devcontainer-cli github-cli codex-cli)
+expected_tools=(prerequisites kvm rulesyos-tests entr moon rustup devcontainer-cli github-cli codex-cli)
 for tool in "${expected_tools[@]}"; do
   grep -F "check: exec bash ./scripts/$tool/check.sh" "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
     fail "rulesy.yaml does not reference ./scripts/$tool/check.sh"

@@ -1,6 +1,6 @@
 # RulesyOS
 
-**Status:** Proposed; documentation only
+**Status:** Bootstrap test infrastructure only; product functionality proposed
 
 RulesyOS is a firmware-style Linux substrate that boots a verified, recoverable
 stage zero and invokes a released Rulesy binary against authenticated
@@ -25,6 +25,19 @@ boundaries are recorded in the [root architecture](../../ARCHITECTURE.md) and
 [monorepo decision](../../docs/decisions/monorepo.md). Artifact composition is
 specified separately by [Rulesy Compose](../rulesy-compose/README.md).
 
-No implementation milestone is authorized merely by this directory's
-existence. This documentation-only project intentionally has no build, test,
-format, or release tasks yet.
+The current implementation is deliberately limited to KVM-only boot testing.
+It uses the runtime-test emulator bundled with pinned Buildroot `2025.02.16`
+and validates that test path with pinned CirrOS before a blank Buildroot image
+becomes the primary target. Neither path contains RulesyOS product
+functionality.
+
+Run the current known-good diagnostic with:
+
+```sh
+moon run rulesyos:test-known-good
+```
+
+The test requires x86-64 KVM. When KVM is unavailable it warns, skips, and
+returns success; it never falls back to QEMU software emulation. The pinned
+Buildroot source and CirrOS disk, kernel, and initramfs are downloaded into the
+ignored project-local `.cache/` directory and verified with SHA-256 before use.

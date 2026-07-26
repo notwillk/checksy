@@ -6,4 +6,30 @@ stack: "systems"
 tags:
   - "product"
   - "operating-system"
-  - "documentation-only"
+  - "bootstrap"
+
+taskOptions:
+  cache: false
+
+tasks:
+  lint:
+    description: "Check RulesyOS bootstrap test syntax"
+    script: |
+      bash -n scripts/prepare-buildroot.sh tests/runtime/test-known-good.sh
+      python3 -c 'from pathlib import Path; compile(Path("tests/runtime/run.py").read_text(), "tests/runtime/run.py", "exec")'
+
+  test:
+    description: "Validate the runtime test with the pinned known-good image"
+    command: "./tests/runtime/test-known-good.sh"
+    options:
+      runInCI: false
+      timeout: 300
+      outputStyle: "stream"
+
+  test-known-good:
+    description: "Validate the Buildroot runtime-test framework with pinned CirrOS"
+    command: "./tests/runtime/test-known-good.sh"
+    options:
+      runInCI: false
+      timeout: 300
+      outputStyle: "stream"
