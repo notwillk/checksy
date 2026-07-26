@@ -26,10 +26,10 @@ rename, current repository organization, and two proposed adjacent products:
 
 The historical [product-family decision](../../docs/decisions/rulesy-product-family.md)
 and current [monorepo decision](../../docs/decisions/monorepo.md) preserve
-these boundaries. RulesyOS and Rulesy Compose remain documentation-only
-products in adjacent directories. Rulesy remains the same trusted local
-check/fix CLI; acquisition, authentication, firmware state, artifact building,
-and publication stay outside it.
+these boundaries. RulesyOS has bootstrap-only build and KVM test
+infrastructure, while Rulesy Compose remains documentation-only. Rulesy
+remains the same trusted local check/fix CLI; acquisition, authentication,
+firmware state, artifact building, and publication stay outside it.
 
 ## Provisioning contract
 
@@ -298,11 +298,11 @@ coverage in [`tests/run.sh`](../../.devcontainer/scripts/tests/run.sh).
 The provisioned `codex` command lives under `~/.local/opt/codex-cli`;
 authenticate it on first use with `codex login`.
 
-The container lifecycle runs provisioning automatically through
-[`post-create.sh`](../../.devcontainer/scripts/post-create.sh), which exposes the
-remote user's locally installed tools before running Rulesy. From the
-repository root, use these exact commands to converge it again or verify it
-without applying fixes:
+The container lifecycle runs provisioning automatically through the direct
+`postCreateCommand` and `postStartCommand` entries in
+[`devcontainer.json`](../../.devcontainer/devcontainer.json). Both invoke the
+digest-pinned Rulesy binary. From the repository root, use these exact commands
+to converge it again or verify it without applying fixes:
 
 ```bash
 rulesy --config=.devcontainer/rulesy.yaml check --fix --non-interactive
@@ -312,10 +312,10 @@ rulesy --config=.devcontainer/rulesy.yaml check --non-interactive
 The base image, Docker-in-Docker, editor settings, and immutable Rulesy Feature
 remain in `devcontainer.json`. They establish the container and bootstrap
 Rulesy itself; Rulesy owns Rustup, Rust, and the other guest userland tools
-provisioned after that environment and workspace exist. The lifecycle wrapper
-and remote environment prepend the dedicated Codex CLI prefix,
-`/home/vscode/.local/bin`, and `/home/vscode/.cargo/bin` so the user-owned tools
-are available to lifecycle commands and terminals.
+provisioned after that environment and workspace exist. The remote environment
+prepends the dedicated Codex CLI prefix, `/home/vscode/.local/bin`, and
+`/home/vscode/.cargo/bin` so the user-owned tools are available to lifecycle
+commands and terminals.
 
 ### Cross-compiling
 

@@ -44,11 +44,11 @@ bootstraps Rulesy `0.8.1` with Feature `1.0.1` pinned by canonical OCI manifest
 digest. Pinning both layers prevents a mutable Feature tag or its default
 version from silently changing the bootstrap.
 
-Once the workspace exists, `postCreateCommand` runs a
-[repository-owned wrapper](../../.devcontainer/scripts/post-create.sh) as the remote
-user. The wrapper exposes that user's `.local` and Cargo binaries even when a
-lifecycle runner does not apply `remoteEnv`, then runs
-`rulesy --config=.devcontainer/rulesy.yaml check --fix --non-interactive`. The
+Once the workspace exists, `postCreateCommand` and `postStartCommand` invoke
+the digest-pinned Rulesy binary directly as the remote user:
+`/usr/local/bin/rulesy --config=.devcontainer/rulesy.yaml check --fix
+--non-interactive`. The configured remote environment exposes that user's
+`.local` and Cargo binaries to lifecycle commands and terminals. The
 [flat provisioning definition](../../.devcontainer/rulesy.yaml) uses
 [shared version data](../../.devcontainer/tool-versions.env) and
 [repository-local helpers](../../.devcontainer/scripts/) to provision Entr,
@@ -61,9 +61,9 @@ app-managed `.local/bin/codex`; authentication remains a first-use user action.
 The Moon and Rustup release assets use versioned URLs with pinned
 architecture-specific SHA-256 values. The Rust toolchain includes `rustfmt`
 and `clippy`. The Dev Container CLI is installed into the remote user's `.local`
-prefix so npm lifecycle scripts do not run as root. The lifecycle wrapper and
-remote environment prepend `.local/bin` and `.cargo/bin` so Quality CI and
-interactive terminals resolve the user-owned tools. Helpers are separated into
+prefix so npm lifecycle scripts do not run as root. The remote environment
+prepends `.local/bin` and `.cargo/bin` so Quality CI and interactive terminals
+resolve the user-owned tools. Helpers are separated into
 prerequisite, Entr, Moon, Rustup, Dev Container CLI, and Codex CLI directories,
 with one [shared library](../../.devcontainer/scripts/shared/lib.sh) and a
 network-free [test runner](../../.devcontainer/scripts/tests/run.sh). Their paths are

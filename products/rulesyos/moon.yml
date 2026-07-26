@@ -6,4 +6,38 @@ stack: "systems"
 tags:
   - "product"
   - "operating-system"
-  - "documentation-only"
+  - "bootstrap"
+
+taskOptions:
+  cache: false
+
+tasks:
+  build:
+    description: "Build the blank x86-64 RulesyOS bootstrap image"
+    command: "./scripts/build.sh"
+    options:
+      runInCI: false
+      timeout: 3600
+      outputStyle: "stream"
+
+  lint:
+    description: "Check RulesyOS bootstrap test syntax"
+    script: |
+      bash -n scripts/build.sh scripts/prepare-buildroot.sh scripts/dependencies/build/check.sh scripts/dependencies/build/install.sh scripts/dependencies/kvm-test/check.sh scripts/dependencies/kvm-test/install.sh tests/runtime/test-built.sh tests/runtime/test-known-good.sh
+      python3 -c 'from pathlib import Path; compile(Path("tests/runtime/run.py").read_text(), "tests/runtime/run.py", "exec")'
+
+  test:
+    description: "Boot the blank RulesyOS Buildroot image under KVM"
+    command: "./tests/runtime/test-built.sh"
+    options:
+      runInCI: false
+      timeout: 3600
+      outputStyle: "stream"
+
+  test-known-good:
+    description: "Validate the Buildroot runtime-test framework with pinned CirrOS"
+    command: "./tests/runtime/test-known-good.sh"
+    options:
+      runInCI: false
+      timeout: 300
+      outputStyle: "stream"

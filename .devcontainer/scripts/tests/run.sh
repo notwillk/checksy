@@ -4,6 +4,8 @@ set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$(cd "$TESTS_DIR/.." && pwd)"
 DEVCONTAINER_DIR="$(cd "$SCRIPTS_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$DEVCONTAINER_DIR/.." && pwd)"
+RULESYOS_DEPENDENCY_SCRIPTS="$REPO_ROOT/products/rulesyos/scripts/dependencies"
 # shellcheck source=../shared/lib.sh
 source "$SCRIPTS_DIR/shared/lib.sh"
 load_tool_versions "$DEVCONTAINER_DIR/tool-versions.env"
@@ -82,59 +84,24 @@ fi
 grep -F '"/home/vscode/.local/opt/codex-cli/bin:/home/vscode/.local/bin:/home/vscode/.cargo/bin:${containerEnv:PATH}"' \
   "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
   fail "devcontainer remote PATH must expose user-installed Rulesy provisioning tools"
-grep -F '"postCreateCommand": "bash .devcontainer/scripts/post-create.sh"' \
+rulesy_lifecycle_command='/usr/local/bin/rulesy --config=.devcontainer/rulesy.yaml check --fix --non-interactive'
+grep -F "\"postCreateCommand\": \"$rulesy_lifecycle_command\"" \
   "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
-  fail "devcontainer lifecycle must use the repository-owned PATH bootstrap"
-
-post_create_home="$TEST_ROOT/post-create-home"
-post_create_system_bin="$TEST_ROOT/post-create-system-bin"
-mkdir -p "$post_create_home" "$post_create_system_bin"
-post_create_path=$(
-  env -u CARGO_HOME \
-    HOME="$post_create_home" \
-    PATH="$post_create_system_bin:/usr/bin:/bin" \
-    bash -c \
-    'source "$1"; prepend_user_tool_paths; printf "%s\n" "$PATH"' \
-    _ "$SCRIPTS_DIR/shared/lib.sh"
-)
-expected_post_create_path="$post_create_home/.local/opt/codex-cli/bin:$post_create_home/.local/bin:$post_create_home/.cargo/bin:$post_create_system_bin:/usr/bin:/bin"
-assert_equal "$expected_post_create_path" "$post_create_path" \
-  "post-create user tool PATH"
-post_create_cargo_home="$TEST_ROOT/post-create-cargo-home"
-post_create_custom_path=$(
-  HOME="$post_create_home" \
-    CARGO_HOME="$post_create_cargo_home" \
-    PATH="$post_create_system_bin:/usr/bin:/bin" \
-    bash -c \
-    'source "$1"; prepend_user_tool_paths; printf "%s\n" "$PATH"' \
-    _ "$SCRIPTS_DIR/shared/lib.sh"
-)
-expected_post_create_custom_path="$post_create_home/.local/opt/codex-cli/bin:$post_create_home/.local/bin:$post_create_cargo_home/bin:$post_create_system_bin:/usr/bin:/bin"
-assert_equal "$expected_post_create_custom_path" "$post_create_custom_path" \
-  "post-create custom Cargo tool PATH"
-grep -F 'source "$SCRIPT_DIR/shared/lib.sh"' "$SCRIPTS_DIR/post-create.sh" >/dev/null || \
-  fail "post-create must load the shared PATH bootstrap"
-grep -Fx 'prepend_user_tool_paths' "$SCRIPTS_DIR/post-create.sh" >/dev/null || \
-  fail "post-create must prepend user tool paths"
-grep -F 'rulesy_bin=/usr/local/bin/rulesy' "$SCRIPTS_DIR/post-create.sh" >/dev/null || \
-  fail "post-create must use the digest-pinned Rulesy Feature binary"
-grep -F 'exec "$rulesy_bin" --config=.devcontainer/rulesy.yaml check --fix --non-interactive' \
-  "$SCRIPTS_DIR/post-create.sh" >/dev/null || \
-  fail "post-create must run the pinned Rulesy convergence command"
-post_create_source_line=$(grep -nF 'source "$SCRIPT_DIR/shared/lib.sh"' \
-  "$SCRIPTS_DIR/post-create.sh")
-post_create_rulesy_line=$(grep -nF 'rulesy_bin=/usr/local/bin/rulesy' \
-  "$SCRIPTS_DIR/post-create.sh")
-post_create_path_line=$(grep -nFx 'prepend_user_tool_paths' \
-  "$SCRIPTS_DIR/post-create.sh")
-post_create_exec_line=$(grep -nF \
-  'exec "$rulesy_bin" --config=.devcontainer/rulesy.yaml check --fix --non-interactive' \
-  "$SCRIPTS_DIR/post-create.sh")
-if ! (( ${post_create_source_line%%:*} < ${post_create_rulesy_line%%:*} &&
-  ${post_create_rulesy_line%%:*} < ${post_create_path_line%%:*} &&
-  ${post_create_path_line%%:*} < ${post_create_exec_line%%:*} )); then
-  fail "post-create must load helpers, select pinned Rulesy, prepend PATH, then execute"
+  fail "devcontainer creation must converge through the pinned Rulesy binary"
+grep -F '"--device-cgroup-rule"' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
+  fail "devcontainer must grant access only to an explicitly identified device"
+grep -F '"c 10:232 rwm"' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
+  fail "devcontainer must grant KVM device access by its exact device number"
+grep -F "\"postStartCommand\": \"$rulesy_lifecycle_command\"" \
+  "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
+  fail "devcontainer start must converge through the pinned Rulesy binary"
+if grep -F '"--privileged"' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null; then
+  fail "devcontainer must not use privileged mode for KVM"
 fi
+if grep -E '"--device(=|")' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null; then
+  fail "devcontainer must not bind a host device that may not exist"
+fi
+
 if grep -E 'sudo[^#]*npm[[:space:]]+install' \
   "$SCRIPTS_DIR/devcontainer-cli/install.sh" >/dev/null; then
   fail "Dev Container CLI npm lifecycle scripts must not run as root"
@@ -310,6 +277,102 @@ grep -F 'check: gh auth status --active --hostname github.com' \
   fail "GitHub CLI authentication check must target the active github.com account"
 grep -F 'severity: warn' "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
   fail "GitHub CLI authentication must be warning-only"
+grep -F 'name: Host KVM acceleration is available' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must warn when host KVM is unavailable"
+kvm_rules=$(
+  sed -n \
+    '/name: Host KVM acceleration is available/,/name: Entr is installed/p' \
+    "$DEVCONTAINER_DIR/rulesy.yaml"
+)
+assert_equal \
+  2 \
+  "$(grep -Fc 'severity: warn' <<<"$kvm_rules")" \
+  "warning-only KVM rule count"
+grep -F 'skip-if: |' <<<"$kvm_rules" >/dev/null || \
+  fail "KVM exposure rule must skip when host KVM is unavailable"
+grep -F "grep -Eq '^[[:space:]]*232[[:space:]]+kvm$' /proc/misc" \
+  <<<"$kvm_rules" >/dev/null || \
+  fail "rulesy.yaml must identify host KVM by its exact misc device number"
+grep -F 'name: KVM is exposed to the devcontainer' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must manage optional devcontainer KVM exposure"
+
+if grep -Eq '^[[:space:]]*232[[:space:]]+kvm$' /proc/misc; then
+  bash "$SCRIPTS_DIR/kvm/check.sh" || \
+    fail "KVM check rejected the provisioned device on a KVM host"
+else
+  assert_fails \
+    "KVM device on a non-KVM host" \
+    bash "$SCRIPTS_DIR/kvm/check.sh"
+  kvm_path_before=$(stat -c '%F:%t:%T:%u:%g:%a' /dev/kvm 2>/dev/null || printf 'absent')
+  kvm_install_output=$(bash "$SCRIPTS_DIR/kvm/install.sh" 2>&1) || \
+    fail "KVM installation must not fail when host KVM is unavailable"
+  grep -F 'host KVM acceleration is unavailable' <<<"$kvm_install_output" >/dev/null || \
+    fail "KVM installation must warn when host KVM is unavailable"
+  kvm_path_after=$(stat -c '%F:%t:%T:%u:%g:%a' /dev/kvm 2>/dev/null || printf 'absent')
+  assert_equal "$kvm_path_before" "$kvm_path_after" "non-KVM host device state"
+fi
+grep -F 'mknod -m 0660 "$KVM_DEVICE" c 10 232' \
+  "$SCRIPTS_DIR/kvm/install.sh" >/dev/null || \
+  fail "KVM installer must create only character device 10:232"
+grep -F '[[ $device_mount != /dev || $device_filesystem != tmpfs ]]' \
+  "$SCRIPTS_DIR/kvm/install.sh" >/dev/null || \
+  fail "KVM installer must not repair access outside the container-owned /dev"
+grep -F 'failed to repair remote-user access to the existing $KVM_DEVICE' \
+  "$SCRIPTS_DIR/kvm/install.sh" >/dev/null || \
+  fail "KVM installer must repair access to a verified container-owned KVM device"
+grep -F 'leaving it unchanged' "$SCRIPTS_DIR/kvm/install.sh" >/dev/null || \
+  fail "KVM installer must preserve unexpected pre-existing paths"
+grep -F 'name: RulesyOS build dependencies are installed' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must provision RulesyOS build dependencies"
+grep -F 'check: exec bash ../products/rulesyos/scripts/dependencies/build/check.sh' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must check RulesyOS build dependencies from the RulesyOS project"
+grep -F 'fix: exec bash ../products/rulesyos/scripts/dependencies/build/install.sh' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must install RulesyOS build dependencies from the RulesyOS project"
+grep -A4 -F 'name: RulesyOS build dependencies are installed' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" |
+  grep -F 'skip-if: '\''[ "${GITHUB_ACTIONS:-}" = "true" ]'\''' >/dev/null || \
+  fail "RulesyOS build dependencies must remain disabled in GitHub Actions"
+for command_name in \
+  bc bzip2 cpio file g++ gcc gnuinstall gzip make patch perl python3 rsync unzip wget; do
+  grep -F "$command_name" "$RULESYOS_DEPENDENCY_SCRIPTS/build/check.sh" >/dev/null || \
+    fail "RulesyOS build dependency check must require $command_name"
+done
+grep -F 'bc build-essential bzip2 cpio file gnu-coreutils gzip patch perl python3' \
+  "$RULESYOS_DEPENDENCY_SCRIPTS/build/install.sh" >/dev/null || \
+  fail "RulesyOS build dependency installer must install the required host packages"
+grep -F -- '--install /usr/bin/install install /usr/bin/gnuinstall 100' \
+  "$RULESYOS_DEPENDENCY_SCRIPTS/build/install.sh" >/dev/null || \
+  fail "RulesyOS build dependency installer must select GNU install"
+grep -F 'name: RulesyOS KVM test dependencies are installed' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must provision RulesyOS KVM test dependencies"
+grep -F 'check: exec bash ../products/rulesyos/scripts/dependencies/kvm-test/check.sh' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must check KVM test dependencies from the RulesyOS project"
+grep -F 'fix: exec bash ../products/rulesyos/scripts/dependencies/kvm-test/install.sh' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must install KVM test dependencies from the RulesyOS project"
+grep -A5 -F 'name: RulesyOS KVM test dependencies are installed' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" |
+  grep -F '[ "${GITHUB_ACTIONS:-}" = "true" ] ||' >/dev/null || \
+  fail "RulesyOS KVM test dependencies must remain disabled in GitHub Actions"
+grep -F 'command -v qemu-system-x86_64' \
+  "$RULESYOS_DEPENDENCY_SCRIPTS/kvm-test/check.sh" >/dev/null || \
+  fail "QEMU check must require the x86-64 system emulator"
+grep -F "python3 -c 'import pexpect'" \
+  "$RULESYOS_DEPENDENCY_SCRIPTS/kvm-test/check.sh" >/dev/null || \
+  fail "RulesyOS test dependency check must require Python pexpect"
+grep -F 'qemu-system-x86 python3-pexpect' \
+  "$RULESYOS_DEPENDENCY_SCRIPTS/kvm-test/install.sh" >/dev/null || \
+  fail "RulesyOS test dependency installer must install QEMU and Python pexpect"
+if grep -F 'qemu-utils' "$RULESYOS_DEPENDENCY_SCRIPTS/kvm-test/install.sh" >/dev/null; then
+  fail "RulesyOS bootstrap tests do not require qemu-utils"
+fi
 
 moon_x86_target=$(moon_target_for_arch x86_64)
 moon_arm_target=$(moon_target_for_arch aarch64)
@@ -450,9 +513,10 @@ expected_files=(
   entr/install.sh
   github-cli/check.sh
   github-cli/install.sh
+  kvm/check.sh
+  kvm/install.sh
   moon/check.sh
   moon/install.sh
-  post-create.sh
   prerequisites/check.sh
   prerequisites/install.sh
   rustup/check.sh
@@ -472,7 +536,7 @@ for index in "${!expected_files[@]}"; do
   assert_equal "${expected_files[$index]}" "${actual_files[$index]}" "script layout entry $index"
 done
 
-expected_tools=(prerequisites entr moon rustup devcontainer-cli github-cli codex-cli)
+expected_tools=(prerequisites kvm entr moon rustup devcontainer-cli github-cli codex-cli)
 for tool in "${expected_tools[@]}"; do
   grep -F "check: exec bash ./scripts/$tool/check.sh" "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
     fail "rulesy.yaml does not reference ./scripts/$tool/check.sh"

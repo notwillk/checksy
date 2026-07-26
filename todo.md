@@ -262,6 +262,12 @@ feature's edge cases.
 This work is complete. Moon `2.4.5` is the executable repository task
 interface, with Rulesy tasks defined in `products/rulesy/moon.yml`.
 
+### Evaluate RulesyOS continuous integration cost
+
+- [ ] Review the likely GitHub Actions billing impact before enabling any
+  RulesyOS Buildroot build or KVM VM test in CI. Until explicitly approved,
+  keep the RulesyOS build and VM test tasks local-only.
+
 ### Dogfood Rulesy in the development container
 
 - [x] Provision the development container's userland tools through Rulesy.
