@@ -13,6 +13,10 @@
 		"DEVCONTAINER": "true",
 		"GITHUB_ACTIONS": "${localEnv:GITHUB_ACTIONS}"
 	},
+	"runArgs": [
+		"--device-cgroup-rule",
+		"c 10:232 rwm"
+	],
 	"remoteEnv": {
 		"PATH": "/home/vscode/.local/opt/codex-cli/bin:/home/vscode/.local/bin:/home/vscode/.cargo/bin:${containerEnv:PATH}"
 	},
@@ -27,5 +31,6 @@
 		}
 	},
 	"postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
+	"postStartCommand": "bash .devcontainer/scripts/kvm/install.sh",
 	"remoteUser": "vscode"
 }

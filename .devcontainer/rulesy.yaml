@@ -5,6 +5,19 @@ preconditions:
     timeout: 10m
 
 rules:
+  - name: Host KVM acceleration is available
+    severity: warn
+    check: |
+      grep -Eq '^[[:space:]]*232[[:space:]]+kvm$' /proc/misc
+    hint: KVM acceleration is unavailable; RulesyOS VM tests will warn and skip.
+
+  - name: KVM is exposed to the devcontainer
+    severity: warn
+    skip-if: |
+      ! grep -Eq '^[[:space:]]*232[[:space:]]+kvm$' /proc/misc
+    check: exec bash ./scripts/kvm/check.sh
+    fix: exec bash ./scripts/kvm/install.sh
+
   - name: Entr is installed
     check: exec bash ./scripts/entr/check.sh
     fix: exec bash ./scripts/entr/install.sh
