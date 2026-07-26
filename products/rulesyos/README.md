@@ -25,13 +25,20 @@ boundaries are recorded in the [root architecture](../../ARCHITECTURE.md) and
 [monorepo decision](../../docs/decisions/monorepo.md). Artifact composition is
 specified separately by [Rulesy Compose](../rulesy-compose/README.md).
 
-The current implementation is deliberately limited to KVM-only boot testing.
-It uses the runtime-test emulator bundled with pinned Buildroot `2025.02.16`
-and validates that test path with pinned CirrOS before a blank Buildroot image
-becomes the primary target. Neither path contains RulesyOS product
-functionality.
+The current implementation is deliberately limited to building and testing a
+blank x86-64 Buildroot image. It uses Buildroot `2025.02.16` and the
+runtime-test emulator bundled with that release. Pinned CirrOS remains a
+known-good diagnostic for the test path. Neither image contains RulesyOS
+product functionality.
 
-Run the current known-good diagnostic with:
+Build and test the blank image with:
+
+```sh
+moon run rulesyos:build
+moon run rulesyos:test
+```
+
+Run the known-good diagnostic separately with:
 
 ```sh
 moon run rulesyos:test-known-good
@@ -41,3 +48,5 @@ The test requires x86-64 KVM. When KVM is unavailable it warns, skips, and
 returns success; it never falls back to QEMU software emulation. The pinned
 Buildroot source and CirrOS disk, kernel, and initramfs are downloaded into the
 ignored project-local `.cache/` directory and verified with SHA-256 before use.
+Buildroot work and generated images remain in the ignored project-local
+`output/` directory.

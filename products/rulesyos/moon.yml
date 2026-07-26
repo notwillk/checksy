@@ -12,18 +12,26 @@ taskOptions:
   cache: false
 
 tasks:
+  build:
+    description: "Build the blank x86-64 RulesyOS bootstrap image"
+    command: "./scripts/build.sh"
+    options:
+      runInCI: false
+      timeout: 3600
+      outputStyle: "stream"
+
   lint:
     description: "Check RulesyOS bootstrap test syntax"
     script: |
-      bash -n scripts/prepare-buildroot.sh tests/runtime/test-known-good.sh
+      bash -n scripts/build.sh scripts/prepare-buildroot.sh tests/runtime/test-built.sh tests/runtime/test-known-good.sh
       python3 -c 'from pathlib import Path; compile(Path("tests/runtime/run.py").read_text(), "tests/runtime/run.py", "exec")'
 
   test:
-    description: "Validate the runtime test with the pinned known-good image"
-    command: "./tests/runtime/test-known-good.sh"
+    description: "Boot the blank RulesyOS Buildroot image under KVM"
+    command: "./tests/runtime/test-built.sh"
     options:
       runInCI: false
-      timeout: 300
+      timeout: 3600
       outputStyle: "stream"
 
   test-known-good:

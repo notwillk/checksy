@@ -18,9 +18,16 @@ rules:
     check: exec bash ./scripts/kvm/check.sh
     fix: exec bash ./scripts/kvm/install.sh
 
+  - name: RulesyOS build dependencies are installed
+    skip-if: '[ "${GITHUB_ACTIONS:-}" = "true" ]'
+    check: exec bash ./scripts/rulesyos-build/check.sh
+    fix: exec bash ./scripts/rulesyos-build/install.sh
+    timeout: 10m
+
   - name: RulesyOS KVM test dependencies are installed
     skip-if: |
-      [ "$(uname -m)" != "x86_64" ] ||
+      [ "${GITHUB_ACTIONS:-}" = "true" ] ||
+        [ "$(uname -m)" != "x86_64" ] ||
         ! grep -Eq '^[[:space:]]*232[[:space:]]+kvm$' /proc/misc
     check: exec bash ./scripts/rulesyos-tests/check.sh
     fix: exec bash ./scripts/rulesyos-tests/install.sh

@@ -26,10 +26,10 @@ rename, current repository organization, and two proposed adjacent products:
 
 The historical [product-family decision](../../docs/decisions/rulesy-product-family.md)
 and current [monorepo decision](../../docs/decisions/monorepo.md) preserve
-these boundaries. RulesyOS has bootstrap-only KVM test infrastructure, while
-Rulesy Compose remains documentation-only. Rulesy remains the same trusted
-local check/fix CLI; acquisition, authentication, firmware state, artifact
-building, and publication stay outside it.
+these boundaries. RulesyOS has bootstrap-only build and KVM test
+infrastructure, while Rulesy Compose remains documentation-only. Rulesy
+remains the same trusted local check/fix CLI; acquisition, authentication,
+firmware state, artifact building, and publication stay outside it.
 
 ## Provisioning contract
 

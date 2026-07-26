@@ -322,9 +322,31 @@ grep -F 'failed to repair remote-user access to the existing $KVM_DEVICE' \
   fail "KVM installer must repair access to a verified container-owned KVM device"
 grep -F 'leaving it unchanged' "$SCRIPTS_DIR/kvm/install.sh" >/dev/null || \
   fail "KVM installer must preserve unexpected pre-existing paths"
+grep -F 'name: RulesyOS build dependencies are installed' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must provision RulesyOS build dependencies"
+grep -A4 -F 'name: RulesyOS build dependencies are installed' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" |
+  grep -F 'skip-if: '\''[ "${GITHUB_ACTIONS:-}" = "true" ]'\''' >/dev/null || \
+  fail "RulesyOS build dependencies must remain disabled in GitHub Actions"
+for command_name in \
+  bc bzip2 cpio file g++ gcc gnuinstall gzip make patch perl python3 rsync unzip wget; do
+  grep -F "$command_name" "$SCRIPTS_DIR/rulesyos-build/check.sh" >/dev/null || \
+    fail "RulesyOS build dependency check must require $command_name"
+done
+grep -F 'bc build-essential bzip2 cpio file gnu-coreutils gzip patch perl python3' \
+  "$SCRIPTS_DIR/rulesyos-build/install.sh" >/dev/null || \
+  fail "RulesyOS build dependency installer must install the required host packages"
+grep -F -- '--install /usr/bin/install install /usr/bin/gnuinstall 100' \
+  "$SCRIPTS_DIR/rulesyos-build/install.sh" >/dev/null || \
+  fail "RulesyOS build dependency installer must select GNU install"
 grep -F 'name: RulesyOS KVM test dependencies are installed' \
   "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
   fail "rulesy.yaml must provision RulesyOS KVM test dependencies"
+grep -A5 -F 'name: RulesyOS KVM test dependencies are installed' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" |
+  grep -F '[ "${GITHUB_ACTIONS:-}" = "true" ] ||' >/dev/null || \
+  fail "RulesyOS KVM test dependencies must remain disabled in GitHub Actions"
 grep -F 'command -v qemu-system-x86_64' \
   "$SCRIPTS_DIR/rulesyos-tests/check.sh" >/dev/null || \
   fail "QEMU check must require the x86-64 system emulator"
@@ -483,6 +505,8 @@ expected_files=(
   moon/install.sh
   prerequisites/check.sh
   prerequisites/install.sh
+  rulesyos-build/check.sh
+  rulesyos-build/install.sh
   rulesyos-tests/check.sh
   rulesyos-tests/install.sh
   rustup/check.sh
@@ -502,7 +526,7 @@ for index in "${!expected_files[@]}"; do
   assert_equal "${expected_files[$index]}" "${actual_files[$index]}" "script layout entry $index"
 done
 
-expected_tools=(prerequisites kvm rulesyos-tests entr moon rustup devcontainer-cli github-cli codex-cli)
+expected_tools=(prerequisites kvm rulesyos-build rulesyos-tests entr moon rustup devcontainer-cli github-cli codex-cli)
 for tool in "${expected_tools[@]}"; do
   grep -F "check: exec bash ./scripts/$tool/check.sh" "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
     fail "rulesy.yaml does not reference ./scripts/$tool/check.sh"

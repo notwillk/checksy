@@ -176,7 +176,7 @@ products/rulesyos/
     rulesyosctl/
   docs/
   tests/
-    qemu/
+    runtime/
     fixtures/
 ```
 

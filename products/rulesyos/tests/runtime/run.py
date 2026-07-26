@@ -42,23 +42,27 @@ def load_emulator(buildroot: Path):
     return Emulator
 
 
-def boot_known_good(args: argparse.Namespace) -> None:
-    Emulator = load_emulator(args.buildroot)
-    log_base = args.buildroot.parent.parent / "runtime" / "known-good"
+def create_emulator(Emulator, buildroot: Path, name: str, download_dir: Path):
+    log_base = buildroot.parent.parent / "runtime" / name
     log_base.parent.mkdir(parents=True, exist_ok=True)
     emulator = Emulator(
         str(log_base),
-        str(args.disk.parent),
+        str(download_dir),
         True,
         1,
     )
+    return emulator, log_base
 
-    def stop_on_signal(signum, _frame):
-        raise SystemExit(128 + signum)
 
-    signal.signal(signal.SIGINT, stop_on_signal)
-    signal.signal(signal.SIGTERM, stop_on_signal)
+def stop_on_signal(signum, _frame):
+    raise SystemExit(128 + signum)
 
+
+def boot_known_good(args: argparse.Namespace) -> None:
+    Emulator = load_emulator(args.buildroot)
+    emulator, log_base = create_emulator(
+        Emulator, args.buildroot, "known-good", args.disk.parent
+    )
     try:
         emulator.boot(
             "x86_64",
@@ -98,6 +102,50 @@ def boot_known_good(args: argparse.Namespace) -> None:
     print("Pinned CirrOS reached its serial login marker with KVM.")
 
 
+def boot_built(args: argparse.Namespace) -> None:
+    Emulator = load_emulator(args.buildroot)
+    emulator, log_base = create_emulator(
+        Emulator, args.buildroot, "built", args.rootfs.parent
+    )
+    try:
+        emulator.boot(
+            "x86_64",
+            kernel=str(args.kernel),
+            kernel_cmdline=[
+                "rootwait",
+                "root=/dev/vda",
+                "console=ttyS0",
+            ],
+            options=[
+                "-accel",
+                "kvm",
+                "-machine",
+                "pc",
+                "-cpu",
+                "host",
+                "-monitor",
+                "none",
+                "-no-reboot",
+                "-nic",
+                "none",
+                "-snapshot",
+                "-drive",
+                f"file={args.rootfs},if=virtio,format=raw",
+            ],
+        )
+        emulator.login(timeout=120)
+        output, exit_code = emulator.run("printf 'RULESYOS_BUILDROOT_BOOT_OK\\n'")
+        if exit_code != 0 or "RULESYOS_BUILDROOT_BOOT_OK" not in output:
+            raise SystemError("Buildroot guest command did not produce its marker")
+    except Exception:
+        print(f"Buildroot serial log: {log_base}-run.log", file=sys.stderr)
+        raise
+    finally:
+        emulator.stop()
+
+    print("Blank RulesyOS Buildroot image booted and accepted a shell command.")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--buildroot", type=Path, required=True)
@@ -106,6 +154,9 @@ def parse_args() -> argparse.Namespace:
     known_good.add_argument("--disk", type=Path, required=True)
     known_good.add_argument("--kernel", type=Path, required=True)
     known_good.add_argument("--initramfs", type=Path, required=True)
+    built = subparsers.add_parser("built")
+    built.add_argument("--kernel", type=Path, required=True)
+    built.add_argument("--rootfs", type=Path, required=True)
     return parser.parse_args()
 
 
@@ -117,9 +168,14 @@ def main() -> int:
         )
         return 0
 
+    signal.signal(signal.SIGINT, stop_on_signal)
+    signal.signal(signal.SIGTERM, stop_on_signal)
+
     args = parse_args()
     if args.test == "known-good":
         boot_known_good(args)
+    elif args.test == "built":
+        boot_built(args)
     return 0
 
 

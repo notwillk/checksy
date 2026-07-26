@@ -34,6 +34,7 @@ go.work.sum
 
 /products/rulesy/dist/
 /products/rulesyos/.cache/
+/products/rulesyos/output/
 /devcontainer-features/dist/
 /.tmp/
 
