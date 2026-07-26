@@ -82,16 +82,17 @@ fi
 grep -F '"/home/vscode/.local/opt/codex-cli/bin:/home/vscode/.local/bin:/home/vscode/.cargo/bin:${containerEnv:PATH}"' \
   "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
   fail "devcontainer remote PATH must expose user-installed Rulesy provisioning tools"
-grep -F '"postCreateCommand": "bash .devcontainer/scripts/post-create.sh"' \
+rulesy_lifecycle_command='/usr/local/bin/rulesy --config=.devcontainer/rulesy.yaml check --fix --non-interactive'
+grep -F "\"postCreateCommand\": \"$rulesy_lifecycle_command\"" \
   "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
-  fail "devcontainer lifecycle must use the repository-owned PATH bootstrap"
+  fail "devcontainer creation must converge through the pinned Rulesy binary"
 grep -F '"--device-cgroup-rule"' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
   fail "devcontainer must grant access only to an explicitly identified device"
 grep -F '"c 10:232 rwm"' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
   fail "devcontainer must grant KVM device access by its exact device number"
-grep -F '"postStartCommand": "bash .devcontainer/scripts/kvm/install.sh"' \
+grep -F "\"postStartCommand\": \"$rulesy_lifecycle_command\"" \
   "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
-  fail "devcontainer must restore optional KVM exposure after each start"
+  fail "devcontainer start must converge through the pinned Rulesy binary"
 if grep -F '"--privileged"' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null; then
   fail "devcontainer must not use privileged mode for KVM"
 fi
@@ -99,55 +100,6 @@ if grep -E '"--device(=|")' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null; th
   fail "devcontainer must not bind a host device that may not exist"
 fi
 
-post_create_home="$TEST_ROOT/post-create-home"
-post_create_system_bin="$TEST_ROOT/post-create-system-bin"
-mkdir -p "$post_create_home" "$post_create_system_bin"
-post_create_path=$(
-  env -u CARGO_HOME \
-    HOME="$post_create_home" \
-    PATH="$post_create_system_bin:/usr/bin:/bin" \
-    bash -c \
-    'source "$1"; prepend_user_tool_paths; printf "%s\n" "$PATH"' \
-    _ "$SCRIPTS_DIR/shared/lib.sh"
-)
-expected_post_create_path="$post_create_home/.local/opt/codex-cli/bin:$post_create_home/.local/bin:$post_create_home/.cargo/bin:$post_create_system_bin:/usr/bin:/bin"
-assert_equal "$expected_post_create_path" "$post_create_path" \
-  "post-create user tool PATH"
-post_create_cargo_home="$TEST_ROOT/post-create-cargo-home"
-post_create_custom_path=$(
-  HOME="$post_create_home" \
-    CARGO_HOME="$post_create_cargo_home" \
-    PATH="$post_create_system_bin:/usr/bin:/bin" \
-    bash -c \
-    'source "$1"; prepend_user_tool_paths; printf "%s\n" "$PATH"' \
-    _ "$SCRIPTS_DIR/shared/lib.sh"
-)
-expected_post_create_custom_path="$post_create_home/.local/opt/codex-cli/bin:$post_create_home/.local/bin:$post_create_cargo_home/bin:$post_create_system_bin:/usr/bin:/bin"
-assert_equal "$expected_post_create_custom_path" "$post_create_custom_path" \
-  "post-create custom Cargo tool PATH"
-grep -F 'source "$SCRIPT_DIR/shared/lib.sh"' "$SCRIPTS_DIR/post-create.sh" >/dev/null || \
-  fail "post-create must load the shared PATH bootstrap"
-grep -Fx 'prepend_user_tool_paths' "$SCRIPTS_DIR/post-create.sh" >/dev/null || \
-  fail "post-create must prepend user tool paths"
-grep -F 'rulesy_bin=/usr/local/bin/rulesy' "$SCRIPTS_DIR/post-create.sh" >/dev/null || \
-  fail "post-create must use the digest-pinned Rulesy Feature binary"
-grep -F 'exec "$rulesy_bin" --config=.devcontainer/rulesy.yaml check --fix --non-interactive' \
-  "$SCRIPTS_DIR/post-create.sh" >/dev/null || \
-  fail "post-create must run the pinned Rulesy convergence command"
-post_create_source_line=$(grep -nF 'source "$SCRIPT_DIR/shared/lib.sh"' \
-  "$SCRIPTS_DIR/post-create.sh")
-post_create_rulesy_line=$(grep -nF 'rulesy_bin=/usr/local/bin/rulesy' \
-  "$SCRIPTS_DIR/post-create.sh")
-post_create_path_line=$(grep -nFx 'prepend_user_tool_paths' \
-  "$SCRIPTS_DIR/post-create.sh")
-post_create_exec_line=$(grep -nF \
-  'exec "$rulesy_bin" --config=.devcontainer/rulesy.yaml check --fix --non-interactive' \
-  "$SCRIPTS_DIR/post-create.sh")
-if ! (( ${post_create_source_line%%:*} < ${post_create_rulesy_line%%:*} &&
-  ${post_create_rulesy_line%%:*} < ${post_create_path_line%%:*} &&
-  ${post_create_path_line%%:*} < ${post_create_exec_line%%:*} )); then
-  fail "post-create must load helpers, select pinned Rulesy, prepend PATH, then execute"
-fi
 if grep -E 'sudo[^#]*npm[[:space:]]+install' \
   "$SCRIPTS_DIR/devcontainer-cli/install.sh" >/dev/null; then
   fail "Dev Container CLI npm lifecycle scripts must not run as root"
@@ -514,7 +466,6 @@ expected_files=(
   kvm/install.sh
   moon/check.sh
   moon/install.sh
-  post-create.sh
   prerequisites/check.sh
   prerequisites/install.sh
   rustup/check.sh

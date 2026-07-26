@@ -3,7 +3,7 @@
 **Status:** Pre-rebuild checkpoint
 **Branch:** `codex/rulesyos-kvm-devcontainer`
 **Base:** `origin/main` at `f99aafe44e0011651dce395a97437731a657f484`
-**Completed checkpoint:** `19ce61d` (`Expose host KVM safely in the devcontainer`)
+**Initial KVM checkpoint:** `19ce61d` (`Expose host KVM safely in the devcontainer`)
 
 This file exists because rebuilding the development container may replace the
 current Codex environment and conversation history. Read it before resuming.
@@ -20,7 +20,8 @@ On a KVM host, the guarded helper creates `/dev/kvm` as `10:232` and gives the
 remote user's primary group read/write access. It refuses to replace symlinks,
 non-devices, wrong device numbers, or separately mounted devices. It may repair
 permissions only for an exact `10:232` node on the container-owned `/dev`
-`tmpfs`. The same helper runs after every container start.
+`tmpfs`. Both container creation and every container start run the complete
+Rulesy configuration directly; the KVM rule's `skip-if` handles non-KVM hosts.
 
 These checks passed before this handoff:
 
@@ -28,7 +29,7 @@ These checks passed before this handoff:
 bash -n on the changed shell scripts
 JSON parsing of .devcontainer/devcontainer.json
 bash .devcontainer/scripts/tests/run.sh
-rulesy --config=.devcontainer/rulesy.yaml check --non-interactive
+/usr/local/bin/rulesy --config=.devcontainer/rulesy.yaml check --non-interactive
 git diff --check
 ```
 
@@ -44,8 +45,8 @@ Use the normal Codex or VS Code “Rebuild Container” action. After reconnecti
 git branch --show-current
 git status --short
 bash .devcontainer/scripts/tests/run.sh
-bash .devcontainer/scripts/kvm/install.sh
-rulesy --config=.devcontainer/rulesy.yaml check --non-interactive
+/usr/local/bin/rulesy --config=.devcontainer/rulesy.yaml check --fix --non-interactive
+/usr/local/bin/rulesy --config=.devcontainer/rulesy.yaml check --non-interactive
 ```
 
 Then distinguish the two supported outcomes:
