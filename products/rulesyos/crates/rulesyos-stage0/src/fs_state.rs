@@ -367,12 +367,17 @@ pub(crate) fn list_regular_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
     for entry in fs::read_dir(path).map_err(|error| format!("read {}: {error}", path.display()))? {
         let entry = entry.map_err(|error| format!("read {} entry: {error}", path.display()))?;
-        let metadata = entry
-            .metadata()
-            .map_err(|error| format!("inspect {}: {error}", entry.path().display()))?;
-        if metadata.file_type().is_file() {
-            files.push(entry.path());
+        let entry_path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("inspect {}: {error}", entry_path.display()))?;
+        if !file_type.is_file() {
+            return Err(format!(
+                "refusing unexpected non-regular entry {}",
+                entry_path.display()
+            ));
         }
+        files.push(entry_path);
     }
     Ok(files)
 }

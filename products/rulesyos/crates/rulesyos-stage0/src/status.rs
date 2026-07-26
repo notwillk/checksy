@@ -52,6 +52,7 @@ pub(crate) fn persist(
     expected_uid: u32,
 ) -> Result<Vec<u8>, String> {
     let json = status.compact_json()?;
+    validate_log_files(logs_dir, expected_uid)?;
     write_log(logs_dir, status, stdout, stderr)?;
     rotate_logs(logs_dir, log_limit, expected_uid)?;
     let mut document = json.clone();
@@ -84,15 +85,7 @@ fn write_log(logs_dir: &Path, status: &Status, stdout: &[u8], stderr: &[u8]) -> 
 }
 
 fn rotate_logs(directory: &Path, limit: usize, expected_uid: u32) -> Result<(), String> {
-    let mut files = list_regular_files(directory)?;
-    for path in &files {
-        if !private_regular_file(path, expected_uid) {
-            return Err(format!(
-                "refusing unexpected non-private log {}",
-                path.display()
-            ));
-        }
-    }
+    let mut files = validate_log_files(directory, expected_uid)?;
     files.sort_by_key(|path| (modified_key(path), path.clone()));
     let remove_count = files.len().saturating_sub(limit);
     for path in files.into_iter().take(remove_count) {
@@ -102,6 +95,19 @@ fn rotate_logs(directory: &Path, limit: usize, expected_uid: u32) -> Result<(), 
         sync_dir(directory)?;
     }
     Ok(())
+}
+
+fn validate_log_files(directory: &Path, expected_uid: u32) -> Result<Vec<PathBuf>, String> {
+    let files = list_regular_files(directory)?;
+    for path in &files {
+        if !private_regular_file(path, expected_uid) {
+            return Err(format!(
+                "refusing unexpected non-private log {}",
+                path.display()
+            ));
+        }
+    }
+    Ok(files)
 }
 
 fn modified_key(path: &PathBuf) -> u128 {
@@ -172,5 +178,34 @@ mod tests {
         assert_eq!(metadata.uid(), uid);
         let parsed: Status = serde_json::from_slice(&fs::read(&latest).unwrap()).unwrap();
         assert_eq!(parsed.boot_id, "boot-09");
+    }
+
+    #[test]
+    fn status_rejects_non_regular_log_entries_before_writing() {
+        let root = temp_dir();
+        let logs = root.join("logs");
+        fs::create_dir(&logs).unwrap();
+        fs::set_permissions(&logs, fs::Permissions::from_mode(0o700)).unwrap();
+        let unexpected = logs.join("unexpected");
+        fs::create_dir(&unexpected).unwrap();
+        let latest = root.join("latest.json");
+        let uid = unsafe { libc::geteuid() };
+
+        let error = persist(
+            &latest,
+            &logs,
+            &status("boot"),
+            b"stdout",
+            b"stderr",
+            8,
+            uid,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("unexpected non-regular entry"), "{error}");
+        assert!(error.contains(&unexpected.display().to_string()), "{error}");
+        assert!(!logs.join("boot.log").exists());
+        assert!(!latest.exists());
+        fs::remove_dir_all(root).unwrap();
     }
 }
