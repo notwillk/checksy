@@ -4,8 +4,7 @@
 .
 ├── .devcontainer/                 Development environment and Rulesy dogfooding
 ├── .moon/
-│   ├── workspace.yml              Explicit five-project Moon map
-│   └── scripts/                   Network-free project/task validators
+│   └── workspace.yml              Explicit five-project Moon map
 ├── .github/workflows/             CI and Rulesy release automation
 ├── devcontainer-features/
 │   └── src/rulesy/                Published Rulesy Feature

@@ -339,6 +339,9 @@ complete.
   practical.
 - [ ] Gate release publishing on the required workflow and align displayed and
   packaged versions behind one source of truth.
+- [ ] Add focused network-free regression coverage for the resolved Moon
+  project/task map, task execution policies, and version/tag argument
+  forwarding without introducing a parallel task-validation framework.
 
 This item is technically unblocked but follows P0 under the priority policy.
 
