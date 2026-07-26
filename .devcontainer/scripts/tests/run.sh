@@ -35,14 +35,13 @@ assert_fails() {
 
 assert_equal 0.8.1 "$RULESY_VERSION" "Rulesy version pin"
 assert_equal 0.145.0 "$CODEX_CLI_VERSION" "Codex CLI version pin"
-assert_equal 1.57.0 "$JUST_VERSION" "Just version pin"
 assert_equal 2.4.5 "$MOON_VERSION" "Moon version pin"
 assert_equal 1.29.0 "$RUSTUP_VERSION" "Rustup version pin"
 assert_equal 1.94.1 "$RUST_TOOLCHAIN_VERSION" "Rust toolchain version pin"
 assert_equal 0.88.0 "$DEVCONTAINER_CLI_VERSION" "Dev Container CLI version pin"
-is_release_version 1.57.0 || fail "valid release version was rejected"
-assert_fails "two-component release version" is_release_version 1.57
-assert_fails "prefixed release version" is_release_version v1.57.0
+is_release_version 1.2.3 || fail "valid release version was rejected"
+assert_fails "two-component release version" is_release_version 1.2
+assert_fails "prefixed release version" is_release_version v1.2.3
 
 mapfile -t rulesy_feature_refs < <(
   grep -oE 'ghcr\.io/notwillk/rulesy/rulesy[^"[:space:]]*' \
@@ -144,10 +143,28 @@ grep -F -- '--prefix "$HOME/.local"' \
   "$SCRIPTS_DIR/devcontainer-cli/install.sh" >/dev/null || \
   fail "Dev Container CLI must install into the remote user's local prefix"
 ci_workflow="$(workspace_root)/.github/workflows/ci.yml"
-grep -F 'bash -o pipefail -c "find .devcontainer/scripts' "$ci_workflow" >/dev/null || \
-  fail "CI shell syntax discovery must enable pipeline failure propagation"
+grep -F \
+  'bash -o pipefail -c "find .devcontainer/scripts .github/scripts scripts products/rulesy/scripts devcontainer-features' \
+  "$ci_workflow" >/dev/null || \
+  fail "CI shell syntax discovery must cover workspace, product, and Feature scripts"
 grep -F "xargs -0 -r -n1 bash -n" "$ci_workflow" >/dev/null || \
   fail "CI shell syntax discovery must not invoke Bash without a script"
+grep -F 'sh -n scripts/install.sh' "$ci_workflow" >/dev/null || \
+  fail "CI must preserve the public root installer path"
+grep -F 'sh -n scripts/uninstall.sh' "$ci_workflow" >/dev/null || \
+  fail "CI must preserve the public root uninstaller path"
+for task in build format lint test; do
+  grep -F "moon run rulesy:$task" "$ci_workflow" >/dev/null || \
+    fail "CI must run the Rulesy $task task through Moon"
+done
+for task in lint test; do
+  grep -F "moon run rulesy-devcontainer-feature:$task" "$ci_workflow" >/dev/null || \
+    fail "CI must run the Feature $task task through Moon"
+done
+grep -F 'test "$(moon --version)" = "moon 2.4.5"' "$ci_workflow" >/dev/null || \
+  fail "CI must assert the exact Moon version"
+grep -F 'test "$(moonx --version)" = "moon-exec 2.4.5"' "$ci_workflow" >/dev/null || \
+  fail "CI must assert the exact Moon executor version"
 grep -F 'test "${GITHUB_ACTIONS:-}" = true' "$ci_workflow" >/dev/null || \
   fail "CI must prove the GitHub Actions marker reaches the devcontainer"
 grep -F 'test ! -e "$HOME/.local/opt/codex-cli/bin/codex"' "$ci_workflow" >/dev/null || \
@@ -280,20 +297,31 @@ if grep -E 'sudo[^#]*(rustup|cargo|rustc)' "$SCRIPTS_DIR/rustup/install.sh" >/de
 fi
 grep -F 'rust_toolchain_commands_usable' "$SCRIPTS_DIR/rustup/check.sh" >/dev/null || \
   fail "Rust check must exercise the selected toolchain commands"
-
-x86_target=$(just_target_for_arch x86_64)
-arm_target=$(just_target_for_arch aarch64)
-assert_equal x86_64-unknown-linux-musl "$x86_target" "x86_64 target mapping"
-assert_equal aarch64-unknown-linux-musl "$arm_target" "aarch64 target mapping"
-assert_equal "$arm_target" "$(just_target_for_arch arm64)" "arm64 target alias"
-assert_fails "unsupported architecture" just_target_for_arch riscv64
+grep -F 'https://cli.github.com/packages stable main' \
+  "$SCRIPTS_DIR/github-cli/install.sh" >/dev/null || \
+  fail "GitHub CLI installer must use GitHub's maintained Debian repository"
+grep -F 'apt-get install -y --no-install-recommends gh' \
+  "$SCRIPTS_DIR/github-cli/install.sh" >/dev/null || \
+  fail "GitHub CLI installer must install gh"
+grep -F 'name: GitHub CLI is authenticated' "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must check GitHub CLI authentication"
+grep -F 'check: gh auth status --active --hostname github.com' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "GitHub CLI authentication check must target the active github.com account"
+grep -F 'severity: warn' "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "GitHub CLI authentication must be warning-only"
 
 moon_x86_target=$(moon_target_for_arch x86_64)
 moon_arm_target=$(moon_target_for_arch aarch64)
+moon_x86_darwin_target=$(moon_target_for_platform Darwin x86_64)
+moon_arm_darwin_target=$(moon_target_for_platform Darwin arm64)
 assert_equal x86_64-unknown-linux-musl "$moon_x86_target" "x86_64 Moon target mapping"
 assert_equal aarch64-unknown-linux-musl "$moon_arm_target" "aarch64 Moon target mapping"
 assert_equal "$moon_arm_target" "$(moon_target_for_arch arm64)" "Moon arm64 target alias"
 assert_fails "unsupported Moon architecture" moon_target_for_arch riscv64
+assert_equal x86_64-apple-darwin "$moon_x86_darwin_target" "x86_64 macOS Moon target"
+assert_equal aarch64-apple-darwin "$moon_arm_darwin_target" "ARM64 macOS Moon target"
+assert_fails "unsupported Moon platform" moon_target_for_platform FreeBSD x86_64
 
 rustup_x86_target=$(rustup_target_for_arch x86_64)
 rustup_arm_target=$(rustup_target_for_arch aarch64)
@@ -318,27 +346,10 @@ assert_equal \
   "$(rustup_checksum_for_target "$rustup_arm_target")" \
   "aarch64 Rustup checksum"
 
-x86_url=$(just_download_url "$x86_target")
-arm_url=$(just_download_url "$arm_target")
-assert_equal \
-  "https://github.com/casey/just/releases/download/1.57.0/just-1.57.0-x86_64-unknown-linux-musl.tar.gz" \
-  "$x86_url" \
-  "x86_64 Just download"
-assert_equal \
-  "https://github.com/casey/just/releases/download/1.57.0/just-1.57.0-aarch64-unknown-linux-musl.tar.gz" \
-  "$arm_url" \
-  "aarch64 Just download"
-assert_equal \
-  45b548094283cb9739af8f13273b8cddeee869f5b4ef2bb631b1f311cb566155 \
-  "$(just_checksum_for_target "$x86_target")" \
-  "x86_64 Just checksum"
-assert_equal \
-  f225044a81adea6e0b3a8b9370aaf374e6af76c8735ae263ac993df55fd137ec \
-  "$(just_checksum_for_target "$arm_target")" \
-  "aarch64 Just checksum"
-
 moon_x86_url=$(moon_download_url "$moon_x86_target")
 moon_arm_url=$(moon_download_url "$moon_arm_target")
+moon_x86_darwin_url=$(moon_download_url "$moon_x86_darwin_target")
+moon_arm_darwin_url=$(moon_download_url "$moon_arm_darwin_target")
 assert_equal \
   "https://github.com/moonrepo/moon/releases/download/v2.4.5/moon_cli-x86_64-unknown-linux-musl.tar.xz" \
   "$moon_x86_url" \
@@ -355,6 +366,22 @@ assert_equal \
   41cca0fcca0a63de1f7c4d94d275f55c2b26ef559bf19cf7d5bbf29c2ae5df53 \
   "$(moon_checksum_for_target "$moon_arm_target")" \
   "aarch64 Moon checksum"
+assert_equal \
+  "https://github.com/moonrepo/moon/releases/download/v2.4.5/moon_cli-x86_64-apple-darwin.tar.xz" \
+  "$moon_x86_darwin_url" \
+  "x86_64 macOS Moon download"
+assert_equal \
+  "https://github.com/moonrepo/moon/releases/download/v2.4.5/moon_cli-aarch64-apple-darwin.tar.xz" \
+  "$moon_arm_darwin_url" \
+  "ARM64 macOS Moon download"
+assert_equal \
+  5ac82abc98495b2322e01c22219320a71c45903278cbdd40f5e9d874d6cc0b65 \
+  "$(moon_checksum_for_target "$moon_x86_darwin_target")" \
+  "x86_64 macOS Moon checksum"
+assert_equal \
+  c7bd4aee9fc5b9f76fb17f081e7aba2d7a1b34eba8f89535349cb3266b7af0ad \
+  "$(moon_checksum_for_target "$moon_arm_darwin_target")" \
+  "ARM64 macOS Moon checksum"
 
 MOCK_CURL_URL=""
 curl() {
@@ -366,8 +393,8 @@ curl() {
   MOCK_CURL_URL=$9
   printf 'downloaded fixture\n' >"$8"
 }
-download_file "$x86_url" "$TEST_ROOT/download"
-assert_equal "$x86_url" "$MOCK_CURL_URL" "curl download URL"
+download_file "$moon_x86_url" "$TEST_ROOT/download"
+assert_equal "$moon_x86_url" "$MOCK_CURL_URL" "curl download URL"
 assert_equal "downloaded fixture" "$(<"$TEST_ROOT/download")" "downloaded fixture contents"
 unset -f curl
 
@@ -421,8 +448,8 @@ expected_files=(
   devcontainer-cli/install.sh
   entr/check.sh
   entr/install.sh
-  just/check.sh
-  just/install.sh
+  github-cli/check.sh
+  github-cli/install.sh
   moon/check.sh
   moon/install.sh
   post-create.sh
@@ -445,7 +472,7 @@ for index in "${!expected_files[@]}"; do
   assert_equal "${expected_files[$index]}" "${actual_files[$index]}" "script layout entry $index"
 done
 
-expected_tools=(prerequisites entr just moon rustup devcontainer-cli codex-cli)
+expected_tools=(prerequisites entr moon rustup devcontainer-cli github-cli codex-cli)
 for tool in "${expected_tools[@]}"; do
   grep -F "check: exec bash ./scripts/$tool/check.sh" "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
     fail "rulesy.yaml does not reference ./scripts/$tool/check.sh"

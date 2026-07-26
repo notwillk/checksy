@@ -90,7 +90,8 @@ rulesy version
 
 ```bash
 git clone https://github.com/notwillk/rulesy.git
-cd rulesy && just compile
+cd rulesy
+moon run rulesy:compile
 ```
 
 ---

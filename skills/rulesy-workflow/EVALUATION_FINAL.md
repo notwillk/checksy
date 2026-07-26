@@ -181,7 +181,7 @@ The rulesy-workflow skill has been thoroughly evaluated and is **ready for produ
 
 ### Fixed During This Evaluation:
 
-1. ✅ **Trigger queries version mismatch** 
+1. ✅ **Trigger queries version mismatch**
    - Issue: `trigger-queries.json` had `"description_version": "1.1.0"` but skill is 1.2.0
    - Fix: Updated to `"description_version": "1.2.0"`
 

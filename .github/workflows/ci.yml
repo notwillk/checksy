@@ -33,21 +33,24 @@ jobs:
           push: never
           runCmd: >-
             test "${GITHUB_ACTIONS:-}" = true &&
+            test "$(uname -m)" = x86_64 &&
             rulesy --config=.devcontainer/rulesy.yaml check --fix --non-interactive &&
             rulesy --config=.devcontainer/rulesy.yaml check --non-interactive &&
             test ! -e "$HOME/.local/opt/codex-cli/bin/codex" &&
             test ! -L "$HOME/.local/opt/codex-cli/bin/codex" &&
-            bash -o pipefail -c "find .devcontainer/scripts scripts -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n" &&
+            test "$(moon --version)" = "moon 2.4.5" &&
+            test "$(moonx --version)" = "moon-exec 2.4.5" &&
+            bash -o pipefail -c "find .devcontainer/scripts .github/scripts scripts products/rulesy/scripts devcontainer-features -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n" &&
             bash .devcontainer/scripts/tests/run.sh &&
-            bash scripts/tests/verify-static-linux-binary.sh &&
-            bash scripts/tests/release-portability.sh &&
-            cd src &&
-            cargo fmt --all -- --check &&
-            cargo clippy --locked --all-targets --all-features &&
-            sh -n ../scripts/install.sh &&
-            sh -n ../scripts/uninstall.sh &&
-            bash -n ../devcontainer-feature/src/rulesy/test-version-resolution.sh &&
-            bash ../devcontainer-feature/src/rulesy/test-version-resolution.sh
+            bash products/rulesy/scripts/tests/verify-static-linux-binary.sh &&
+            bash products/rulesy/scripts/tests/release-portability.sh &&
+            moon run rulesy:format &&
+            moon run rulesy:lint &&
+            sh -n scripts/install.sh &&
+            sh -n scripts/uninstall.sh &&
+            moon run rulesy-devcontainer-feature:build &&
+            moon run rulesy-devcontainer-feature:lint &&
+            moon run rulesy-devcontainer-feature:test
 
   devcontainer-arm:
     name: Devcontainer bootstrap (arm64)
@@ -67,6 +70,8 @@ jobs:
           runCmd: >-
             test "$(uname -m)" = aarch64 &&
             test "$(rulesy --version)" = "rulesy 0.8.1" &&
+            test "$(moon --version)" = "moon 2.4.5" &&
+            test "$(moonx --version)" = "moon-exec 2.4.5" &&
             rulesy --config=.devcontainer/rulesy.yaml check --non-interactive
 
   tests:
@@ -79,9 +84,6 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
-    defaults:
-      run:
-        working-directory: src
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -91,11 +93,19 @@ jobs:
       - name: Install Rust toolchain
         run: rustup toolchain install --profile minimal --no-self-update
 
-      - name: Build all targets
-        run: cargo build --locked --all-targets --all-features
+      - name: Install Moon
+        run: bash .github/scripts/install-moon.sh
 
-      - name: Run tests
-        run: cargo test --locked --all-features --no-fail-fast
+      - name: Verify Moon version
+        run: |
+          test "$(moon --version)" = "moon 2.4.5"
+          test "$(moonx --version)" = "moon-exec 2.4.5"
+
+      - name: Build Rulesy
+        run: moon run rulesy:build
+
+      - name: Test Rulesy
+        run: moon run rulesy:test
 
   portability-build:
     name: Portable Linux build (${{ matrix.arch }})
@@ -116,14 +126,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install Moon
+        run: bash .github/scripts/install-moon.sh
+
       - name: Build portable Linux release
-        run: ./scripts/cross-compile.sh "${{ matrix.target }}"
+        env:
+          RULESY_TARGET: ${{ matrix.target }}
+        run: moon run rulesy:cross-compile -- "$RULESY_TARGET"
 
       - name: Upload portable Linux release
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: rulesy-linux-${{ matrix.arch }}
-          path: dist/rulesy_linux_${{ matrix.arch }}.tar.gz
+          path: products/rulesy/dist/rulesy_linux_${{ matrix.arch }}.tar.gz
           if-no-files-found: error
           retention-days: 1
 
@@ -151,18 +166,18 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: rulesy-linux-${{ matrix.arch }}
-          path: dist
+          path: products/rulesy/dist
 
       - name: Verify and run portable Linux release
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist/smoke
-          tar -xzf "dist/rulesy_linux_${{ matrix.arch }}.tar.gz" -C dist/smoke
-          expected_version="$(sed -n 's/^pub const VERSION: &str = "\(.*\)";$/\1/p' src/version.rs)"
+          mkdir -p products/rulesy/dist/smoke
+          tar -xzf "products/rulesy/dist/rulesy_linux_${{ matrix.arch }}.tar.gz" -C products/rulesy/dist/smoke
+          expected_version="$(sed -n 's/^pub const VERSION: &str = "\(.*\)";$/\1/p' products/rulesy/src/version.rs)"
           test -n "$expected_version"
-          ./scripts/verify-static-linux-binary.sh dist/smoke/rulesy "$expected_version"
+          ./products/rulesy/scripts/verify-static-linux-binary.sh products/rulesy/dist/smoke/rulesy "$expected_version"
           smoke_config="$(mktemp)"
           trap 'rm -f "$smoke_config"' EXIT
           printf 'rules:\n  - name: static release smoke\n    check: test "$(uname -s)" = Linux\n' >"$smoke_config"
-          dist/smoke/rulesy --config="$smoke_config" check --fix --non-interactive
+          products/rulesy/dist/smoke/rulesy --config="$smoke_config" check --fix --non-interactive

@@ -146,7 +146,7 @@ Generate schema for IDE support but don't commit it:
 .rulesy.schema.json
 
 # Generate locally for IDE
-just generate-schema  # Or: rulesy schema > .rulesy.schema.json
+rulesy schema > .rulesy.schema.json
 
 # VS Code settings
 # .vscode/settings.json

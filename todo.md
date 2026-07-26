@@ -1,7 +1,10 @@
-# Rulesy machine-provisioning roadmap
+# Rulesy repository roadmap
 
 Rulesy has one job: take an explicitly supplied configuration and provision
 the current machine by running checks, applicable fixes, and final checks.
+This roadmap tracks that product plus repository-wide migration work. Proposed
+RulesyOS and Rulesy Compose runtime milestones remain in their owning product
+designs and do not expand Rulesy's scope.
 
 ## Product boundary
 
@@ -21,10 +24,14 @@ the current machine by running checks, applicable fixes, and final checks.
 
 ## Product family
 
-The [product-family decision](docs/proposals/README.md) records the completed
+The [product-family documentation](docs/README.md) records the completed
 Rulesy rename and defines RulesyOS and Rulesy Compose as separate proposed
-products. Their OS, composition, and publication milestones belong in their
-own future repositories rather than in this provisioning roadmap.
+products. The products are co-located under `products/` but retain independent
+responsibilities, Cargo workspaces, acceptance gates, and releases. Their OS
+and composition milestones belong in their
+[RulesyOS](products/rulesyos/docs/design.md) and
+[Rulesy Compose](products/rulesy-compose/docs/design.md) documents rather than
+in the Rulesy provisioning roadmap.
 
 ## Compatibility guardrails
 
@@ -223,15 +230,48 @@ feature's edge cases.
 
 ## P1 — Important
 
+### Complete the monorepo and Moon task-runner migration
+
+- [x] Land the repository reorganization and task-runner migration as one
+  reviewable, behavior-preserving slice.
+  - Keep Rulesy implementation, tests, fixtures, product scripts, and detailed
+    docs under `products/rulesy/`; keep public root installer/uninstaller and
+    signing-key paths compatible.
+  - Keep RulesyOS and Rulesy Compose documentation under their owning product
+    directories without adding runtime code in this slice.
+  - Preserve independent product responsibilities, future Cargo workspaces,
+    and releases; RulesyOS pins a released Rulesy, while Compose invokes a real
+    pinned Rulesy and never enters production firmware.
+  - Provision pinned Moon `2.4.5` and Moonx `2.4.5` on supported development
+    and CI architectures without taking over the Rust toolchain.
+  - Move the Rulesy `build`, `compile`, `dev`, `cross-compile`, `format`,
+    `lint`, `test`, `release`, `get-version`, and tag-validation commands
+    directly into `products/rulesy/moon.yml`; keep the existing cross-compile
+    and release scripts as their implementations.
+  - Give the development-container Feature only its existing meaningful build,
+    shell-lint, and test commands. Do not add placeholder lifecycle tasks to
+    the documentation-only products or the workflow skill.
+  - Point CI and release automation at the Moon tasks while preserving release
+    triggers, target matrices, artifact names, public paths, and Feature
+    publication.
+  - Remove Just, its provisioning pins/helpers, root runner file, and editor
+    integration after its callers have moved.
+  - Transfer useful temporary migration facts into permanent documentation and
+    tests, then remove the checkpoint document before review.
+
+This work is complete. Moon `2.4.5` is the executable repository task
+interface, with Rulesy tasks defined in `products/rulesy/moon.yml`.
+
 ### Dogfood Rulesy in the development container
 
 - [x] Provision the development container's userland tools through Rulesy.
   - Bootstrap Rulesy `0.8.1` through Feature `1.0.1` at its immutable
     canonical OCI digest.
-  - Provision Entr, Just `1.57.0`, Rustup `1.29.0` with the exact Rust `1.94.1`
-    toolchain and required `rustfmt`/`clippy` components, Dev Container CLI
-    `0.88.0`, and local-development Codex CLI `0.145.0` from one checked-in
-    configuration. Skip Codex CLI when GitHub Actions is provisioning CI.
+  - Provision Entr, Moon `2.4.5`/Moonx `2.4.5`, Rustup `1.29.0` with the exact
+    Rust `1.94.1` toolchain and required `rustfmt`/`clippy` components, Dev
+    Container CLI `0.88.0`, and local-development Codex CLI `0.145.0` from one
+    checked-in configuration. Skip Codex CLI when GitHub Actions is
+    provisioning CI.
   - Run non-interactive convergence during container creation and in CI, then
     run the same configuration check-only to prove idempotence.
   - Keep the base image, Docker-in-Docker, editor customization, and immutable
@@ -329,8 +369,8 @@ Blocked by completion of the P1 deprecation window.
 
 ### Documentation cleanup
 
-- [ ] Remove stale Go and GoReleaser references and ensure every supported CLI
-  example is exercised by a smoke test.
+- [x] Remove stale Go and GoReleaser release-procedure claims.
+- [ ] Ensure every supported CLI example is exercised by a smoke test.
 
 ## P3 — Not important
 

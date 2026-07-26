@@ -1,0 +1,187 @@
+# Rulesy - AI Agent Context
+
+## What This System Does
+Rulesy is a Rust CLI tool for running health checks in development environments. It reads YAML configuration files containing shell command-based rules, executes them, and reports pass/fail status with severity levels (debug, info, warn, error).
+
+The Rulesy rename is a clean cutover: current executables, environment
+variables, default configuration names, cache and lock paths, release
+artifacts, and documentation use Rulesy names.
+
+**Key Features:**
+- YAML-based rule definitions with shell commands
+- Hierarchical severity levels (debug → info → warn → error)
+- Remote config inclusion via file paths or git repositories
+- Git-based remote caching with shallow clones
+- Fix mode: ordinary headless repairs or explicit terminal-capable repairs for
+  failed checks
+- Pattern-based rule files (glob matching)
+
+## Core Domain Model
+
+### Config
+```rust
+struct Config {
+    cache_path: Option<String>,      // Default: ".rulesy-cache"
+    check_severity: Option<Severity>, // Min severity to run
+    fail_severity: Option<Severity>,  // Min severity to fail
+    preconditions: Vec<Rule>,         // Run before main rules
+    rules: Vec<Rule>,                 // Main checks
+    patterns: Vec<String>,              // Glob patterns for script files
+}
+```
+
+### Rule
+```rust
+struct Rule {
+    name: Option<String>,
+    check: Option<String>,           // Shell command to execute
+    skip_if: Option<String>,         // YAML: skip-if; skip when command exits 0
+    severity: Option<Severity>,      // Default: Error
+    fix: Option<String>,             // Non-interactive repair command
+    interactive_fix: Option<String>, // YAML: interactive-fix; mutually exclusive with fix
+    hint: Option<String>,            // Failure message hint
+    remote: Option<String>,          // Config file to include
+    timeout: Option<String>,         // 1ms through 2h; default 15m
+}
+```
+
+**Remote Rule Types:**
+- **File remote**: `remote: path/to/config.yaml` - Relative path
+- **Git remote**: `git+<url>#<ref>:<path>` - e.g., `git+https://github.com/org/repo.git#main:.rulesy.yaml`
+
+**Important:** Remote rules can ONLY have the `remote` property set (no name,
+check, skip-if, severity, fix, interactive-fix, hint, or timeout allowed).
+
+An executable rule may declare `fix` or `interactive-fix`, never both. An
+interactive repair is considered only after a failed check during
+`check --fix`; `--non-interactive` and stdin configuration prohibit terminal
+use without disabling ordinary fixes. A `skip-if` command runs once before the
+initial check; exit `0` skips the rule, any completed nonzero exit continues,
+and an execution failure is operational.
+
+### Severity (Enum)
+- `Debug` (0) - Lowest, for verbose output
+- `Info` (1) - Informational checks
+- `Warning` (2) - Non-failing issues
+- `Error` (3) - Failing issues (default)
+
+## High-Level Architecture
+
+### Execution Flow
+1. **CLI Parsing** (`cli.rs`)
+   - Parse global flags (`--config`, `--stdin-config`)
+   - Dispatch to command handler (check, install, init, schema, version)
+
+2. **Config Loading** (`config.rs`)
+   - Resolve config path (explicit or auto-detect `.rulesy.yaml`)
+   - Parse YAML, apply defaults
+   - **Expand remotes recursively** with separate active-chain and completed
+     states so cycles fail while completed diamond includes deduplicate
+   - For git remotes: verify cache exists or error with "Run 'rulesy install'"
+
+3. **Git Caching** (`install` command → `cli.rs`)
+   - Parse config without remote expansion to collect all git remotes
+   - For each unique `(repo, ref)`: shallow clone to cache directory
+   - Support `--prune` to remove unused cache entries
+
+4. **Check Execution** (`check.rs`)
+   - Run preconditions first (in order)
+   - Run rules (in order)
+   - Run pattern-matched script files (alphabetically)
+   - Collect results into `Report`
+   - Preserve the public exits: 0 success, 1 usage fallback, 2
+     invocation/configuration/operational failure, 3 compliance failure, and 4
+     provisioning-lock contention
+
+### Cache Directory Structure
+```
+<config-dir>/
+└── <cache-path>/              # e.g., ".rulesy-cache"
+    └── git/                  # Fixed subdirectory
+        └── <encoded-repo>/   # URL-safe repo name
+            └── <ref>/         # Branch/tag name
+                └── <files>   # Shallow clone contents
+```
+
+## Directory Map
+```
+products/rulesy/
+├── Cargo.toml
+├── src/             # Library and CLI implementation
+│   ├── lib.rs
+│   ├── main.rs
+│   ├── cli.rs
+│   ├── config.rs
+│   ├── cache.rs
+│   ├── git.rs
+│   ├── check.rs
+│   ├── process_runner.rs
+│   ├── provision_lock.rs
+│   ├── schema.rs
+│   └── version.rs
+├── tests/           # Compiled-binary integration contracts
+├── fixtures/        # Closed configuration corpora
+├── scripts/         # Product build and release helpers
+└── docs/            # Product operational documentation
+```
+
+## Critical Invariants / Rules
+
+### 1. Remote Rule Validation
+Remote rules MUST only have `remote` property. Any other property (name, check,
+skip-if, severity, fix, interactive-fix, hint, timeout) causes error.
+
+### 2. Circular Reference Prevention
+Local includes use canonical paths with two separate resolver states. Reaching
+a path in the active include chain is an error that reports the ordered cycle;
+reaching a fully completed path again is a no-op.
+
+### 3. Git Remote Caching Requirement
+Git remotes must be cached via `rulesy install` BEFORE running `rulesy check`. Uncached git remotes error with clear message.
+
+### 4. Severity Inheritance
+- Rules without severity inherit from `check_severity` config field
+- Default severity: `Error`
+- Remote configs inherit parent's `check_severity`/`fail_severity` defaults
+
+### 5. Work Directory Execution
+CLI-resolved file-backed shell commands execute relative to the directory of
+the configuration that defines them. Stdin configuration is self-contained
+and executes relative to the caller's current working directory. Public flat
+execution uses the single working directory supplied in `Options`.
+
+### 6. All-or-Nothing Install
+`rulesy install` fails entirely if ANY git remote fails to clone.
+
+## Common Tasks
+
+### Add a New Command
+1. Add case in `run()` match statement (`cli.rs`)
+2. Implement `run_<command>()` function
+3. Update `print_usage()` with command description
+4. Update `run_schema()` JSON schema if config-related
+
+### Add a Config Field
+1. Add field to `Config` struct in `schema.rs` with serde attributes
+2. Update `run_schema()` JSON schema output
+3. Use field in appropriate module (config loading, check execution, etc.)
+4. Update test fixtures if behavior changes
+
+### Add Git Remote Support to New Feature
+1. Parse git URL via `parse_git_remote()` in `config.rs`
+2. Check cache via `CacheManager::is_cached()`
+3. Get cached path via `CacheManager::get_config_path()`
+4. Error if not cached: "Run 'rulesy install' first"
+
+### Add New Rule Property
+1. Add to `Rule` struct in `schema.rs`
+2. Update validation in `Rule::validate_remote_only()` if remote-restricted
+3. Use in `check.rs` (execution) or `cli.rs` (reporting)
+4. Update JSON schema in `run_schema()`
+
+### Test Changes
+- Unit tests in each module's `#[cfg(test)]` section
+- Compiled-binary integration tests in `products/rulesy/tests/`
+- Test assets in `products/rulesy/fixtures/`
+- Run `cargo test --manifest-path products/rulesy/Cargo.toml` from the
+  repository root

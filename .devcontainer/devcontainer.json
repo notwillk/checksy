@@ -21,7 +21,7 @@
 			"extensions": [
 				"github.vscode-github-actions",
 				"golang.go",
-				"skellock.just",
+				"moonrepo.moon-console",
 				"sst-dev.opencode"
 			]
 		}

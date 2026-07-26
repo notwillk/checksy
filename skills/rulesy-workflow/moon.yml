@@ -1,0 +1,9 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "unknown"
+layer: "tool"
+stack: "unknown"
+tags:
+  - "developer-tool"
+  - "agent-skill"
+  - "rulesy-integration"

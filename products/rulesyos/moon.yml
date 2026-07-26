@@ -1,0 +1,9 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "unknown"
+layer: "application"
+stack: "systems"
+tags:
+  - "product"
+  - "operating-system"
+  - "documentation-only"
