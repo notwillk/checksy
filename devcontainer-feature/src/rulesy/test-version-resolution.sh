@@ -9,7 +9,7 @@ REAL_BASH="${BASH:-/bin/bash}"
 TEST_ROOT="$(mktemp -d)"
 MOCK_BIN="$TEST_ROOT/bin"
 MOCK_LOG="$TEST_ROOT/mock.log"
-LATEST_TAG="v0.7.6"
+LATEST_TAG="v0.8.1"
 
 trap 'rm -rf "$TEST_ROOT"' EXIT
 mkdir -p "$MOCK_BIN"
@@ -97,15 +97,15 @@ run_case() {
   fi
 }
 
-run_case bare 0.7.5 v0.7.5 false
-run_case prefixed v0.7.5 v0.7.5 false
+run_case bare 0.8.1 v0.8.1 false
+run_case prefixed v0.8.1 v0.8.1 false
 run_case latest latest "$LATEST_TAG" true
 run_case current current "$LATEST_TAG" true
 
 : >"$MOCK_LOG"
 set +e
 PATH="$MOCK_BIN:/usr/bin:/bin" \
-  VERSION="0.7.5" \
+  VERSION="0.8.1" \
   MOCK_LOG="$MOCK_LOG" \
   MOCK_LATEST_TAG="$LATEST_TAG" \
   MOCK_RULESY_EXIT=9 \
@@ -121,7 +121,7 @@ fi
 : >"$MOCK_LOG"
 set +e
 PATH="$MOCK_BIN:/usr/bin:/bin" \
-  VERSION="0.7.5" \
+  VERSION="0.8.1" \
   MOCK_LOG="$MOCK_LOG" \
   MOCK_LATEST_TAG="$LATEST_TAG" \
   MOCK_RULESY_VERSION="rulesy 9.9.9" \
@@ -135,7 +135,7 @@ if [ "$mismatch_status" -ne 1 ]; then
 fi
 
 if ! grep -Fx \
-  "Installed Rulesy version mismatch: expected 'rulesy 0.7.5', got 'rulesy 9.9.9'" \
+  "Installed Rulesy version mismatch: expected 'rulesy 0.8.1', got 'rulesy 9.9.9'" \
   "$TEST_ROOT/version-mismatch.output" >/dev/null; then
   cat "$TEST_ROOT/version-mismatch.output" >&2
   fail "mismatched Rulesy version did not emit the expected diagnostic"

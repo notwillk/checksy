@@ -5,8 +5,8 @@
 		"ghcr.io/devcontainers/features/docker-in-docker:2": {
 			"moby": false
 		},
-		"ghcr.io/notwillk/rulesy/rulesy@sha256:55818189d558943f00a3769579278fbf2c936d66c4c54e82e45d598ee9c38018": {
-			"version": "0.7.6"
+		"ghcr.io/notwillk/rulesy/rulesy@sha256:14a84839b18b42a412e04cb7b0980889a83369381168b6f7de2d827bcf43dda9": {
+			"version": "0.8.1"
 		}
 	},
 	"containerEnv": {

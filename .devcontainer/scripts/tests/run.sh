@@ -33,7 +33,7 @@ assert_fails() {
   fi
 }
 
-assert_equal 0.7.6 "$RULESY_VERSION" "Rulesy version pin"
+assert_equal 0.8.1 "$RULESY_VERSION" "Rulesy version pin"
 assert_equal 0.145.0 "$CODEX_CLI_VERSION" "Codex CLI version pin"
 assert_equal 1.57.0 "$JUST_VERSION" "Just version pin"
 assert_equal 1.29.0 "$RUSTUP_VERSION" "Rustup version pin"

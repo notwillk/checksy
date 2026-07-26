@@ -264,7 +264,7 @@ commands run from `src/`; the root `justfile` provides the common project tasks.
 
 This repository dogfoods Rulesy for its development environment. The
 [devcontainer configuration](.devcontainer/devcontainer.json) bootstraps
-Rulesy `0.7.6` through Feature `1.0.1`, referenced by its immutable canonical
+Rulesy `0.8.1` through Feature `1.0.1`, referenced by its immutable canonical
 OCI manifest digest. The digest pins the Feature implementation, while its
 `version` option pins the Rulesy release selected by that implementation. The
 base is kept on the Ubuntu `26.04` release line so security rebuilds remain

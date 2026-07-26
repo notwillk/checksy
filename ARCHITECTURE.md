@@ -39,7 +39,7 @@ publication, and OS concerns must not be backported into this provisioner.
 
 The development container exercises the provisioning lifecycle against a real
 machine image. Its [devcontainer definition](.devcontainer/devcontainer.json)
-bootstraps Rulesy `0.7.6` with Feature `1.0.1` pinned by canonical OCI manifest
+bootstraps Rulesy `0.8.1` with Feature `1.0.1` pinned by canonical OCI manifest
 digest. Pinning both layers prevents a mutable Feature tag or its default
 version from silently changing the bootstrap.
 
@@ -517,7 +517,7 @@ run_install() [cli.rs]
   installer syntax checks. A separate native ARM64 job rebuilds the actual
   devcontainer and checks its pinned bootstrap binary, covering the Docker
   Desktop on Apple Silicon architecture path.
-- Manual fresh-container validation asserts Rulesy `0.7.6`, Entr availability, Just
+- Manual fresh-container validation asserts Rulesy `0.8.1`, Entr availability, Just
   `1.57.0`, Rust `1.94.1` with `rustfmt` and `clippy`, Dev Container CLI
   `0.88.0`, Codex CLI `0.145.0` for local development, and Node.js 20 or newer.
   A second convergence and check-only pass prove the fixes are idempotent;
