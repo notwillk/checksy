@@ -20,6 +20,18 @@ tasks:
       timeout: 3600
       outputStyle: "stream"
 
+  clean:
+    description: "Remove RulesyOS compiled outputs"
+    command: ["rm", "-rf", "--", "target", "output"]
+    options:
+      runInCI: false
+
+  deep-clean:
+    description: "Remove all RulesyOS outputs, downloads, sources, and caches"
+    command: ["rm", "-rf", "--", "target", "output", ".cache", "tests/runtime/__pycache__"]
+    options:
+      runInCI: false
+
   format:
     description: "Check RulesyOS Rust formatting"
     command: "cargo fmt --all -- --check"

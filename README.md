@@ -49,13 +49,23 @@ Pass task arguments after `--`, for example:
 moon run rulesy:cross-compile -- aarch64-unknown-linux-musl
 ```
 
-Rulesy owns `build`, `format`, `lint`, `test`, and `release`, together with its
-development and release helper tasks. RulesyOS owns uncached `build`, `format`,
-`lint`, `test`, and `test-known-good` tasks; its image build and KVM tasks are
-local-only. The development-container Feature owns its existing build,
-shell-lint, and test commands. Rulesy Compose and the workflow skill do not
-advertise placeholder lifecycle tasks before they have implementation or
-established tooling to run.
+Clean project-local build outputs, or remove those outputs together with
+project-owned downloads, caches, and Python bytecode:
+
+```bash
+moon run :clean
+moon run :deep-clean
+```
+
+Moon's workspace cache remains managed separately with `moon clean --all`.
+
+Rulesy owns `build`, `format`, `lint`, `test`, `release`, `clean`, and
+`deep-clean`, together with its development and release helper tasks. RulesyOS
+owns uncached `build`, `format`, `lint`, `test`, `test-known-good`, `clean`, and
+`deep-clean` tasks; its image build and KVM tasks are local-only. The
+development-container Feature owns its build, shell-lint, test, and cleanup
+commands. Rulesy Compose and the workflow skill do not advertise placeholder
+lifecycle tasks before they have implementation or established tooling to run.
 
 Rulesy development details, CLI usage, and its provisioning contract are in
 the [Rulesy README](products/rulesy/README.md).

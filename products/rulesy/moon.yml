@@ -16,6 +16,18 @@ tasks:
     description: "Build the optimized Rulesy binary"
     command: "cargo build --locked --release"
 
+  clean:
+    description: "Remove Rulesy build and package outputs"
+    command: ["rm", "-rf", "--", "target", "dist"]
+    options:
+      runInCI: false
+
+  deep-clean:
+    description: "Remove all Rulesy outputs and project-local caches"
+    command: ["rm", "-rf", "--", "target", "dist", ".rulesy-cache", "fixtures/remote-config/git/.git-cache"]
+    options:
+      runInCI: false
+
   compile:
     description: "Build Rulesy and copy the binary into the project dist directory"
     script: |
