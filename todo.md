@@ -2,7 +2,7 @@
 
 Rulesy has one job: take an explicitly supplied configuration and provision
 the current machine by running checks, applicable fixes, and final checks.
-This roadmap tracks that product plus repository-wide migration work. Proposed
+This roadmap tracks that product plus repository-wide migration work. Remaining
 RulesyOS and Rulesy Compose runtime milestones remain in their owning product
 designs and do not expand Rulesy's scope.
 
@@ -25,10 +25,10 @@ designs and do not expand Rulesy's scope.
 ## Product family
 
 The [product-family documentation](docs/README.md) records the completed
-Rulesy rename and defines RulesyOS and Rulesy Compose as separate proposed
-products. The products are co-located under `products/` but retain independent
-responsibilities, Cargo workspaces, acceptance gates, and releases. Their OS
-and composition milestones belong in their
+Rulesy rename and defines RulesyOS and Rulesy Compose as separate products.
+The products are co-located under `products/` but retain independent
+responsibilities, Cargo workspaces, acceptance gates, and releases. Their
+remaining OS and composition milestones belong in their
 [RulesyOS](products/rulesyos/docs/design.md) and
 [Rulesy Compose](products/rulesy-compose/docs/design.md) documents rather than
 in the Rulesy provisioning roadmap.
@@ -267,6 +267,14 @@ interface, with Rulesy tasks defined in `products/rulesy/moon.yml`.
 - [ ] Review the likely GitHub Actions billing impact before enabling any
   RulesyOS Buildroot build or KVM VM test in CI. Until explicitly approved,
   keep the RulesyOS build and VM test tasks local-only.
+
+### Freeze the remaining RulesyOS cross-product contracts
+
+- [ ] Align Rulesy's Cargo package and CLI version authority, then have
+  RulesyOS consume a later release before making production or provenance
+  claims.
+- [ ] Add and independently release a generic Rulesy bundle-root confinement
+  contract before RulesyOS accepts signed external bundles.
 
 ### Dogfood Rulesy in the development container
 

@@ -16,6 +16,18 @@ tasks:
     description: "Package the Rulesy Dev Container Feature"
     command: "devcontainer features package src --output-folder dist --force-clean-output-folder"
 
+  clean:
+    description: "Remove packaged Feature outputs"
+    command: ["rm", "-rf", "--", "dist"]
+    options:
+      runInCI: false
+
+  deep-clean:
+    description: "Remove all generated Feature files"
+    command: ["rm", "-rf", "--", "dist"]
+    options:
+      runInCI: false
+
   lint:
     description: "Check Feature shell syntax"
     command:

@@ -1,0 +1,21 @@
+rules:
+  - name: Apply the baked RulesyOS configuration
+    check: |
+      test -f /state/rulesyos/baked-config-applied
+    fix: |
+      set -eu
+      marker=/state/rulesyos/baked-config-applied
+      temporary="${marker}.tmp.$$"
+      trap 'rm -f "$temporary"' EXIT HUP INT TERM
+      (umask 077; printf '%s\n' applied > "$temporary")
+      chmod 0600 "$temporary"
+      mv -f "$temporary" "$marker"
+      sync
+      trap - EXIT HUP INT TERM
+      printf '%s\n' RULESYOS_BAKED_FIX_APPLIED
+
+  - name: Verify that RulesyOS has no network device
+    check: |
+      set -- /sys/class/net/*
+      test "$#" -eq 1
+      test "$1" = /sys/class/net/lo

@@ -24,8 +24,13 @@
 │   │   ├── README.md              User and provisioning contract
 │   │   └── ARCHITECTURE.md        Detailed Rulesy runtime architecture
 │   ├── rulesyos/
-│   │   ├── README.md              Product status and design index
-│   │   └── docs/design.md         Stage-zero and OS design
+│   │   ├── Cargo.toml             Independent RulesyOS Rust workspace
+│   │   ├── crates/rulesyos-stage0/  Permanent boot-time orchestrator
+│   │   ├── br2-external/          Buildroot board, packages, and defconfig
+│   │   ├── scripts/               Pinned Buildroot preparation and build
+│   │   ├── tests/runtime/         KVM image and known-good tests
+│   │   ├── README.md              Product status and command index
+│   │   └── docs/design.md         Stage-zero and production OS design
 │   └── rulesy-compose/
 │       ├── README.md              Product status and design index
 │       └── docs/design.md         Host composition design
@@ -37,7 +42,7 @@
 ├── ARCHITECTURE.md                Family boundaries and contracts
 ├── CONVENTIONS.md                 Monorepo contribution rules
 ├── PROMPT.md                      Family-level agent context
-└── todo.md                        Provisioner roadmap and repository work
+└── todo.md                        Product-family roadmap and repository work
 ```
 
 ## Ownership map
@@ -45,7 +50,7 @@
 | Area | Owner | Notes |
 | --- | --- | --- |
 | `products/rulesy/` | Rulesy | Implemented product; detailed code map is in its architecture and prompt. |
-| `products/rulesyos/` | RulesyOS | Bootstrap build/test infrastructure only; product functionality remains proposed. |
+| `products/rulesyos/` | RulesyOS | Functional baked-configuration reference image; production boot, external bundles, updates, and releases remain deferred. |
 | `products/rulesy-compose/` | Rulesy Compose | Documentation-only until an approved implementation milestone. |
 | `devcontainer-features/src/rulesy/` | Rulesy release integration | Preserves the published `rulesy` Feature identity. |
 | `.devcontainer/` | Repository development environment | Bootstraps Rulesy, then converges developer tools. |

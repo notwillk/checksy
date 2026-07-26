@@ -1,0 +1,6 @@
+# Immutable Rulesy release consumed by RulesyOS.
+RULESY_RELEASE_VERSION = 0.8.2
+RULESY_RELEASE_ARCHIVE = rulesy_linux_x86_64.tar.gz
+RULESY_RELEASE_URL = https://github.com/notwillk/rulesy/releases/download/v0.8.2/rulesy_linux_x86_64.tar.gz
+RULESY_RELEASE_ARCHIVE_SHA256 = 912c292310012fc0b3320bcb03321d9cbbc6f112b5f66ca6cf1ca535d98ff17c
+RULESY_RELEASE_BINARY_SHA256 = 4f1ca0cd30e85d450247973d672460ed2141496bab4b656c0787d0f65e391f39

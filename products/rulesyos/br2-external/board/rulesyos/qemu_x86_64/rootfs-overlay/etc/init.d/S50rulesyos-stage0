@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+case "${1:-}" in
+	start)
+		if [ ! -f /run/rulesyos-mounts.ready ]; then
+			printf '%s\n' \
+				'RulesyOS stage zero refused to start because runtime mounts are unavailable.' \
+				>&2
+			exit 1
+		fi
+		/usr/bin/rulesyos-stage0
+		;;
+	stop)
+		;;
+	*)
+		printf 'Usage: %s {start|stop}\n' "$0" >&2
+		exit 2
+		;;
+esac

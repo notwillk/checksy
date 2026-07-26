@@ -1,0 +1,8 @@
+config BR2_PACKAGE_RULESY
+	bool "rulesy"
+	depends on BR2_x86_64
+	select BR2_PACKAGE_BASH
+	help
+	  Install the immutable Rulesy release pinned by RulesyOS.
+
+	  https://github.com/notwillk/rulesy

@@ -21,7 +21,13 @@ make -C "$buildroot_dir" \
   O="$OUTPUT_DIR" \
   BR2_EXTERNAL="$EXTERNAL_DIR" \
   BR2_DL_DIR="$DOWNLOAD_DIR" \
+  rulesyos-stage0-reconfigure
+make -C "$buildroot_dir" \
+  O="$OUTPUT_DIR" \
+  BR2_EXTERNAL="$EXTERNAL_DIR" \
+  BR2_DL_DIR="$DOWNLOAD_DIR" \
   -j"$build_jobs"
 
 test -f "$OUTPUT_DIR/images/bzImage"
 test -f "$OUTPUT_DIR/images/rootfs.ext2"
+test -f "$OUTPUT_DIR/images/rulesyos.img"

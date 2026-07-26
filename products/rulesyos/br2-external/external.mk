@@ -1,1 +1,1 @@
-# Intentionally empty: the bootstrap image defines no external packages.
+include $(sort $(wildcard $(BR2_EXTERNAL_RULESYOS_PATH)/package/*/*.mk))

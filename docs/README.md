@@ -16,5 +16,7 @@ Product-specific runtime and design documentation lives with its owner under
 - [Rulesy Compose design](../products/rulesy-compose/docs/design.md) — host-side
   schemas, variants, artifacts, validation, provenance, and publishers.
 
-RulesyOS and Rulesy Compose remain unimplemented proposals. Each requires its
-own explicitly approved, independently reviewable milestone.
+RulesyOS has an implemented baked-configuration reference image; its production
+trust, update, and recovery milestones remain deferred. Rulesy Compose remains
+an unimplemented proposal. Each further milestone requires its own explicitly
+approved, independently reviewable slice.
