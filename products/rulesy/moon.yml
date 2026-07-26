@@ -37,8 +37,6 @@ tasks:
   cross-compile:
     description: "Build and package one supported release target"
     command: "./scripts/cross-compile.sh"
-    options:
-      runInCI: false
 
   format:
     description: "Check Rust formatting"
@@ -86,7 +84,6 @@ tasks:
         fi
       - "ensure-tag-matches-version"
     options:
-      runInCI: false
       shell: false
 
   release:
