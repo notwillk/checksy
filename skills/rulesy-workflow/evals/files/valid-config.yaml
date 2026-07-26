@@ -1,4 +1,4 @@
-# Valid checksy configuration for testing
+# Valid rulesy configuration for testing
 # This represents typical production usage
 checkSeverity: warn
 failSeverity: error

@@ -15,4 +15,4 @@ rules:
   - name: later rule still runs
     severity: error
     timeout: 2s
-    check: ': > "$CHECKSY_LATER_RULE_MARKER"'
+    check: ': > "$RULESY_LATER_RULE_MARKER"'

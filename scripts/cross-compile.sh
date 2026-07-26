@@ -40,7 +40,7 @@ if [ "$os" = "darwin" ]; then
   echo "Building for macOS natively..."
   rustup target add "$target"
   cd src && cargo build --locked --release --target "$target"
-  cp "target/$target/release/checksy" "../dist/checksy_${os}_${arch}"
+  cp "target/$target/release/rulesy" "../dist/rulesy_${os}_${arch}"
   cd ..
 else
   echo "Cross-compiling via Docker..."
@@ -49,16 +49,16 @@ else
     cargo install cross --version 0.2.5 --locked --force
   fi
   cd src && cross build --locked --release --target "$target"
-  cp "target/$target/release/checksy" "../dist/checksy_${os}_${arch}"
+  cp "target/$target/release/rulesy" "../dist/rulesy_${os}_${arch}"
   cd ..
 fi
 
-echo "Packaging: checksy_${os}_${arch}.tar.gz"
+echo "Packaging: rulesy_${os}_${arch}.tar.gz"
 mkdir -p dist/tmp
-cp "dist/checksy_${os}_${arch}" "dist/tmp/checksy"
-tar -czf "dist/checksy_${os}_${arch}.tar.gz" -C dist/tmp checksy
+cp "dist/rulesy_${os}_${arch}" "dist/tmp/rulesy"
+tar -czf "dist/rulesy_${os}_${arch}.tar.gz" -C dist/tmp rulesy
 rm -rf dist/tmp
 
-echo "Calculating checksum: checksy_${os}_${arch}-checksum.txt"
-(cd dist && sha256sum checksy_${os}_${arch}.tar.gz) > "dist/checksy_${os}_${arch}-checksum.txt"
+echo "Calculating checksum: rulesy_${os}_${arch}-checksum.txt"
+(cd dist && sha256sum rulesy_${os}_${arch}.tar.gz) > "dist/rulesy_${os}_${arch}-checksum.txt"
 echo "Done"

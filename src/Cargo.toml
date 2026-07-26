@@ -1,9 +1,9 @@
 [package]
-name = "checksy"
+name = "rulesy"
 version = "0.5.2"
 edition = "2021"
 description = "Provision the current machine from trusted configuration"
-repository = "https://github.com/notwillk/checksy"
+repository = "https://github.com/notwillk/rulesy"
 license = "MIT"
 
 [dependencies]
@@ -32,9 +32,9 @@ strip = true
 opt-level = "z"
 
 [[bin]]
-name = "checksy"
+name = "rulesy"
 path = "main.rs"
 
 [lib]
-name = "checksy"
+name = "rulesy"
 path = "lib.rs"

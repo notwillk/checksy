@@ -1,9 +1,9 @@
-# checksy Code Map
+# Rulesy Code Map
 
 ## Directory Structure
 
 ```
-/workspaces/checksy/
+/workspaces/rulesy/
 ├── src/                    # Rust source code
 │   ├── Cargo.toml          # Package manifest
 │   ├── Cargo.lock          # Pinned dependency lock
@@ -51,9 +51,9 @@
 │       ├── nested/         # Nested remote expansion
 │       └── invalid/        # Validation error tests
 │
-├── .devcontainer/          # Development environment and Checksy dogfooding
-│   ├── devcontainer.json   # Container bootstrap and Checksy Feature pin
-│   ├── checksy.yaml        # Entr, Just, Rust, Dev Container CLI, and local Codex convergence
+├── .devcontainer/          # Development environment and Rulesy dogfooding
+│   ├── devcontainer.json   # Container bootstrap and Rulesy Feature pin
+│   ├── rulesy.yaml        # Entr, Just, Rust, Dev Container CLI, and local Codex convergence
 │   ├── tool-versions.env   # Shared exact toolchain pins and checksums
 │   └── scripts/
 │       ├── prerequisites/          # Required apt-tool provisioning
@@ -69,21 +69,21 @@
 │
 ├── scripts/                # Installation scripts
 │   ├── cross-compile.sh    # Pinned cross-build and release packaging
-│   ├── install.sh          # Install checksy binary
+│   ├── install.sh          # Install rulesy binary
 │   ├── tests/
 │   │   ├── release-portability.sh # Pinned target/workflow contract
 │   │   └── verify-static-linux-binary.sh # Network-free verifier tests
 │   ├── verify-static-linux-binary.sh # Static release contract
-│   └── uninstall.sh        # Remove checksy binary
+│   └── uninstall.sh        # Remove rulesy binary
 │
 ├── .github/workflows/      # CI/CD
 │   ├── ci.yml              # PR/push tests and devcontainer convergence
 │   └── release.yml         # Release automation
 │
 ├── docs/
-│   └── proposals/          # Unimplemented product-family designs
-│       ├── README.md       # Proposal index and status
-│       ├── rulesy-product-family.md # Rename and repository boundaries
+│   └── proposals/          # Product-family decisions and proposed add-ons
+│       ├── README.md       # Product-family index and status
+│       ├── rulesy-product-family.md # Rename record and repository boundaries
 │       └── rulesyos.md     # RulesyOS and Rulesy Compose handoff
 │
 ├── justfile                # Just command runner recipes
@@ -93,27 +93,28 @@
 └── CODEMAP.md              # This file
 ```
 
-## Product proposal documentation
+## Product-family documentation
 
-- [`docs/proposals/README.md`](docs/proposals/README.md) indexes product work
-  that has been designed but not implemented.
+- [`docs/proposals/README.md`](docs/proposals/README.md) indexes the completed
+  rename decision and proposed adjacent products.
 - [`rulesy-product-family.md`](docs/proposals/rulesy-product-family.md) records
-  the proposed Checksy-to-Rulesy rename, compatibility invariants and required
-  migration decisions, and the boundary between the three related products.
+  the Rulesy rename, its invariants, and the boundary between the three related
+  products.
 - [`rulesyos.md`](docs/proposals/rulesyos.md) preserves the proposed RulesyOS
   and Rulesy Compose product requirements, architecture, milestones, and test
   plan.
 
-These documents add no runtime modules. The binary, crate, configuration
-filenames, on-disk paths, release artifacts, and public APIs remain Checksy.
+These documents add no RulesyOS or Rulesy Compose runtime modules. The binary,
+crate, configuration filenames, on-disk paths, release artifacts, and public
+APIs use Rulesy names.
 
 ## Devcontainer Provisioning
 
 - [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
   bootstraps the Ubuntu `26.04` base line, Docker-in-Docker, and the canonical
-  digest-pinned Checksy Feature. It exposes the user-installed `.local` and
+  digest-pinned Rulesy Feature. It exposes the user-installed `.local` and
   Rust paths and runs the provisioning definition after workspace creation.
-- [`.devcontainer/checksy.yaml`](.devcontainer/checksy.yaml) is the flat
+- [`.devcontainer/rulesy.yaml`](.devcontainer/rulesy.yaml) is the flat
   dogfooding configuration for Entr, Just `1.57.0`, Rustup `1.29.0` and Rust
   `1.94.1`, Dev Container CLI `0.88.0`, and local-only Codex CLI `0.145.0`.
 - [`.devcontainer/tool-versions.env`](.devcontainer/tool-versions.env) is the
@@ -292,7 +293,7 @@ filenames, on-disk paths, release artifacts, and public APIs remain Checksy.
 **Behavior**:
 - Selects one documented lock path from platform and effective UID, resolving
   non-root homes through the operating-system account database
-- Creates an owner-only `0700` Checksy directory and persistent `0600` lock
+- Creates an owner-only `0700` Rulesy directory and persistent `0600` lock
   file, then verifies ownership, regular-file type, link count, and pathname
   identity without following links
 - Uses a nonblocking exclusive advisory lock plus a process-local device/inode
@@ -331,7 +332,7 @@ filenames, on-disk paths, release artifacts, and public APIs remain Checksy.
 
 ### Organization
 Fixtures organized by feature/scenario:
-- Each directory contains `.checksy.yaml` configs
+- Each directory contains `.rulesy.yaml` configs
 - May include shell scripts (`.sh`) for rule files
 - `README.md` explains fixture purpose
 
@@ -342,7 +343,7 @@ Fixtures organized by feature/scenario:
 - Contains `pass.sh` and `fail.sh` helper scripts
 
 **remote-config/** (Remote inclusion)
-- `.checksy.yaml`: Main config with file remote
+- `.rulesy.yaml`: Main config with file remote
 - `shared.yaml`: Included config
 - `inherit-parent.yaml`: Tests default inheritance
 - `circular/`: A→B→C→A circular reference test
@@ -519,7 +520,7 @@ lib.rs
 2. `schema.rs`: Add it to the public type and strict raw projection with validation.
 3. Update `fixtures/strict-config/cases.yaml` and positive/negative fixtures.
 4. Add compiled-binary coverage for every ingestion path the field affects.
-5. `checksy schema` updates automatically from the Rust model; assert parity rather than editing JSON.
+5. `rulesy schema` updates automatically from the Rust model; assert parity rather than editing JSON.
 
 ### Add Command
 1. `cli.rs`: Add to `run()` match

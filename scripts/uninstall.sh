@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 set -e
 
-BIN_NAME="checksy"
-TARGET="${CHECKSY_BIN_PATH:-/usr/local/bin/$BIN_NAME}"
+BIN_NAME="rulesy"
+TARGET="${RULESY_BIN_PATH:-/usr/local/bin/$BIN_NAME}"
 
 echo "Uninstalling $BIN_NAME from $TARGET..."
 

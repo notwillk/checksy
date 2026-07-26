@@ -109,14 +109,14 @@ cases:
     assets:
       - scripts/term-resistant-repair.sh
     mode: file-pty-interrupt
-    test: ctrl_c_cleans_interactive_fix_tree_and_resignals_checksy
+    test: ctrl_c_cleans_interactive_fix_tree_and_resignals_rulesy
     expectedExit: 130
   - id: outer-job-control
     fixture: interactive-parent-interrupt.yaml
     assets:
       - scripts/term-resistant-repair.sh
     mode: file-pty-job-control
-    test: outer_job_control_cleans_the_tree_without_suspending_checksy
+    test: outer_job_control_cleans_the_tree_without_suspending_rulesy
     expectedExit: 2
   - id: foreground-loss
     fixture: foreground-loss.yaml

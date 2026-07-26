@@ -19,9 +19,9 @@ target=$(just_target_for_arch "$(uname -m)")
 archive=$(just_archive_name "$target")
 url=$(just_download_url "$target")
 checksum=$(just_checksum_for_target "$target")
-temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/checksy-just.XXXXXX")
+temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/rulesy-just.XXXXXX")
 archive_path="$temporary_directory/$archive"
-staged_binary="/usr/local/bin/.checksy-just-${JUST_VERSION}-$$"
+staged_binary="/usr/local/bin/.rulesy-just-${JUST_VERSION}-$$"
 
 cleanup() {
   rm -rf -- "$temporary_directory"

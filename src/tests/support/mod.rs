@@ -7,7 +7,7 @@ use std::fs::{File, OpenOptions};
 pub fn provisioning_test_guard() -> File {
     let directory = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
     std::fs::create_dir_all(directory).expect("create Cargo integration-test temp directory");
-    let path = directory.join("checksy-provisioning-contract.lock");
+    let path = directory.join("rulesy-provisioning-contract.lock");
     let file = OpenOptions::new()
         .read(true)
         .write(true)

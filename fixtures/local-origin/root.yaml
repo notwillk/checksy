@@ -4,7 +4,7 @@ rules:
       set -eu
       test "$(cat ./Brewfile)" = "root-brewfile"
       test "$(cat ./template.txt)" = "root-template"
-      printf 'root-check\n' >> "$CHECKSY_LOCAL_ORIGIN_TRACE"
+      printf 'root-check\n' >> "$RULESY_LOCAL_ORIGIN_TRACE"
   - remote: child/child.yaml
 
 patterns:

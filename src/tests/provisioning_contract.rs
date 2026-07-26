@@ -6,16 +6,16 @@ const README: &str = include_str!("../../README.md");
 const ARCHITECTURE: &str = include_str!("../../ARCHITECTURE.md");
 const STRICT_FIXTURES: &str = include_str!("../../fixtures/strict-config/README.md");
 
-fn checksy() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_checksy"))
+fn rulesy() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_rulesy"))
 }
 
 fn run(args: &[&str]) -> Output {
-    checksy().args(args).output().unwrap()
+    rulesy().args(args).output().unwrap()
 }
 
 fn code(output: &Output) -> i32 {
-    output.status.code().expect("checksy exited by signal")
+    output.status.code().expect("Rulesy exited by signal")
 }
 
 fn write_config(path: &Path, check: &str) {
@@ -127,17 +127,17 @@ fn public_cli_preserves_the_stable_implemented_exit_classes() {
 #[test]
 fn documentation_records_the_completed_p0_contract() {
     for expected in [
-        "checksy provisions the current machine",
-        "`checksy check --fix` is Checksy's only provisioning lifecycle",
-        "Checksy intentionally executes arbitrary Bash",
+        "Rulesy provisions the current machine",
+        "`rulesy check --fix` is Rulesy's only provisioning lifecycle",
+        "Rulesy intentionally executes arbitrary Bash",
         "Fetching, updating, authenticating,",
         "`interactive-fix`",
         "`--non-interactive`",
         "provisioning lock",
-        "<account-home>/.local/state/checksy/provision.lock",
-        "<account-home>/Library/Application Support/checksy/provision.lock",
-        "/var/lib/checksy/provision.lock",
-        "/Library/Application Support/checksy/provision.lock",
+        "<account-home>/.local/state/rulesy/provision.lock",
+        "<account-home>/Library/Application Support/rulesy/provision.lock",
+        "/var/lib/rulesy/provision.lock",
+        "/Library/Application Support/rulesy/provision.lock",
         "| `4` | Provisioning lock contention |",
         "`--no-fail` masks only rule-compliance exit `3`",
         "### Command supervision",
@@ -151,11 +151,11 @@ fn documentation_records_the_completed_p0_contract() {
     }
 
     for expected in [
-        "checksy is a CLI provisioner",
+        "Rulesy is a CLI provisioner",
         "## Security and mutation boundary",
         "## Normative P0 execution contract",
         "This section records the implemented P0 execution contract",
-        "The lock namespace is `checksy-provision`, keyed only by effective UID",
+        "The lock namespace is `rulesy-provision`, keyed only by effective UID",
         "this is not a cross-UID machine-global",
         "| `4` | Provisioning lock contention |",
         "`--no-fail` affects only exit `3`",

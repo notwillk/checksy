@@ -59,7 +59,7 @@ cases:
   - id: parent-interrupt-process-tree
     fixture: parent-interrupt-process-tree.yaml
     assets: []
-    test: ctrl_c_cleans_the_managed_tree_and_resignals_checksy
+    test: ctrl_c_cleans_the_managed_tree_and_resignals_rulesy
     expectedExit: 130
   - id: controlling-tty-isolation
     fixture: controlling-tty-isolation.yaml

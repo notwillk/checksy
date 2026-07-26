@@ -1,6 +1,6 @@
 # Edge Cases & Advanced Scenarios
 
-Advanced checksy configurations and scenarios for complex use cases.
+Advanced Rulesy configurations and scenarios for complex use cases.
 
 ---
 
@@ -11,14 +11,14 @@ Advanced checksy configurations and scenarios for complex use cases.
 Reference global configs in project configs:
 
 ```yaml
-# ~/.config/checksy/global.yaml
+# ~/.config/rulesy/global.yaml
 rules:
   - name: Git configured
     check: git config --global user.email
 
-# Project .checksy.yaml
+# Project .rulesy.yaml
 rules:
-  - remote: ~/.config/checksy/global.yaml
+  - remote: ~/.config/rulesy/global.yaml
   - name: Project tests
     check: npm test
 ```
@@ -30,11 +30,11 @@ Use wrapper scripts with environment detection:
 ```bash
 # Wrapper script with environment detection
 if [ "$CI" = "true" ]; then
-  checksy --config=.checksy.ci.yaml check
+  rulesy --config=.rulesy.ci.yaml check
 elif [ "$ENV" = "dev" ]; then
-  checksy --config=.checksy.dev.yaml check
+  rulesy --config=.rulesy.dev.yaml check
 else
-  checksy check
+  rulesy check
 fi
 ```
 
@@ -64,7 +64,7 @@ fi
 3. **Split by domain:**
    ```yaml
    # security.yaml, tests.yaml, lint.yaml
-   # Run specific group: checksy --config=security.yaml check
+   # Run specific group: rulesy --config=security.yaml check
    ```
 
 4. **Cache expensive operations:**
@@ -88,10 +88,10 @@ Test configs without failing:
 
 ```bash
 # Test a config without failing
-checksy --config=./experimental.yaml check --no-fail 2>&1 | head -20
+rulesy --config=./experimental.yaml check --no-fail 2>&1 | head -20
 
 # Validate syntax only
-checksy schema > /tmp/schema.json
+rulesy schema > /tmp/schema.json
 # Use with online YAML validator
 ```
 
@@ -150,7 +150,7 @@ Example chain:
 # c.yaml references a.yaml ← Circular!
 ```
 
-Checksy reports the ordered `a.yaml -> b.yaml -> c.yaml -> a.yaml` include chain.
+Rulesy reports the ordered `a.yaml -> b.yaml -> c.yaml -> a.yaml` include chain.
 Repeated includes encountered after a definition has completed are
 deduplicated instead.
 
@@ -175,7 +175,7 @@ rules:
   - name: Shared rule
     check: echo "from shared"
 
-# .checksy.yaml (local override)
+# .rulesy.yaml (local override)
 rules:
   - remote: shared/team-checks.yaml
   - name: Local override

@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 set -e
 
-REPO="notwillk/checksy"
-BIN_NAME="checksy"
+REPO="notwillk/rulesy"
+BIN_NAME="rulesy"
 
 OS=$(uname | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
@@ -16,7 +16,7 @@ case "$ARCH" in
     ;;
 esac
 
-VERSION="${CHECKSY_VERSION:-latest}"
+VERSION="${RULESY_VERSION:-latest}"
 
 if [ "$VERSION" = "latest" ]; then
   VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \

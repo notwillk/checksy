@@ -1,14 +1,14 @@
 {
-  "skill_name": "checksy-workflow",
+  "skill_name": "rulesy-workflow",
   "description_version": "1.2.0",
   "queries": [
     {
-      "query": "help me set up checksy for my project",
+      "query": "help me set up Rulesy for my project",
       "should_trigger": true,
       "note": "Direct request"
     },
     {
-      "query": "my .checksy.yaml isn't working",
+      "query": "my .rulesy.yaml isn't working",
       "should_trigger": true,
       "note": "Config troubleshooting"
     },
@@ -23,32 +23,32 @@
       "note": "Implicit trigger"
     },
     {
-      "query": "git remote not cached error checksy",
+      "query": "git remote not cached error Rulesy",
       "should_trigger": true,
       "note": "Error troubleshooting"
     },
     {
-      "query": "checksy check --fix how does it work",
+      "query": "rulesy check --fix how does it work",
       "should_trigger": true,
       "note": "Feature question"
     },
     {
-      "query": "sharing checksy configs across repos",
+      "query": "sharing Rulesy configs across repos",
       "should_trigger": true,
       "note": "Advanced feature"
     },
     {
-      "query": "severity filtering in checksy yaml",
+      "query": "severity filtering in Rulesy yaml",
       "should_trigger": true,
       "note": "Specific feature"
     },
     {
-      "query": "hey can u help with checksy config",
+      "query": "hey can u help with Rulesy config",
       "should_trigger": true,
       "note": "Casual phrasing"
     },
     {
-      "query": "cheksy isntalling problme",
+      "query": "rulesy isntalling problme",
       "should_trigger": true,
       "note": "Typos"
     },
@@ -70,7 +70,7 @@
     {
       "query": "how to write yaml files",
       "should_trigger": false,
-      "note": "General YAML, not checksy"
+      "note": "General YAML, not Rulesy"
     },
     {
       "query": "what is rust programming language",
@@ -90,7 +90,7 @@
     {
       "query": "application monitoring with Prometheus",
       "should_trigger": false,
-      "note": "Monitoring, not checksy"
+      "note": "Monitoring, not Rulesy"
     },
     {
       "query": "database health check queries",
@@ -100,7 +100,7 @@
     {
       "query": "CI/CD pipeline validation",
       "should_trigger": false,
-      "note": "General CI/CD, not checksy-specific"
+      "note": "General CI/CD, not Rulesy-specific"
     }
   ]
 }

@@ -56,8 +56,8 @@ const EXECUTABLE_TESTS: &[&str] = &[
     "ordinary_fix_runs_under_non_interactive",
     "failed_interactive_fix_continues_and_honors_no_fail",
     "interactive_fix_timeout_is_operational_and_fail_fast",
-    "ctrl_c_cleans_interactive_fix_tree_and_resignals_checksy",
-    "outer_job_control_cleans_the_tree_without_suspending_checksy",
+    "ctrl_c_cleans_interactive_fix_tree_and_resignals_rulesy",
+    "outer_job_control_cleans_the_tree_without_suspending_rulesy",
     "foreground_loss_stops_outer_relay_and_cleans_the_repair",
     "interactive_job_control_suspension_is_operational",
     "interactive_fix_streams_output_and_restores_terminal",
@@ -205,18 +205,18 @@ fn config_args(path: &Path, extra: &[&str]) -> Vec<String> {
 fn shell_command(args: &[String], stdin_path: Option<&Path>) -> Command {
     let mut command = Command::new("/bin/sh");
     let script = if stdin_path.is_some() {
-        "exec \"$CHECKSY_TEST_BIN\" \"$@\" < \"$CHECKSY_STDIN_PATH\""
+        "exec \"$RULESY_TEST_BIN\" \"$@\" < \"$RULESY_STDIN_PATH\""
     } else {
-        "exec \"$CHECKSY_TEST_BIN\" \"$@\""
+        "exec \"$RULESY_TEST_BIN\" \"$@\""
     };
     command
         .arg("-c")
         .arg(script)
-        .arg("checksy")
+        .arg("rulesy")
         .args(args)
-        .env("CHECKSY_TEST_BIN", env!("CARGO_BIN_EXE_checksy"));
+        .env("RULESY_TEST_BIN", env!("CARGO_BIN_EXE_rulesy"));
     if let Some(path) = stdin_path {
-        command.env("CHECKSY_STDIN_PATH", path);
+        command.env("RULESY_STDIN_PATH", path);
     }
     command
 }
@@ -295,7 +295,7 @@ fn run_headless(args: &[String], stdin: Option<&[u8]>, env: &[(&str, &Path)]) ->
             kill_group_if_present(pid);
             match receive.recv_timeout(Duration::from_secs(3)) {
                 Ok(output) => output.unwrap(),
-                Err(_) => panic!("headless Checksy did not exit after watchdog: {error}"),
+                Err(_) => panic!("headless Rulesy did not exit after watchdog: {error}"),
             }
         }
     }
@@ -481,7 +481,7 @@ impl PtyProcess {
                 kill_group_if_present(self.pid);
                 match self.status.recv_timeout(Duration::from_secs(3)) {
                     Ok(status) => status.unwrap(),
-                    Err(_) => panic!("PTY Checksy did not exit after watchdog: {error}"),
+                    Err(_) => panic!("PTY Rulesy did not exit after watchdog: {error}"),
                 }
             }
         };
@@ -539,21 +539,18 @@ fn spawn_foreground_loss_pty(
         .arg("-c")
         .arg(concat!(
             "set -m\n",
-            "\"$CHECKSY_FOREGROUND_HELPER\" --ignored --exact ",
+            "\"$RULESY_FOREGROUND_HELPER\" --ignored --exact ",
             "interactive_foreground_thief_helper --nocapture ",
             "</dev/null >/dev/null 2>&1 &\n",
-            "exec \"$CHECKSY_TEST_BIN\" \"$@\"\n"
+            "exec \"$RULESY_TEST_BIN\" \"$@\"\n"
         ))
-        .arg("checksy")
+        .arg("rulesy")
         .args(args)
-        .env("CHECKSY_TEST_BIN", env!("CARGO_BIN_EXE_checksy"))
-        .env(
-            "CHECKSY_FOREGROUND_HELPER",
-            std::env::current_exe().unwrap(),
-        )
-        .env("CHECKSY_FOREGROUND_COMMAND_SOCKET", command_socket)
-        .env("CHECKSY_FOREGROUND_READY_SOCKET", ready_socket)
-        .env("CHECKSY_UNEXPECTED_LATER_COMMAND", unexpected_later);
+        .env("RULESY_TEST_BIN", env!("CARGO_BIN_EXE_rulesy"))
+        .env("RULESY_FOREGROUND_HELPER", std::env::current_exe().unwrap())
+        .env("RULESY_FOREGROUND_COMMAND_SOCKET", command_socket)
+        .env("RULESY_FOREGROUND_READY_SOCKET", ready_socket)
+        .env("RULESY_UNEXPECTED_LATER_COMMAND", unexpected_later);
     PtyProcess::spawn(command)
 }
 
@@ -624,7 +621,7 @@ fn passing_interactive_fix_never_probes_for_terminal() {
     let output = run_headless(
         &config_args(&file_copy.path().join(&file_case.fixture), &["--fix"]),
         None,
-        &[("CHECKSY_UNEXPECTED_INTERACTIVE", &file_marker)],
+        &[("RULESY_UNEXPECTED_INTERACTIVE", &file_marker)],
     );
     assert_output_exit(file_case, &output);
     assert!(!file_marker.exists());
@@ -637,7 +634,7 @@ fn passing_interactive_fix_never_probes_for_terminal() {
     let output = run_headless(
         &["--stdin-config".into(), "check".into(), "--fix".into()],
         Some(&document),
-        &[("CHECKSY_UNEXPECTED_INTERACTIVE", &stdin_marker)],
+        &[("RULESY_UNEXPECTED_INTERACTIVE", &stdin_marker)],
     );
     assert_output_exit(stdin_case, &output);
     assert!(!stdin_marker.exists());
@@ -668,8 +665,8 @@ fn unavailable_interactive_fix_is_a_compliance_result() {
             &config_args(&copy.path().join(&case.fixture), &extra),
             None,
             &[
-                ("CHECKSY_UNEXPECTED_INTERACTIVE", &unexpected),
-                ("CHECKSY_LATER_RULE_MARKER", &later),
+                ("RULESY_UNEXPECTED_INTERACTIVE", &unexpected),
+                ("RULESY_LATER_RULE_MARKER", &later),
             ],
         );
         assert_output_exit(case, &output);
@@ -688,8 +685,8 @@ fn unavailable_interactive_fix_is_a_compliance_result() {
         ),
         None,
         &[
-            ("CHECKSY_UNEXPECTED_INTERACTIVE", &unexpected),
-            ("CHECKSY_LATER_RULE_MARKER", &later),
+            ("RULESY_UNEXPECTED_INTERACTIVE", &unexpected),
+            ("RULESY_LATER_RULE_MARKER", &later),
         ],
     );
     assert_eq!(conventional_exit(output.status), 0);
@@ -709,8 +706,8 @@ fn check_only_ignores_interactive_fix() {
         &config_args(&copy.path().join(&case.fixture), &[]),
         None,
         &[
-            ("CHECKSY_UNEXPECTED_INTERACTIVE", &unexpected),
-            ("CHECKSY_LATER_RULE_MARKER", &later),
+            ("RULESY_UNEXPECTED_INTERACTIVE", &unexpected),
+            ("RULESY_LATER_RULE_MARKER", &later),
         ],
     );
     assert_output_exit(case, &output);
@@ -741,8 +738,8 @@ fn deprecated_diagnose_accepts_non_interactive() {
         &args,
         None,
         &[
-            ("CHECKSY_UNEXPECTED_INTERACTIVE", &unexpected),
-            ("CHECKSY_LATER_RULE_MARKER", &later),
+            ("RULESY_UNEXPECTED_INTERACTIVE", &unexpected),
+            ("RULESY_LATER_RULE_MARKER", &later),
         ],
     );
     assert_output_exit(case, &output);
@@ -775,8 +772,8 @@ fn stdin_configuration_never_opens_a_terminal() {
             &copy.path().join(&case.fixture),
             &args,
             &[
-                ("CHECKSY_UNEXPECTED_INTERACTIVE", &unexpected),
-                ("CHECKSY_LATER_RULE_MARKER", &later),
+                ("RULESY_UNEXPECTED_INTERACTIVE", &unexpected),
+                ("RULESY_LATER_RULE_MARKER", &later),
             ],
         );
         let result = process.finish(Duration::from_secs(10));
@@ -802,8 +799,8 @@ fn stdin_diagnostic_takes_precedence() {
         &copy.path().join(&case.fixture),
         &["--stdin-config", "check", "--fix", "--non-interactive"],
         &[
-            ("CHECKSY_UNEXPECTED_INTERACTIVE", &unexpected),
-            ("CHECKSY_LATER_RULE_MARKER", &later),
+            ("RULESY_UNEXPECTED_INTERACTIVE", &unexpected),
+            ("RULESY_LATER_RULE_MARKER", &later),
         ],
     );
     let result = process.finish(Duration::from_secs(10));
@@ -849,7 +846,7 @@ fn failed_interactive_fix_continues_and_honors_no_fail() {
         let process = spawn_config_pty(
             &copy.path().join(&case.fixture),
             &extra,
-            &[("CHECKSY_LATER_RULE_MARKER", &later)],
+            &[("RULESY_LATER_RULE_MARKER", &later)],
         );
         let result = process.finish(Duration::from_secs(10));
         assert_pty_exit(case, &result);
@@ -907,8 +904,8 @@ fn helper_command(role: &str, directory: &Path) -> Command {
             "interactive_process_tree_helper",
             "--nocapture",
         ])
-        .env("CHECKSY_HELPER_ROLE", role)
-        .env("CHECKSY_HELPER_DIR", directory)
+        .env("RULESY_HELPER_ROLE", role)
+        .env("RULESY_HELPER_DIR", directory)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
@@ -924,7 +921,7 @@ fn wait_for_helper_ready(child: &mut std::process::Child) {
         line.clear();
         let bytes = reader.read_line(&mut line).expect("helper readiness read");
         assert_ne!(bytes, 0, "helper exited before readiness");
-        if line.trim() == "CHECKSY_HELPER_READY" {
+        if line.trim() == "RULESY_HELPER_READY" {
             break;
         }
     }
@@ -934,13 +931,13 @@ fn wait_for_helper_ready(child: &mut std::process::Child) {
 #[test]
 #[ignore = "isolated workload invoked by interactive-fix contract tests"]
 fn interactive_process_tree_helper() {
-    let role = std::env::var("CHECKSY_HELPER_ROLE").expect("helper role");
-    let directory = PathBuf::from(std::env::var_os("CHECKSY_HELPER_DIR").expect("helper dir"));
+    let role = std::env::var("RULESY_HELPER_ROLE").expect("helper role");
+    let directory = PathBuf::from(std::env::var_os("RULESY_HELPER_DIR").expect("helper dir"));
 
     match role.as_str() {
         "grandchild" => {
             let _lock = hold_advisory_lock(&directory.join("grandchild.lock"));
-            println!("CHECKSY_HELPER_READY");
+            println!("RULESY_HELPER_READY");
             std::io::stdout().flush().unwrap();
             loop {
                 thread::park();
@@ -950,7 +947,7 @@ fn interactive_process_tree_helper() {
             let _lock = hold_advisory_lock(&directory.join("child.lock"));
             let mut grandchild = helper_command("grandchild", &directory).spawn().unwrap();
             wait_for_helper_ready(&mut grandchild);
-            println!("CHECKSY_HELPER_READY");
+            println!("RULESY_HELPER_READY");
             std::io::stdout().flush().unwrap();
             let _grandchild = grandchild;
             loop {
@@ -969,7 +966,7 @@ fn interactive_process_tree_helper() {
             wait_for_helper_ready(&mut child);
 
             let ready_path =
-                PathBuf::from(std::env::var_os("CHECKSY_READY_SOCKET").expect("ready socket"));
+                PathBuf::from(std::env::var_os("RULESY_READY_SOCKET").expect("ready socket"));
             let ready = UnixDatagram::unbound().unwrap();
             set_cloexec(&ready);
             ready
@@ -992,9 +989,8 @@ fn interactive_process_tree_helper() {
 #[test]
 #[ignore = "isolated same-session helper invoked by the foreground-loss contract test"]
 fn interactive_foreground_thief_helper() {
-    let command_path =
-        PathBuf::from(std::env::var_os("CHECKSY_FOREGROUND_COMMAND_SOCKET").unwrap());
-    let ready_path = PathBuf::from(std::env::var_os("CHECKSY_FOREGROUND_READY_SOCKET").unwrap());
+    let command_path = PathBuf::from(std::env::var_os("RULESY_FOREGROUND_COMMAND_SOCKET").unwrap());
+    let ready_path = PathBuf::from(std::env::var_os("RULESY_FOREGROUND_READY_SOCKET").unwrap());
     let command = UnixDatagram::bind(&command_path).unwrap();
     set_cloexec(&command);
     command
@@ -1012,7 +1008,7 @@ fn interactive_foreground_thief_helper() {
 
     let mut trigger = [0_u8; 16];
     command.recv(&mut trigger).unwrap();
-    // SAFETY: this dedicated helper must stay alive after Checksy, the outer
+    // SAFETY: this dedicated helper must stay alive after Rulesy, the outer
     // session leader, exits. The test's RAII guard owns its lifetime and
     // verifies explicit SIGKILL cleanup.
     let previous_hangup = unsafe { libc::signal(libc::SIGHUP, libc::SIG_IGN) };
@@ -1102,12 +1098,12 @@ fn interactive_fix_timeout_is_operational_and_fail_fast() {
     let later = copy.path().join("unexpected-later");
     let helper = std::env::current_exe().unwrap();
     let env = [
-        ("CHECKSY_PROCESS_HELPER", helper.as_path()),
-        ("CHECKSY_HELPER_DIR", copy.path()),
-        ("CHECKSY_READY_SOCKET", socket_path.as_path()),
-        ("CHECKSY_INTERACTIVE_FIX_STARTED", started.as_path()),
-        ("CHECKSY_UNEXPECTED_RECHECK", recheck.as_path()),
-        ("CHECKSY_UNEXPECTED_LATER_COMMAND", later.as_path()),
+        ("RULESY_PROCESS_HELPER", helper.as_path()),
+        ("RULESY_HELPER_DIR", copy.path()),
+        ("RULESY_READY_SOCKET", socket_path.as_path()),
+        ("RULESY_INTERACTIVE_FIX_STARTED", started.as_path()),
+        ("RULESY_UNEXPECTED_RECHECK", recheck.as_path()),
+        ("RULESY_UNEXPECTED_LATER_COMMAND", later.as_path()),
     ];
     let process = spawn_config_pty(&copy.path().join(&case.fixture), &["--fix"], &env);
     let leader = wait_for_tree_ready(&socket);
@@ -1128,7 +1124,7 @@ fn interactive_fix_timeout_is_operational_and_fail_fast() {
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
-fn ctrl_c_cleans_interactive_fix_tree_and_resignals_checksy() {
+fn ctrl_c_cleans_interactive_fix_tree_and_resignals_rulesy() {
     let corpus = corpus();
     let case = case(&corpus, "interactive-parent-interrupt");
     let copy = writable_fixture_copy();
@@ -1140,12 +1136,12 @@ fn ctrl_c_cleans_interactive_fix_tree_and_resignals_checksy() {
     let unused_later = copy.path().join("unused-later");
     let helper = std::env::current_exe().unwrap();
     let env = [
-        ("CHECKSY_PROCESS_HELPER", helper.as_path()),
-        ("CHECKSY_HELPER_DIR", copy.path()),
-        ("CHECKSY_READY_SOCKET", socket_path.as_path()),
-        ("CHECKSY_INTERACTIVE_FIX_STARTED", started.as_path()),
-        ("CHECKSY_UNEXPECTED_RECHECK", unused_recheck.as_path()),
-        ("CHECKSY_UNEXPECTED_LATER_COMMAND", unused_later.as_path()),
+        ("RULESY_PROCESS_HELPER", helper.as_path()),
+        ("RULESY_HELPER_DIR", copy.path()),
+        ("RULESY_READY_SOCKET", socket_path.as_path()),
+        ("RULESY_INTERACTIVE_FIX_STARTED", started.as_path()),
+        ("RULESY_UNEXPECTED_RECHECK", unused_recheck.as_path()),
+        ("RULESY_UNEXPECTED_LATER_COMMAND", unused_later.as_path()),
     ];
     let mut process = spawn_config_pty(&copy.path().join(&case.fixture), &["--fix"], &env);
     let leader = wait_for_tree_ready(&socket);
@@ -1166,7 +1162,7 @@ fn ctrl_c_cleans_interactive_fix_tree_and_resignals_checksy() {
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
-fn outer_job_control_cleans_the_tree_without_suspending_checksy() {
+fn outer_job_control_cleans_the_tree_without_suspending_rulesy() {
     let corpus = corpus();
     let case = case(&corpus, "outer-job-control");
     let copy = writable_fixture_copy();
@@ -1178,12 +1174,12 @@ fn outer_job_control_cleans_the_tree_without_suspending_checksy() {
     let unused_recheck = copy.path().join("unused-recheck");
     let unused_later = copy.path().join("unused-later");
     let env = [
-        ("CHECKSY_PROCESS_HELPER", helper.as_path()),
-        ("CHECKSY_HELPER_DIR", copy.path()),
-        ("CHECKSY_READY_SOCKET", socket_path.as_path()),
-        ("CHECKSY_INTERACTIVE_FIX_STARTED", started.as_path()),
-        ("CHECKSY_UNEXPECTED_RECHECK", unused_recheck.as_path()),
-        ("CHECKSY_UNEXPECTED_LATER_COMMAND", unused_later.as_path()),
+        ("RULESY_PROCESS_HELPER", helper.as_path()),
+        ("RULESY_HELPER_DIR", copy.path()),
+        ("RULESY_READY_SOCKET", socket_path.as_path()),
+        ("RULESY_INTERACTIVE_FIX_STARTED", started.as_path()),
+        ("RULESY_UNEXPECTED_RECHECK", unused_recheck.as_path()),
+        ("RULESY_UNEXPECTED_LATER_COMMAND", unused_later.as_path()),
     ];
     let process = spawn_config_pty(&copy.path().join(&case.fixture), &["--fix"], &env);
     let leader = wait_for_tree_ready(&socket);
@@ -1196,7 +1192,7 @@ fn outer_job_control_cleans_the_tree_without_suspending_checksy() {
     assert!(started.is_file());
     assert!(
         interrupted_at.elapsed() < Duration::from_secs(12),
-        "Checksy suspended until the helper watchdog"
+        "Rulesy suspended until the helper watchdog"
     );
     assert_lock_reacquirable(&copy.path().join("child.lock"));
     assert_lock_reacquirable(&copy.path().join("grandchild.lock"));
@@ -1253,7 +1249,7 @@ fn interactive_job_control_suspension_is_operational() {
     let process = spawn_config_pty(
         &copy.path().join(&case.fixture),
         &["--fix"],
-        &[("CHECKSY_UNEXPECTED_LATER_COMMAND", &unexpected)],
+        &[("RULESY_UNEXPECTED_LATER_COMMAND", &unexpected)],
     );
     let started_at = Instant::now();
     let result = process.finish(Duration::from_secs(12));
@@ -1313,7 +1309,7 @@ fn precondition_interactive_fix_uses_the_same_workflow() {
     let mut process = spawn_config_pty(
         &copy.path().join(&case.fixture),
         &["--fix"],
-        &[("CHECKSY_LATER_RULE_MARKER", &later)],
+        &[("RULESY_LATER_RULE_MARKER", &later)],
     );
     process.send_input(b"stdin-answer\ntty-answer\n");
     let result = process.finish(Duration::from_secs(12));

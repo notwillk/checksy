@@ -1,7 +1,7 @@
 rules:
   - name: valid rule must not execute before later validation failure
     timeout: 2s
-    check: ': > "$CHECKSY_P0_INVALID_MARKER"'
+    check: ': > "$RULESY_P0_INVALID_MARKER"'
   - name: invalid blank prerequisite
     timeout: 2s
     skip-if: "   "

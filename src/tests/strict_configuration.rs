@@ -28,14 +28,14 @@ struct StrictConfigCase {
     error_contains: Option<String>,
 }
 
-fn checksy() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_checksy"))
+fn rulesy() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_rulesy"))
 }
 
 fn exit_code(output: &Output) -> i32 {
     output.status.code().unwrap_or_else(|| {
         panic!(
-            "checksy exited by signal: stdout={:?} stderr={:?}",
+            "Rulesy exited by signal: stdout={:?} stderr={:?}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         )
@@ -52,14 +52,14 @@ fn output_context(output: &Output) -> String {
 }
 
 fn run(args: &[&str]) -> Output {
-    checksy().args(args).output().unwrap()
+    rulesy().args(args).output().unwrap()
 }
 
 fn run_with_path_env(args: &[&str], variables: &[(&str, &Path)]) -> Output {
     let _provisioning_guard = args
         .contains(&"--fix")
         .then(support::provisioning_test_guard);
-    let mut command = checksy();
+    let mut command = rulesy();
     command.args(args);
     for (name, value) in variables {
         command.env(name, value);
@@ -75,7 +75,7 @@ fn run_with_stdin_and_path_env(args: &[&str], input: &[u8], variables: &[(&str, 
     let _provisioning_guard = args
         .contains(&"--fix")
         .then(support::provisioning_test_guard);
-    let mut command = checksy();
+    let mut command = rulesy();
     command.args(args);
     for (name, value) in variables {
         command.env(name, value);
@@ -159,9 +159,9 @@ fn compiled_schema() -> (JsonValue, jsonschema::Validator) {
     assert_eq!(exit_code(&output), 0, "{}", output_context(&output));
     assert!(output.stderr.is_empty(), "{}", output_context(&output));
     let schema: JsonValue = serde_json::from_slice(&output.stdout).unwrap();
-    jsonschema::draft7::meta::validate(&schema).expect("checksy schema must be valid Draft 7");
+    jsonschema::draft7::meta::validate(&schema).expect("Rulesy schema must be valid Draft 7");
     let validator =
-        jsonschema::draft7::new(&schema).expect("checksy schema must compile as Draft 7");
+        jsonschema::draft7::new(&schema).expect("Rulesy schema must compile as Draft 7");
     (schema, validator)
 }
 
@@ -274,7 +274,7 @@ fn checked_in_valid_file_and_stdin_fixtures_execute_through_the_compiled_binary(
     let file_config = fixture_root().join("integration/file-valid.yaml");
     let file = run_with_path_env(
         &["--config", file_config.to_str().unwrap(), "check"],
-        &[("CHECKSY_TEST_MARKER", &file_marker)],
+        &[("RULESY_TEST_MARKER", &file_marker)],
     );
     assert_eq!(exit_code(&file), 0, "{}", output_context(&file));
     assert_eq!(fs::read_to_string(file_marker).unwrap(), "file");
@@ -290,7 +290,7 @@ fn checked_in_valid_file_and_stdin_fixtures_execute_through_the_compiled_binary(
     {
         let marker = temp.path().join(format!("stdin-marker-{index}"));
         let output =
-            run_with_stdin_and_path_env(args, &document, &[("CHECKSY_TEST_MARKER", &marker)]);
+            run_with_stdin_and_path_env(args, &document, &[("RULESY_TEST_MARKER", &marker)]);
         assert_eq!(exit_code(&output), 0, "{}", output_context(&output));
         assert_eq!(fs::read_to_string(marker).unwrap(), "stdin");
     }
@@ -308,7 +308,7 @@ fn checked_in_invalid_file_and_stdin_fixtures_are_preflighted_even_with_no_fail(
             "check",
             "--no-fail",
         ],
-        &[("CHECKSY_TEST_MARKER", &file_marker)],
+        &[("RULESY_TEST_MARKER", &file_marker)],
     );
     assert_eq!(exit_code(&file), 2, "{}", output_context(&file));
     assert!(
@@ -327,7 +327,7 @@ fn checked_in_invalid_file_and_stdin_fixtures_are_preflighted_even_with_no_fail(
     {
         let marker = temp.path().join(format!("stdin-must-not-run-{index}"));
         let output =
-            run_with_stdin_and_path_env(args, &document, &[("CHECKSY_TEST_MARKER", &marker)]);
+            run_with_stdin_and_path_env(args, &document, &[("RULESY_TEST_MARKER", &marker)]);
         assert_eq!(exit_code(&output), 2, "{}", output_context(&output));
         assert!(!marker.exists(), "invalid stdin config executed a command");
     }
@@ -340,7 +340,7 @@ fn invalid_interactive_fix_shape_is_preflighted_before_any_command() {
     let config = fixture_root().join("invalid/both-fix-forms.yaml");
     let output = run_with_path_env(
         &["--config", config.to_str().unwrap(), "check", "--no-fail"],
-        &[("CHECKSY_TEST_MARKER", &marker)],
+        &[("RULESY_TEST_MARKER", &marker)],
     );
 
     assert_eq!(exit_code(&output), 2, "{}", output_context(&output));
@@ -357,7 +357,7 @@ fn invalid_nested_config_prevents_root_commands() {
     let root = fixture_root().join("integration/nested/root.yaml");
     let output = run_with_path_env(
         &["--config", root.to_str().unwrap(), "check", "--no-fail"],
-        &[("CHECKSY_TEST_MARKER", &marker)],
+        &[("RULESY_TEST_MARKER", &marker)],
     );
     assert_eq!(exit_code(&output), 2, "{}", output_context(&output));
     assert!(
@@ -381,8 +381,8 @@ fn invalid_check_fix_config_runs_neither_check_nor_fix() {
             "--no-fail",
         ],
         &[
-            ("CHECKSY_TEST_CHECK_MARKER", &check_marker),
-            ("CHECKSY_TEST_FIX_MARKER", &fix_marker),
+            ("RULESY_TEST_CHECK_MARKER", &check_marker),
+            ("RULESY_TEST_FIX_MARKER", &fix_marker),
         ],
     );
     assert_eq!(exit_code(&output), 2, "{}", output_context(&output));
@@ -419,7 +419,7 @@ fn automatically_discovered_configuration_uses_strict_loading() {
     let temp = tempfile::tempdir().unwrap();
     let marker = temp.path().join("must-not-run");
     fs::write(
-        temp.path().join(".checksy.yaml"),
+        temp.path().join(".rulesy.yaml"),
         format!(
             "rules:\n  - check: 'touch {}'\n    unsupportedField: true\n",
             marker.display()
@@ -427,7 +427,7 @@ fn automatically_discovered_configuration_uses_strict_loading() {
     )
     .unwrap();
 
-    let output = checksy()
+    let output = rulesy()
         .current_dir(temp.path())
         .args(["check", "--no-fail"])
         .output()
@@ -445,7 +445,7 @@ fn fake_git_path(temp: &Path, sentinel: &Path) -> (PathBuf, OsString) {
     let git = bin.join("git");
     fs::write(
         &git,
-        "#!/bin/sh\n: > \"$CHECKSY_TEST_GIT_SENTINEL\"\nexit 97\n",
+        "#!/bin/sh\n: > \"$RULESY_TEST_GIT_SENTINEL\"\nexit 97\n",
     )
     .unwrap();
     let mut permissions = fs::metadata(&git).unwrap().permissions();
@@ -467,9 +467,9 @@ fn install_rejects_invalid_root_and_nested_configs_before_git() {
     let (_git, path) = fake_git_path(temp.path(), &git_sentinel);
 
     let invalid_root = fixture_root().join("integration/install-invalid.yaml");
-    let root_output = checksy()
+    let root_output = rulesy()
         .env("PATH", &path)
-        .env("CHECKSY_TEST_GIT_SENTINEL", &git_sentinel)
+        .env("RULESY_TEST_GIT_SENTINEL", &git_sentinel)
         .args(["--config", invalid_root.to_str().unwrap(), "install"])
         .output()
         .unwrap();
@@ -496,9 +496,9 @@ fn install_rejects_invalid_root_and_nested_configs_before_git() {
         ),
     )
     .unwrap();
-    let nested_output = checksy()
+    let nested_output = rulesy()
         .env("PATH", path)
-        .env("CHECKSY_TEST_GIT_SENTINEL", &git_sentinel)
+        .env("RULESY_TEST_GIT_SENTINEL", &git_sentinel)
         .args(["--config", root.to_str().unwrap(), "install"])
         .output()
         .unwrap();
@@ -520,7 +520,7 @@ fn a_strict_git_include_loads_from_a_fake_cache_without_network() {
     let temp = tempfile::tempdir().unwrap();
     let repo = "https://example.invalid/checks.git";
     let reference = "main";
-    let cache = checksy::CacheManager::new(temp.path(), None);
+    let cache = rulesy::CacheManager::new(temp.path(), None);
     let checkout = cache.ref_cache_path(repo, reference);
     fs::create_dir_all(checkout.join(".git")).unwrap();
     fs::copy(
@@ -534,9 +534,9 @@ fn a_strict_git_include_loads_from_a_fake_cache_without_network() {
 
     let git_sentinel = temp.path().join("git-must-not-run");
     let (_git, path) = fake_git_path(temp.path(), &git_sentinel);
-    let output = checksy()
+    let output = rulesy()
         .env("PATH", path)
-        .env("CHECKSY_TEST_GIT_SENTINEL", &git_sentinel)
+        .env("RULESY_TEST_GIT_SENTINEL", &git_sentinel)
         .args(["--config", root.to_str().unwrap(), "check"])
         .output()
         .unwrap();
@@ -555,7 +555,7 @@ fn an_invalid_cached_git_include_fails_before_root_commands_without_network() {
     let temp = tempfile::tempdir().unwrap();
     let repo = "https://example.invalid/checks.git";
     let reference = "main";
-    let cache = checksy::CacheManager::new(temp.path(), None);
+    let cache = rulesy::CacheManager::new(temp.path(), None);
     let checkout = cache.ref_cache_path(repo, reference);
     fs::create_dir_all(checkout.join(".git")).unwrap();
     fs::copy(
@@ -574,10 +574,10 @@ fn an_invalid_cached_git_include_fails_before_root_commands_without_network() {
     let marker = temp.path().join("root-must-not-run");
     let git_sentinel = temp.path().join("git-must-not-run");
     let (_git, path) = fake_git_path(temp.path(), &git_sentinel);
-    let output = checksy()
+    let output = rulesy()
         .env("PATH", path)
-        .env("CHECKSY_TEST_GIT_SENTINEL", &git_sentinel)
-        .env("CHECKSY_TEST_MARKER", &marker)
+        .env("RULESY_TEST_GIT_SENTINEL", &git_sentinel)
+        .env("RULESY_TEST_MARKER", &marker)
         .args(["--config", root.to_str().unwrap(), "check", "--no-fail"])
         .output()
         .unwrap();
@@ -610,7 +610,7 @@ fn generated_schema_is_deterministic_valid_and_matches_the_fixture_layers() {
 
     for case in corpus().cases {
         let data = case_data(&case);
-        let typed = serde_yaml::from_slice::<checksy::Config>(&data);
+        let typed = serde_yaml::from_slice::<rulesy::Config>(&data);
         assert_eq!(
             typed.is_ok(),
             is_accepted(&case),
@@ -654,14 +654,14 @@ fn generated_schema_is_deterministic_valid_and_matches_the_fixture_layers() {
 #[test]
 fn init_emits_a_configuration_accepted_by_the_strict_cli() {
     let temp = tempfile::tempdir().unwrap();
-    let init = checksy()
+    let init = rulesy()
         .current_dir(temp.path())
         .arg("init")
         .output()
         .unwrap();
     assert_eq!(exit_code(&init), 0, "{}", output_context(&init));
 
-    let generated = temp.path().join(".checksy.config.yaml");
+    let generated = temp.path().join(".rulesy.config.yaml");
     assert!(generated.is_file());
     let check = run(&["--config", generated.to_str().unwrap(), "check"]);
     assert_eq!(exit_code(&check), 0, "{}", output_context(&check));

@@ -23,13 +23,13 @@ done
 printf 'curl-url=%s\n' "$url" >>"$MOCK_LOG"
 
 case "$url" in
-  https://api.github.com/repos/notwillk/checksy/releases/latest)
+  https://api.github.com/repos/notwillk/rulesy/releases/latest)
     if [ "${MOCK_LATEST_EXIT:-0}" -ne 0 ]; then
       exit "$MOCK_LATEST_EXIT"
     fi
     printf '{"tag_name":"%s"}\n' "$MOCK_LATEST_TAG"
     ;;
-  https://raw.githubusercontent.com/notwillk/checksy/*/scripts/install.sh)
+  https://raw.githubusercontent.com/notwillk/rulesy/*/scripts/install.sh)
     printf 'mock-installer:%s\n' "$url"
     ;;
   *)
@@ -42,20 +42,20 @@ EOF
 cat >"$MOCK_BIN/bash" <<'EOF'
 #!/bin/sh
 installer=$(cat)
-printf 'bash-version=%s\n' "${CHECKSY_VERSION:-}" >>"$MOCK_LOG"
+printf 'bash-version=%s\n' "${RULESY_VERSION:-}" >>"$MOCK_LOG"
 printf 'bash-input=%s\n' "$installer" >>"$MOCK_LOG"
 EOF
 
-cat >"$MOCK_BIN/checksy" <<'EOF'
+cat >"$MOCK_BIN/rulesy" <<'EOF'
 #!/bin/sh
-printf 'checksy-args=%s\n' "$*" >>"$MOCK_LOG"
-if [ "${MOCK_CHECKSY_EXIT:-0}" -ne 0 ]; then
-  exit "$MOCK_CHECKSY_EXIT"
+printf 'rulesy-args=%s\n' "$*" >>"$MOCK_LOG"
+if [ "${MOCK_RULESY_EXIT:-0}" -ne 0 ]; then
+  exit "$MOCK_RULESY_EXIT"
 fi
-printf '%s\n' "${MOCK_CHECKSY_VERSION:-checksy mock-version}"
+printf '%s\n' "${MOCK_RULESY_VERSION:-rulesy mock-version}"
 EOF
 
-chmod +x "$MOCK_BIN/curl" "$MOCK_BIN/bash" "$MOCK_BIN/checksy"
+chmod +x "$MOCK_BIN/curl" "$MOCK_BIN/bash" "$MOCK_BIN/rulesy"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -67,7 +67,7 @@ run_case() {
   local requested_version=$2
   local expected_tag=$3
   local resolves_latest=$4
-  local raw_url="https://raw.githubusercontent.com/notwillk/checksy/$expected_tag/scripts/install.sh"
+  local raw_url="https://raw.githubusercontent.com/notwillk/rulesy/$expected_tag/scripts/install.sh"
   local expected_log="$TEST_ROOT/$case_name.expected"
   local output="$TEST_ROOT/$case_name.output"
 
@@ -76,7 +76,7 @@ run_case() {
     VERSION="$requested_version" \
     MOCK_LOG="$MOCK_LOG" \
     MOCK_LATEST_TAG="$LATEST_TAG" \
-    MOCK_CHECKSY_VERSION="checksy ${expected_tag#v}" \
+    MOCK_RULESY_VERSION="rulesy ${expected_tag#v}" \
     "$REAL_BASH" "$INSTALLER" >"$output" 2>&1; then
     cat "$output" >&2
     fail "$case_name installer invocation failed"
@@ -84,12 +84,12 @@ run_case() {
 
   {
     if [ "$resolves_latest" = true ]; then
-      printf 'curl-url=https://api.github.com/repos/notwillk/checksy/releases/latest\n'
+      printf 'curl-url=https://api.github.com/repos/notwillk/rulesy/releases/latest\n'
     fi
     printf 'curl-url=%s\n' "$raw_url"
     printf 'bash-version=%s\n' "$expected_tag"
     printf 'bash-input=mock-installer:%s\n' "$raw_url"
-    printf 'checksy-args=--version\n'
+    printf 'rulesy-args=--version\n'
   } >"$expected_log"
 
   if ! diff -u "$expected_log" "$MOCK_LOG"; then
@@ -108,14 +108,14 @@ PATH="$MOCK_BIN:/usr/bin:/bin" \
   VERSION="0.7.5" \
   MOCK_LOG="$MOCK_LOG" \
   MOCK_LATEST_TAG="$LATEST_TAG" \
-  MOCK_CHECKSY_EXIT=9 \
+  MOCK_RULESY_EXIT=9 \
   "$REAL_BASH" "$INSTALLER" >"$TEST_ROOT/verification-failure.output" 2>&1
 verification_status=$?
 set -e
 
 if [ "$verification_status" -ne 9 ]; then
   cat "$TEST_ROOT/verification-failure.output" >&2
-  fail "failed checksy --version verification returned $verification_status instead of 9"
+  fail "failed rulesy --version verification returned $verification_status instead of 9"
 fi
 
 : >"$MOCK_LOG"
@@ -124,21 +124,21 @@ PATH="$MOCK_BIN:/usr/bin:/bin" \
   VERSION="0.7.5" \
   MOCK_LOG="$MOCK_LOG" \
   MOCK_LATEST_TAG="$LATEST_TAG" \
-  MOCK_CHECKSY_VERSION="checksy 9.9.9" \
+  MOCK_RULESY_VERSION="rulesy 9.9.9" \
   "$REAL_BASH" "$INSTALLER" >"$TEST_ROOT/version-mismatch.output" 2>&1
 mismatch_status=$?
 set -e
 
 if [ "$mismatch_status" -ne 1 ]; then
   cat "$TEST_ROOT/version-mismatch.output" >&2
-  fail "mismatched checksy version returned $mismatch_status instead of 1"
+  fail "mismatched Rulesy version returned $mismatch_status instead of 1"
 fi
 
 if ! grep -Fx \
-  "Installed checksy version mismatch: expected 'checksy 0.7.5', got 'checksy 9.9.9'" \
+  "Installed Rulesy version mismatch: expected 'rulesy 0.7.5', got 'rulesy 9.9.9'" \
   "$TEST_ROOT/version-mismatch.output" >/dev/null; then
   cat "$TEST_ROOT/version-mismatch.output" >&2
-  fail "mismatched checksy version did not emit the expected diagnostic"
+  fail "mismatched Rulesy version did not emit the expected diagnostic"
 fi
 
 : >"$MOCK_LOG"
@@ -158,7 +158,7 @@ if [ "$lookup_status" -ne 1 ]; then
 fi
 
 if ! grep -Fx \
-  "Unable to determine the latest checksy release tag" \
+  "Unable to determine the latest Rulesy release tag" \
   "$TEST_ROOT/latest-lookup-failure.output" >/dev/null; then
   cat "$TEST_ROOT/latest-lookup-failure.output" >&2
   fail "failed latest lookup did not emit the expected diagnostic"
@@ -166,7 +166,7 @@ fi
 
 if [ "$(wc -l <"$MOCK_LOG")" -ne 1 ] || \
   ! grep -Fx \
-    "curl-url=https://api.github.com/repos/notwillk/checksy/releases/latest" \
+    "curl-url=https://api.github.com/repos/notwillk/rulesy/releases/latest" \
     "$MOCK_LOG" >/dev/null; then
   cat "$MOCK_LOG" >&2
   fail "failed latest lookup continued past release resolution"

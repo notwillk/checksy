@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 provision_error() {
-  printf 'checksy devcontainer provisioning: %s\n' "$*" >&2
+  printf 'Rulesy devcontainer provisioning: %s\n' "$*" >&2
 }
 
 provision_fail() {
@@ -39,7 +39,7 @@ load_tool_versions() {
 
   local required
   for required in \
-    CHECKSY_VERSION \
+    RULESY_VERSION \
     CODEX_CLI_VERSION \
     JUST_VERSION \
     JUST_X86_64_SHA256 \
@@ -56,7 +56,7 @@ load_tool_versions() {
     fi
   done
 
-  if ! is_release_version "$CHECKSY_VERSION" || \
+  if ! is_release_version "$RULESY_VERSION" || \
     ! is_release_version "$CODEX_CLI_VERSION" || \
     ! is_release_version "$JUST_VERSION" || \
     ! is_release_version "$RUSTUP_VERSION" || \

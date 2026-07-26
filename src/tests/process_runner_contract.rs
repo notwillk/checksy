@@ -48,7 +48,7 @@ const EXECUTABLE_TESTS: &[&str] = &[
     "leader_exit_waits_for_lingering_managed_descendant",
     "maximum_plus_one_output_is_head_tail_bounded",
     "invalid_timeout_executes_no_command",
-    "ctrl_c_cleans_the_managed_tree_and_resignals_checksy",
+    "ctrl_c_cleans_the_managed_tree_and_resignals_rulesy",
     "runner_detaches_from_a_real_controlling_tty",
 ];
 
@@ -74,8 +74,8 @@ fn case<'a>(corpus: &'a ProcessRunnerCorpus, id: &str) -> &'a ProcessRunnerCase 
         .unwrap_or_else(|| panic!("process-runner corpus omitted {id:?}"))
 }
 
-fn checksy() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_checksy"))
+fn rulesy() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_rulesy"))
 }
 
 fn config_args(path: &Path, extra: &[&str]) -> Vec<String> {
@@ -92,13 +92,13 @@ fn run_config(path: &Path, extra: &[&str]) -> Output {
     let _provisioning_guard = extra
         .contains(&"--fix")
         .then(support::provisioning_test_guard);
-    checksy().args(config_args(path, extra)).output().unwrap()
+    rulesy().args(config_args(path, extra)).output().unwrap()
 }
 
 fn exit_code(output: &Output) -> i32 {
     output.status.code().unwrap_or_else(|| {
         panic!(
-            "checksy exited by signal: stdout={:?} stderr={:?}",
+            "Rulesy exited by signal: stdout={:?} stderr={:?}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         )
@@ -252,7 +252,7 @@ fn operational_failures_are_exit_two_even_when_no_fail_is_set() {
 
     let spawn_case = case(&corpus, "spawn-failure");
     let spawn_copy = writable_fixture_copy();
-    let output = checksy()
+    let output = rulesy()
         .args(config_args(
             &spawn_copy.path().join(&spawn_case.fixture),
             &["--no-fail"],
@@ -350,8 +350,8 @@ fn helper_command(role: &str, directory: &Path) -> Command {
     let mut command = Command::new(std::env::current_exe().unwrap());
     command
         .args(["--ignored", "--exact", "process_tree_helper", "--nocapture"])
-        .env("CHECKSY_HELPER_ROLE", role)
-        .env("CHECKSY_HELPER_DIR", directory)
+        .env("RULESY_HELPER_ROLE", role)
+        .env("RULESY_HELPER_DIR", directory)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
@@ -367,7 +367,7 @@ fn wait_for_helper_ready(child: &mut std::process::Child) {
         line.clear();
         let bytes = reader.read_line(&mut line).expect("helper readiness read");
         assert_ne!(bytes, 0, "helper exited before readiness");
-        if line.trim() == "CHECKSY_HELPER_READY" {
+        if line.trim() == "RULESY_HELPER_READY" {
             break;
         }
     }
@@ -430,13 +430,13 @@ fn kill_group_if_present(pid: rustix::process::Pid) {
 #[test]
 #[ignore = "isolated subprocess workload; invoked by the process-runner contract test"]
 fn process_tree_helper() {
-    let role = std::env::var("CHECKSY_HELPER_ROLE").expect("helper role");
-    let directory = PathBuf::from(std::env::var_os("CHECKSY_HELPER_DIR").expect("helper dir"));
+    let role = std::env::var("RULESY_HELPER_ROLE").expect("helper role");
+    let directory = PathBuf::from(std::env::var_os("RULESY_HELPER_DIR").expect("helper dir"));
 
     match role.as_str() {
         "grandchild" => {
             let _lock = hold_advisory_lock(&directory.join("grandchild.lock"));
-            println!("CHECKSY_HELPER_READY");
+            println!("RULESY_HELPER_READY");
             std::io::stdout().flush().unwrap();
             loop {
                 thread::park();
@@ -458,7 +458,7 @@ fn process_tree_helper() {
             let _lock = hold_advisory_lock(&directory.join("child.lock"));
             let mut grandchild = helper_command("grandchild", &directory).spawn().unwrap();
             wait_for_helper_ready(&mut grandchild);
-            println!("CHECKSY_HELPER_READY");
+            println!("RULESY_HELPER_READY");
             std::io::stdout().flush().unwrap();
             let _grandchild = grandchild;
             loop {
@@ -478,7 +478,7 @@ fn process_tree_helper() {
             wait_for_helper_ready(&mut child);
 
             let ready_path =
-                PathBuf::from(std::env::var_os("CHECKSY_READY_SOCKET").expect("readiness socket"));
+                PathBuf::from(std::env::var_os("RULESY_READY_SOCKET").expect("readiness socket"));
             let socket = UnixDatagram::unbound().unwrap();
             socket
                 .send_to(
@@ -522,11 +522,11 @@ fn leader_exit_waits_for_lingering_managed_descendant() {
     let case = case(&corpus, "leader-exit-lingering-descendant");
     let copy = writable_fixture_copy();
     let _cleanup = LingeringProcessCleanup(copy.path().to_path_buf());
-    let output = checksy()
+    let output = rulesy()
         .args(config_args(&copy.path().join(&case.fixture), &[]))
-        .env("CHECKSY_PROCESS_HELPER", std::env::current_exe().unwrap())
-        .env("CHECKSY_HELPER_ROLE", "lingering")
-        .env("CHECKSY_HELPER_DIR", copy.path())
+        .env("RULESY_PROCESS_HELPER", std::env::current_exe().unwrap())
+        .env("RULESY_HELPER_ROLE", "lingering")
+        .env("RULESY_HELPER_DIR", copy.path())
         .output()
         .unwrap();
 
@@ -551,7 +551,7 @@ fn leader_exit_waits_for_lingering_managed_descendant() {
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
-fn ctrl_c_cleans_the_managed_tree_and_resignals_checksy() {
+fn ctrl_c_cleans_the_managed_tree_and_resignals_rulesy() {
     let corpus = corpus();
     let case = case(&corpus, "parent-interrupt-process-tree");
     let copy = writable_fixture_copy();
@@ -562,23 +562,23 @@ fn ctrl_c_cleans_the_managed_tree_and_resignals_checksy() {
         .unwrap();
 
     // A test harness may itself install signal handlers. Enter through a
-    // fresh shell so caught dispositions are reset before Checksy starts,
+    // fresh shell so caught dispositions are reset before Rulesy starts,
     // matching an ordinary interactive shell invocation.
     let mut command = Command::new("/bin/sh");
     command
         .args([
             "-c",
-            "exec \"$CHECKSY_TEST_BIN\" --config \"$CHECKSY_TEST_CONFIG\" check",
+            "exec \"$RULESY_TEST_BIN\" --config \"$RULESY_TEST_CONFIG\" check",
         ])
-        .env("CHECKSY_TEST_BIN", env!("CARGO_BIN_EXE_checksy"))
-        .env("CHECKSY_TEST_CONFIG", copy.path().join(&case.fixture))
-        .env("CHECKSY_PROCESS_HELPER", std::env::current_exe().unwrap())
-        .env("CHECKSY_HELPER_DIR", copy.path())
-        .env("CHECKSY_READY_SOCKET", &ready_path)
+        .env("RULESY_TEST_BIN", env!("CARGO_BIN_EXE_rulesy"))
+        .env("RULESY_TEST_CONFIG", copy.path().join(&case.fixture))
+        .env("RULESY_PROCESS_HELPER", std::env::current_exe().unwrap())
+        .env("RULESY_HELPER_DIR", copy.path())
+        .env("RULESY_READY_SOCKET", &ready_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = command.spawn().unwrap();
-    let checksy_pid = rustix::process::Pid::from_child(&child);
+    let rulesy_pid = rustix::process::Pid::from_child(&child);
 
     let helper_pid_for_watchdog = Arc::new(AtomicI32::new(0));
     let watchdog_helper_pid = Arc::clone(&helper_pid_for_watchdog);
@@ -589,7 +589,7 @@ fn ctrl_c_cleans_the_managed_tree_and_resignals_checksy() {
             if let Some(pid) = pid_from_raw(raw) {
                 kill_group_if_present(pid);
             }
-            kill_if_present(checksy_pid, rustix::process::Signal::Kill);
+            kill_if_present(rulesy_pid, rustix::process::Signal::Kill);
         }
     });
 
@@ -597,7 +597,7 @@ fn ctrl_c_cleans_the_managed_tree_and_resignals_checksy() {
     let bytes = match ready.recv(&mut message) {
         Ok(bytes) => bytes,
         Err(error) => {
-            kill_if_present(checksy_pid, rustix::process::Signal::Kill);
+            kill_if_present(rulesy_pid, rustix::process::Signal::Kill);
             let _ = child.wait();
             let _ = watchdog_cancel.send(());
             watchdog.join().unwrap();
@@ -613,7 +613,7 @@ fn ctrl_c_cleans_the_managed_tree_and_resignals_checksy() {
     helper_pid_for_watchdog.store(helper_raw, Ordering::SeqCst);
 
     let interrupted_at = Instant::now();
-    kill_if_present(checksy_pid, rustix::process::Signal::Int);
+    kill_if_present(rulesy_pid, rustix::process::Signal::Int);
     let output = child.wait_with_output().unwrap();
     let interrupt_cleanup = interrupted_at.elapsed();
     let _ = watchdog_cancel.send(());
@@ -636,7 +636,7 @@ fn ctrl_c_cleans_the_managed_tree_and_resignals_checksy() {
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 #[test]
-fn ctrl_c_cleans_the_managed_tree_and_resignals_checksy() {
+fn ctrl_c_cleans_the_managed_tree_and_resignals_rulesy() {
     let corpus = corpus();
     assert_eq!(
         case(&corpus, "parent-interrupt-process-tree").expected_exit,
@@ -667,7 +667,7 @@ fn runner_detaches_from_a_real_controlling_tty() {
     .unwrap();
     let slave_raw = slave.as_raw_fd();
 
-    let mut command = checksy();
+    let mut command = rulesy();
     command
         .args(config_args(&copy.path().join(&case.fixture), &[]))
         .stdout(Stdio::piped())

@@ -33,8 +33,8 @@ jobs:
           push: never
           runCmd: >-
             test "${GITHUB_ACTIONS:-}" = true &&
-            checksy --config=.devcontainer/checksy.yaml check --fix --non-interactive &&
-            checksy --config=.devcontainer/checksy.yaml check --non-interactive &&
+            rulesy --config=.devcontainer/rulesy.yaml check --fix --non-interactive &&
+            rulesy --config=.devcontainer/rulesy.yaml check --non-interactive &&
             test ! -e "$HOME/.local/opt/codex-cli/bin/codex" &&
             test ! -L "$HOME/.local/opt/codex-cli/bin/codex" &&
             bash -o pipefail -c "find .devcontainer/scripts scripts -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n" &&
@@ -46,8 +46,8 @@ jobs:
             cargo clippy --locked --all-targets --all-features &&
             sh -n ../scripts/install.sh &&
             sh -n ../scripts/uninstall.sh &&
-            bash -n ../devcontainer-feature/src/checksy/test-version-resolution.sh &&
-            bash ../devcontainer-feature/src/checksy/test-version-resolution.sh
+            bash -n ../devcontainer-feature/src/rulesy/test-version-resolution.sh &&
+            bash ../devcontainer-feature/src/rulesy/test-version-resolution.sh
 
   devcontainer-arm:
     name: Devcontainer bootstrap (arm64)
@@ -66,8 +66,8 @@ jobs:
           push: never
           runCmd: >-
             test "$(uname -m)" = aarch64 &&
-            test "$(checksy --version)" = "checksy 0.7.6" &&
-            checksy --config=.devcontainer/checksy.yaml check --non-interactive
+            test "$(rulesy --version)" = "rulesy 0.7.6" &&
+            rulesy --config=.devcontainer/rulesy.yaml check --non-interactive
 
   tests:
     name: Tests (${{ matrix.os }})
@@ -122,8 +122,8 @@ jobs:
       - name: Upload portable Linux release
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: checksy-linux-${{ matrix.arch }}
-          path: dist/checksy_linux_${{ matrix.arch }}.tar.gz
+          name: rulesy-linux-${{ matrix.arch }}
+          path: dist/rulesy_linux_${{ matrix.arch }}.tar.gz
           if-no-files-found: error
           retention-days: 1
 
@@ -150,7 +150,7 @@ jobs:
       - name: Download portable Linux release
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: checksy-linux-${{ matrix.arch }}
+          name: rulesy-linux-${{ matrix.arch }}
           path: dist
 
       - name: Verify and run portable Linux release
@@ -158,11 +158,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist/smoke
-          tar -xzf "dist/checksy_linux_${{ matrix.arch }}.tar.gz" -C dist/smoke
+          tar -xzf "dist/rulesy_linux_${{ matrix.arch }}.tar.gz" -C dist/smoke
           expected_version="$(sed -n 's/^pub const VERSION: &str = "\(.*\)";$/\1/p' src/version.rs)"
           test -n "$expected_version"
-          ./scripts/verify-static-linux-binary.sh dist/smoke/checksy "$expected_version"
+          ./scripts/verify-static-linux-binary.sh dist/smoke/rulesy "$expected_version"
           smoke_config="$(mktemp)"
           trap 'rm -f "$smoke_config"' EXIT
           printf 'rules:\n  - name: static release smoke\n    check: test "$(uname -s)" = Linux\n' >"$smoke_config"
-          dist/smoke/checksy --config="$smoke_config" check --fix --non-interactive
+          dist/smoke/rulesy --config="$smoke_config" check --fix --non-interactive

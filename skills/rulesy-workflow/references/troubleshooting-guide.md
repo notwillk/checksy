@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-Detailed troubleshooting for checksy errors and issues.
+Detailed troubleshooting for Rulesy errors and issues.
 
 ---
 
@@ -51,10 +51,10 @@ rules:
 
 ```bash
 # Cache the remote
-checksy install
+rulesy install
 
 # Or use --fix to auto-cache
-checksy check --fix
+rulesy check --fix
 ```
 
 ---
@@ -74,8 +74,8 @@ checksy check --fix
 git ls-remote https://github.com/org/repo.git refs/heads/main
 
 # Clear cache and retry
-rm -rf .checksy-cache/git/
-checksy install
+rm -rf .rulesy-cache/git/
+rulesy install
 ```
 
 ---
@@ -93,7 +93,7 @@ Rules run with `bash -c`, so:
 ```yaml
 rules:
   - name: Test
-    check: ./script.sh  # Depends on where checksy is run from
+    check: ./script.sh  # Depends on where Rulesy is run from
 ```
 
 **Fix:**
@@ -149,24 +149,24 @@ If you encounter an error not listed:
 
 1. **Verify config syntax:**
    ```bash
-   checksy schema > /tmp/schema.json
+   rulesy schema > /tmp/schema.json
    # Validate YAML online or with yamllint
    ```
 
 2. **Run with minimal config:**
    ```bash
-   echo "rules: []" | checksy --stdin-config check
+   echo "rules: []" | rulesy --stdin-config check
    ```
 
 3. **Check version compatibility:**
    ```bash
-   checksy version
+   rulesy version
    # Compare with schema version
    ```
 
 4. **Enable all output:**
    ```bash
-   checksy check --check-severity debug --no-fail
+   rulesy check --check-severity debug --no-fail
    ```
 
 ---
@@ -179,13 +179,13 @@ Check severity hierarchy:
 
 ```bash
 # Default: runs debug+ rules
-checksy check
+rulesy check
 
 # Only run warn+ rules
-checksy check --check-severity warn
+rulesy check --check-severity warn
 
 # Run debug+ but only fail on error
-checksy check --check-severity debug --fail-severity error
+rulesy check --check-severity debug --fail-severity error
 ```
 
 ---
@@ -234,7 +234,7 @@ Example chain:
 # c.yaml references a.yaml ← Circular!
 ```
 
-Checksy reports the ordered `a.yaml -> b.yaml -> c.yaml -> a.yaml` include chain.
+Rulesy reports the ordered `a.yaml -> b.yaml -> c.yaml -> a.yaml` include chain.
 If the same definition is reached again only after its first expansion
 completed, that later inclusion is deduplicated instead.
 

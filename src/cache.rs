@@ -10,10 +10,10 @@ pub struct GitRemote {
     pub path: String,
 }
 
-const DEFAULT_CACHE_PATH: &str = ".checksy-cache";
+const DEFAULT_CACHE_PATH: &str = ".rulesy-cache";
 const GIT_CACHE_DIR: &str = "git";
 
-/// Manages the .checksy-cache directory structure
+/// Manages the .rulesy-cache directory structure
 pub struct CacheManager {
     /// Root of the cache directory (<config-dir>/<cache-path>)
     root: PathBuf,
@@ -22,7 +22,7 @@ pub struct CacheManager {
 impl CacheManager {
     /// Create a new CacheManager
     /// config_dir: directory containing the config file
-    /// cache_path: optional override from config (defaults to ".checksy-cache")
+    /// cache_path: optional override from config (defaults to ".rulesy-cache")
     pub fn new(config_dir: &Path, cache_path: Option<&str>) -> Self {
         let cache_path = cache_path.unwrap_or(DEFAULT_CACHE_PATH);
         let root = config_dir.join(cache_path);
@@ -208,7 +208,7 @@ mod tests {
         let ref_ = "main";
 
         let ref_path = cache.ref_cache_path(repo, ref_);
-        assert!(ref_path.to_string_lossy().contains(".checksy-cache"));
+        assert!(ref_path.to_string_lossy().contains(".rulesy-cache"));
         assert!(ref_path
             .to_string_lossy()
             .contains("https___github.com_org_repo.git"));
@@ -217,9 +217,9 @@ mod tests {
         let config_path = cache.get_config_path(&GitRemote {
             repo: repo.to_string(),
             ref_: ref_.to_string(),
-            path: ".checksy.yaml".to_string(),
+            path: ".rulesy.yaml".to_string(),
         });
-        assert!(config_path.to_string_lossy().contains(".checksy.yaml"));
+        assert!(config_path.to_string_lossy().contains(".rulesy.yaml"));
     }
 
     #[test]

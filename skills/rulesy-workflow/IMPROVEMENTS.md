@@ -1,4 +1,4 @@
-# checksy-workflow Skill Improvements Summary
+# rulesy-workflow Skill Improvements Summary
 
 **Date:** 2026-04-26  
 **New Version:** 1.1.0  
@@ -10,7 +10,7 @@
 ## ✅ Quick Wins Completed
 
 ### 1. Created Test Cases (evals/evals.json)
-**Location:** `skills/checksy-workflow/evals/evals.json`
+**Location:** `skills/rulesy-workflow/evals/evals.json`
 
 Added 7 test cases covering:
 1. **basic-config-setup** - Node.js project setup
@@ -128,9 +128,9 @@ Added:
 
 ## 📁 Files Changed
 
-1. **skills/checksy-workflow/SKILL.md** - Main skill content (consolidated + new sections)
-2. **skills/checksy-workflow/evals/evals.json** - NEW: 7 test cases
-3. **skills/checksy-workflow/EVALUATION.md** - Quality evaluation document
+1. **skills/rulesy-workflow/SKILL.md** - Main skill content (consolidated + new sections)
+2. **skills/rulesy-workflow/evals/evals.json** - NEW: 7 test cases
+3. **skills/rulesy-workflow/EVALUATION.md** - Quality evaluation document
 
 ---
 
@@ -145,7 +145,7 @@ Added:
 
 ## 📝 Summary
 
-The checksy-workflow skill is now production-ready with:
+The rulesy-workflow skill is now production-ready with:
 - ✅ Comprehensive test coverage (7 eval cases)
 - ✅ Systematic troubleshooting (9 error patterns + diagnostic steps)
 - ✅ Platform coverage (Windows, macOS, Linux considerations)

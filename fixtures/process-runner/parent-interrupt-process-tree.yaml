@@ -4,5 +4,5 @@ rules:
     timeout: 2h
     check: |
       trap '' INT TERM HUP QUIT
-      export CHECKSY_HELPER_ROLE=leader
-      exec "$CHECKSY_PROCESS_HELPER" --ignored --exact process_tree_helper --nocapture
+      export RULESY_HELPER_ROLE=leader
+      exec "$RULESY_PROCESS_HELPER" --ignored --exact process_tree_helper --nocapture

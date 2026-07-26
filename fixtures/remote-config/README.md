@@ -4,12 +4,12 @@ This directory contains test fixtures for the remote config feature.
 
 ## Basic Tests
 
-### Basic Remote (`./.checksy.yaml` + `shared.yaml`)
+### Basic Remote (`./.rulesy.yaml` + `shared.yaml`)
 Simple case showing a main config that includes rules from a shared config file.
 
 ```bash
 cd fixtures/remote-config
-checksy check
+rulesy check
 ```
 
 Expected: 4 rules total (2 local + 2 from shared, one of which fails)
@@ -19,7 +19,7 @@ Tests that remote configs inherit `checkSeverity` from parent configs.
 
 ```bash
 cd fixtures/remote-config
-checksy check --config=inherit-parent.yaml
+rulesy check --config=inherit-parent.yaml
 ```
 
 Expected: Rules from no-severity.yaml should have `warn` severity inherited.
@@ -29,7 +29,7 @@ Tests that remote configs work in preconditions section.
 
 ```bash
 cd fixtures/remote-config
-checksy check --config=with-preconditions.yaml
+rulesy check --config=with-preconditions.yaml
 ```
 
 ## Complex Scenarios
@@ -39,7 +39,7 @@ Linear chain: top → middle → bottom (not circular)
 
 ```bash
 cd fixtures/remote-config/nested
-checksy check --config=top.yaml
+rulesy check --config=top.yaml
 ```
 
 Expected: 3 rules (one from each config)
@@ -49,7 +49,7 @@ Circular chain: a → b → c → a
 
 ```bash
 cd fixtures/remote-config/circular
-checksy check --config=a.yaml
+rulesy check --config=a.yaml
 ```
 
 Expected: configuration loading fails before any rule runs. The diagnostic
@@ -65,7 +65,7 @@ Should fail: remote rule has `check` property (only `remote` allowed)
 
 ```bash
 cd fixtures/remote-config/invalid
-checksy check --config=with-check.yaml
+rulesy check --config=with-check.yaml
 # Error: invalid remote rule (remote: ...): remote rule cannot have properties: check, name
 ```
 
@@ -74,7 +74,7 @@ Should fail: remote rule has `severity` property
 
 ```bash
 cd fixtures/remote-config/invalid
-checksy check --config=with-severity.yaml
+rulesy check --config=with-severity.yaml
 # Error: invalid remote rule (remote: ...): remote rule cannot have properties: severity
 ```
 
@@ -83,6 +83,6 @@ Should fail: referenced file doesn't exist
 
 ```bash
 cd fixtures/remote-config/invalid
-checksy check --config=missing-file.yaml
+rulesy check --config=missing-file.yaml
 # Error: remote config 'nonexistent-file.yaml' not found
 ```

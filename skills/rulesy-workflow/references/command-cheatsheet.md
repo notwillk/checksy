@@ -1,22 +1,22 @@
-# checksy Command Cheatsheet
+# Rulesy Command Cheatsheet
 
-Quick reference for common checksy commands and configuration patterns.
+Quick reference for common Rulesy commands and configuration patterns.
 
 ## Essential Commands
 
 | Command | Description |
 |---------|-------------|
-| `checksy check` | Run all checks with default config |
-| `checksy check --fix` | Run checks with auto-fix for failures |
-| `checksy check --fix --non-interactive` | Run ordinary fixes but prohibit terminal repairs |
-| `checksy check --cs warn --fs error` | Run warn+ rules, fail only on errors |
-| `checksy check --no-fail` | Run checks, always exit 0 |
-| `checksy install` | Cache all git-based remote configs |
-| `checksy install --prune` | Update caches and remove unused |
-| `checksy init` | Create starter `.checksy.config.yaml` |
-| `checksy schema > .checksy.schema.json` | Generate JSON schema for IDE |
-| `checksy version` | Show installed version |
-| `checksy help` | Show usage information |
+| `rulesy check` | Run all checks with default config |
+| `rulesy check --fix` | Run checks with auto-fix for failures |
+| `rulesy check --fix --non-interactive` | Run ordinary fixes but prohibit terminal repairs |
+| `rulesy check --cs warn --fs error` | Run warn+ rules, fail only on errors |
+| `rulesy check --no-fail` | Run checks, always exit 0 |
+| `rulesy install` | Cache all git-based remote configs |
+| `rulesy install --prune` | Update caches and remove unused |
+| `rulesy init` | Create starter `.rulesy.config.yaml` |
+| `rulesy schema > .rulesy.schema.json` | Generate JSON schema for IDE |
+| `rulesy version` | Show installed version |
+| `rulesy help` | Show usage information |
 
 ## Global Flags
 
@@ -59,7 +59,7 @@ Hierarchy (lowest to highest): `debug` < `info` < `warn` < `error`
 
 ```yaml
 # Optional settings
-cachePath: .checksy-cache              # Custom cache location
+cachePath: .rulesy-cache              # Custom cache location
 checkSeverity: warn                    # Default: debug
 failSeverity: error                    # Default: error
 
@@ -95,7 +95,7 @@ patterns:
 ## Git Remote Format
 
 ```yaml
-# Default ref (main) and path (.checksy.yaml)
+# Default ref (main) and path (.rulesy.yaml)
 remote: git+https://github.com/org/shared-checks.git
 
 # Specific branch

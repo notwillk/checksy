@@ -1,11 +1,11 @@
 {
-	"name": "checksy",
+	"name": "Rulesy",
 	"image": "mcr.microsoft.com/devcontainers/base:ubuntu26.04",
 	"features": {
 		"ghcr.io/devcontainers/features/docker-in-docker:2": {
 			"moby": false
 		},
-		"ghcr.io/notwillk/checksy/checksy@sha256:55818189d558943f00a3769579278fbf2c936d66c4c54e82e45d598ee9c38018": {
+		"ghcr.io/notwillk/rulesy/rulesy@sha256:55818189d558943f00a3769579278fbf2c936d66c4c54e82e45d598ee9c38018": {
 			"version": "0.7.6"
 		}
 	},
@@ -26,6 +26,6 @@
 			]
 		}
 	},
-	"postCreateCommand": "checksy --config=.devcontainer/checksy.yaml check --fix --non-interactive",
+	"postCreateCommand": "rulesy --config=.devcontainer/rulesy.yaml check --fix --non-interactive",
 	"remoteUser": "vscode"
 }

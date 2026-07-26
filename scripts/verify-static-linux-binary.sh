@@ -71,8 +71,8 @@ fi
 if ! reported_version=$("$binary" version); then
   fail "'$binary version' exited unsuccessfully"
 fi
-if [ "$reported_version" != "checksy $expected_version" ]; then
-  fail "'$binary version' reported '$reported_version', expected 'checksy $expected_version'"
+if [ "$reported_version" != "rulesy $expected_version" ]; then
+  fail "'$binary version' reported '$reported_version', expected 'rulesy $expected_version'"
 fi
 
-echo "Verified static Linux binary: $binary (checksy $expected_version)"
+echo "Verified static Linux binary: $binary (rulesy $expected_version)"

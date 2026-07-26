@@ -12,4 +12,4 @@ rules:
   - name: must not run after foreground loss
     severity: error
     timeout: 2s
-    check: ': > "$CHECKSY_UNEXPECTED_LATER_COMMAND"'
+    check: ': > "$RULESY_UNEXPECTED_LATER_COMMAND"'

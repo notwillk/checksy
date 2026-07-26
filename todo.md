@@ -1,35 +1,34 @@
-# Checksy machine-provisioning roadmap
+# Rulesy machine-provisioning roadmap
 
-Checksy has one job: take an explicitly supplied configuration and provision
+Rulesy has one job: take an explicitly supplied configuration and provision
 the current machine by running checks, applicable fixes, and final checks.
 
 ## Product boundary
 
-- Checksy intentionally executes arbitrary shell commands from trusted
+- Rulesy intentionally executes arbitrary shell commands from trusted
   configuration under the authority of the invoking user.
 - Configuration comes from a local file, an auto-discovered local file, or
   stdin.
 - Fetching, updating, authenticating, and unpacking configuration are external
-  concerns that compose with Checksy through files and pipes.
+  concerns that compose with Rulesy through files and pipes.
 - `check --fix` is the provisioning operation. Do not add a parallel `apply`
   lifecycle.
-- Checksy does not promise transactional rollback of arbitrary fixes and does
+- Rulesy does not promise transactional rollback of arbitrary fixes and does
   not invoke `sudo` automatically.
-- Keep Checksy a CLI. Do not add a daemon, enrollment system, scheduler
+- Keep Rulesy a CLI. Do not add a daemon, enrollment system, scheduler
   manager, source-provider framework, recorded-status database, generation
   store, trust database, or rollback engine.
 
-## Proposed product family
+## Product family
 
-The [product-family proposal](docs/proposals/README.md) would rename this
-provisioner to Rulesy and defines RulesyOS and Rulesy Compose as separate future
-products. The proposal is documented but intentionally not implemented. Its
-OS, composition, and publication milestones belong in their own future
-repositories rather than in this provisioning roadmap.
+The [product-family decision](docs/proposals/README.md) records the completed
+Rulesy rename and defines RulesyOS and Rulesy Compose as separate proposed
+products. Their OS, composition, and publication milestones belong in their
+own future repositories rather than in this provisioning roadmap.
 
 ## Compatibility guardrails
 
-- Preserve `checksy check`, `checksy check --fix`, local YAML, stdin
+- Preserve `rulesy check`, `rulesy check --fix`, local YAML, stdin
   configuration, preconditions, rules, patterns, severities, hints, and local
   file includes.
 - Preserve native macOS and Linux support. Native Windows support remains out
@@ -38,11 +37,11 @@ repositories rather than in this provisioning roadmap.
   immediately removing existing configurations.
 - A self-contained YAML document may be piped to stdin. A configuration with
   scripts, Brewfiles, templates, or other assets is materialized locally before
-  invoking Checksy.
+  invoking Rulesy.
 
 ## Priority and delivery policy
 
-- **P0 — Core:** required for Checksy's provisioning contract and safety.
+- **P0 — Core:** required for Rulesy's provisioning contract and safety.
 - **P1 — Important:** meaningful correctness, compatibility, and maintenance
   improvements that are not required for the smallest complete provisioner.
 - **P2 — Kinda important:** valuable hardening or cleanup that may follow core
@@ -69,7 +68,7 @@ repositories rather than in this provisioning roadmap.
 ### Lock the product and CLI contract
 
 - [x] Document the product boundary in README and architecture documentation.
-  - State that source acquisition and authentication happen outside Checksy.
+  - State that source acquisition and authentication happen outside Rulesy.
   - Keep `check --fix` as the only provisioning lifecycle.
   - Document that commands are trusted arbitrary code and machine mutations
     are not transactionally reversible.
@@ -197,7 +196,7 @@ does not change ordinary headless `fix` behavior.
     path integrity, aliases, and stdin/file interaction without sleeps.
 
 This item is complete. The semaphore is per effective UID, covers every
-configuration-ingestion form, and remains a cooperative Checksy boundary rather
+configuration-ingestion form, and remains a cooperative Rulesy boundary rather
 than a sandbox or cross-UID machine-global lock.
 
 ### P0 integrated acceptance gate
@@ -224,10 +223,10 @@ feature's edge cases.
 
 ## P1 — Important
 
-### Dogfood Checksy in the development container
+### Dogfood Rulesy in the development container
 
-- [x] Provision the development container's userland tools through Checksy.
-  - Bootstrap Checksy `0.7.6` through Feature `1.0.1` at its immutable
+- [x] Provision the development container's userland tools through Rulesy.
+  - Bootstrap Rulesy `0.7.6` through Feature `1.0.1` at its immutable
     canonical OCI digest.
   - Provision Entr, Just `1.57.0`, Rustup `1.29.0` with the exact Rust `1.94.1`
     toolchain and required `rustfmt`/`clippy` components, Dev Container CLI
@@ -236,12 +235,12 @@ feature's edge cases.
   - Run non-interactive convergence during container creation and in CI, then
     run the same configuration check-only to prove idempotence.
   - Keep the base image, Docker-in-Docker, editor customization, and immutable
-    Checksy Feature outside Checksy as the deliberate bootstrap boundary.
+    Rulesy Feature outside Rulesy as the deliberate bootstrap boundary.
   - Organize helpers by provisioned tool and cover version parsing,
     architectures, download selection, checksum rejection, Rust toolchain
     selection, and Node.js compatibility with network-free tests.
 
-This item is complete. Checksy now provisions its own development userland,
+This item is complete. Rulesy now provisions its own development userland,
 including its Rust quality toolchain, without absorbing container bootstrap or
 editor lifecycle concerns.
 
@@ -262,33 +261,24 @@ directories, pattern groups remain origin-scoped, active cycles fail before
 execution, and completed repeats are deduplicated. Stdin remains rooted at the
 caller's current working directory.
 
-### Rename Checksy to Rulesy
+### Complete the Rulesy rename
 
-- [ ] Complete the rename as one behavior-preserving, fully tested release
+- [x] Complete the rename as one behavior-preserving, fully tested release
   slice.
-  - Freeze the repository, binary, crate, version authority, configuration
-    filename, environment, cache/lock path, archive, installer, OCI Feature,
-    devcontainer, documentation, and skill compatibility plan.
-  - Define temporary `checksy` and `.checksy.*` aliases, discovery precedence,
-    ambiguity errors, warning behavior, and their removal release.
-  - Guarantee that old `checksy` and new `rulesy` processes use one
-    provisioning semaphore throughout any coexistence window.
+  - Rename the repository-facing product, binary, crate, configuration
+    filenames, environment, cache and lock paths, archives, installer, OCI
+    Feature, devcontainer, documentation, and skills consistently.
+  - Make a clean cutover without executable, environment, configuration,
+    cache, release-artifact, or lock-namespace aliases.
   - Preserve the existing CLI, configuration, exit, process-supervision, and
     check/fix behavior.
   - Do not combine the rename with Git acquisition removal or add RulesyOS or
     Rulesy Compose behavior to this crate.
-  - Test source and package versions, installers, release artifacts, Linux and
-    macOS binaries, the OCI Feature, devcontainer bootstrap, aliases, and lock
-    interoperability end to end.
-
-This item is proposed but blocked on the compatibility decisions in the
-[rename proposal](docs/proposals/rulesy-product-family.md). No rename
-implementation is included in the documentation slice.
 
 ### Deprecate built-in Git acquisition
 
 - [ ] Ship a complete Git-acquisition deprecation slice.
-  - Warn for `checksy install`, `git+...` locators, Git include rules, and
+  - Warn for `rulesy install`, `git+...` locators, Git include rules, and
     `cachePath` without changing their existing behavior during the transition
     window.
   - Document the removal release and provide actionable migration diagnostics.
@@ -356,7 +346,7 @@ justifies them.
 
 ## Definition of done
 
-- Checksy provisions from a local configuration tree or stdin through
+- Rulesy provisions from a local configuration tree or stdin through
   `check --fix`.
 - `skip-if`, ordinary fixes, and interactive fixes have deterministic,
   documented execution semantics.
@@ -365,7 +355,7 @@ justifies them.
 - Strict validation and local origin behavior remain compatible with valid
   existing configurations.
 - Built-in Git acquisition has a documented migration and removal path.
-- Checksy contains no pull-agent state, remote trust, enrollment, scheduling,
+- Rulesy contains no pull-agent state, remote trust, enrollment, scheduling,
   or recorded-status subsystem.
 - Every completed feature includes implementation, schema/config support,
   reporting, documentation, deterministic tests, formatting, Clippy, and

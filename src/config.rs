@@ -100,7 +100,7 @@ pub fn resolve_path(explicit: &str) -> Result<Option<String>, String> {
         return Ok(Some(explicit.to_string()));
     }
 
-    for candidate in &[".checksy.yaml", ".checksy.yml"] {
+    for candidate in &[".rulesy.yaml", ".rulesy.yml"] {
         let path = Path::new(candidate);
         if path.exists() {
             if path.is_dir() {
@@ -153,7 +153,7 @@ fn load_resolved_with_mode(path: &str, mode: ResolutionMode) -> Result<ResolvedD
 pub(crate) fn decode_config(data: &str) -> Result<Config, String> {
     // Keep the generic YAML parse as the authority for YAML-format errors such
     // as duplicate mapping keys and multiple documents. The typed pass then
-    // enforces Checksy's closed configuration model.
+    // enforces Rulesy's closed configuration model.
     serde_yaml::from_str::<serde_yaml::Value>(data)
         .map_err(|error| format!("decode config YAML: {}", error))?;
 
@@ -373,7 +373,7 @@ impl ResolutionState {
 /// Parse a remote string to detect git-based resource locators
 /// Format: git+<repo>#<ref>:<path>
 ///   - ref defaults to "main"
-///   - path defaults to ".checksy.yaml"
+///   - path defaults to ".rulesy.yaml"
 /// Returns None for regular file paths
 /// Returns Some(GitRemote) for git-based locators
 pub fn parse_git_remote(remote_str: &str) -> Option<GitRemote> {
@@ -392,7 +392,7 @@ pub fn parse_git_remote(remote_str: &str) -> Option<GitRemote> {
         return Some(GitRemote {
             repo: rest.to_string(),
             ref_: "main".to_string(),
-            path: ".checksy.yaml".to_string(),
+            path: ".rulesy.yaml".to_string(),
         });
     };
 
@@ -401,7 +401,7 @@ pub fn parse_git_remote(remote_str: &str) -> Option<GitRemote> {
         (&after_repo[..colon_pos], &after_repo[colon_pos + 1..])
     } else {
         // No : found, after_repo is just the ref, use default path
-        (after_repo, ".checksy.yaml")
+        (after_repo, ".rulesy.yaml")
     };
 
     let repo = repo_part.to_string();
@@ -411,7 +411,7 @@ pub fn parse_git_remote(remote_str: &str) -> Option<GitRemote> {
         ref_part.to_string()
     };
     let path = if path_part.is_empty() {
-        ".checksy.yaml".to_string()
+        ".rulesy.yaml".to_string()
     } else {
         path_part.to_string()
     };
@@ -433,7 +433,7 @@ pub fn resolve_remote_path(
 
         if !cache_mgr.is_cached(&git_remote.repo, &git_remote.ref_) {
             return Err(format!(
-                "git remote not cached: {}. Run 'checksy install' first",
+                "git remote not cached: {}. Run 'rulesy install' first",
                 remote_path
             ));
         }
@@ -513,7 +513,7 @@ mod tests {
         std::env::set_current_dir(dir.path()).unwrap();
 
         fs::write(
-            dir.path().join(".checksy.yaml"),
+            dir.path().join(".rulesy.yaml"),
             "rules:\n  - check: echo ok\n",
         )
         .unwrap();
@@ -522,7 +522,7 @@ mod tests {
         std::env::set_current_dir(old_cwd).unwrap();
 
         assert!(got.is_ok());
-        assert_eq!(got.unwrap(), Some(".checksy.yaml".to_string()));
+        assert_eq!(got.unwrap(), Some(".rulesy.yaml".to_string()));
     }
 
     #[test]
@@ -960,7 +960,7 @@ rules:
         let git = result.unwrap();
         assert_eq!(git.repo, "https://github.com/user/repo.git");
         assert_eq!(git.ref_, "main");
-        assert_eq!(git.path, ".checksy.yaml");
+        assert_eq!(git.path, ".rulesy.yaml");
     }
 
     #[test]
@@ -984,29 +984,28 @@ rules:
         // No # found, so everything after git+ is the repo
         assert_eq!(git.repo, "https://github.com/user/repo.git:other.yaml");
         assert_eq!(git.ref_, "main"); // default
-        assert_eq!(git.path, ".checksy.yaml"); // default
+        assert_eq!(git.path, ".rulesy.yaml"); // default
     }
 
     #[test]
     fn test_parse_git_remote_empty_ref_with_path() {
         // Format: git+<repo>#:<path> (empty ref should default to "main")
-        let result =
-            parse_git_remote("git+git@github.com:notwillk/checks.git#:github.checksy.yaml");
+        let result = parse_git_remote("git+git@github.com:notwillk/checks.git#:github.rulesy.yaml");
         assert!(result.is_some());
         let git = result.unwrap();
         assert_eq!(git.repo, "git@github.com:notwillk/checks.git");
         assert_eq!(git.ref_, "main"); // empty ref defaults to main
-        assert_eq!(git.path, "github.checksy.yaml");
+        assert_eq!(git.path, "github.rulesy.yaml");
     }
 
     #[test]
     fn test_parse_git_remote_empty_ref_with_path_https() {
         // Format: git+<repo>#:<path> with HTTPS URL
         let result =
-            parse_git_remote("git+https://github.com/notwillk/checksy.git#:configs/dev.yaml");
+            parse_git_remote("git+https://github.com/notwillk/rulesy.git#:configs/dev.yaml");
         assert!(result.is_some());
         let git = result.unwrap();
-        assert_eq!(git.repo, "https://github.com/notwillk/checksy.git");
+        assert_eq!(git.repo, "https://github.com/notwillk/rulesy.git");
         assert_eq!(git.ref_, "main"); // empty ref defaults to main
         assert_eq!(git.path, "configs/dev.yaml");
     }
@@ -1035,6 +1034,6 @@ rules:
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("git remote not cached"));
-        assert!(err.contains("Run 'checksy install' first"));
+        assert!(err.contains("Run 'rulesy install' first"));
     }
 }

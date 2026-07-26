@@ -1,7 +1,7 @@
 {
-  "id": "checksy",
+  "id": "rulesy",
   "version": "1.0.1",
-  "name": "checksy",
+  "name": "Rulesy",
   "options": {
     "version": {
       "type": "string",

@@ -39,4 +39,4 @@ artifacts
 
 fixtures/remote-config/git/.git-cache/
 
-checksy-workspace-eval
+rulesy-workspace-eval

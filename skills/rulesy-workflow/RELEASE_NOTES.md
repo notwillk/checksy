@@ -1,4 +1,4 @@
-# checksy-workflow Skill - v1.0.0 RELEASED ✅
+# rulesy-workflow Skill - v1.0.0 RELEASED ✅
 
 **Date:** 2026-04-26  
 **Version:** 1.0.0  
@@ -8,7 +8,7 @@
 
 ## Summary
 
-The checksy-workflow skill has been successfully restructured to meet the 500-line limit while maintaining comprehensive coverage through reference files.
+The rulesy-workflow skill has been successfully restructured to meet the 500-line limit while maintaining comprehensive coverage through reference files.
 
 **SKILL.md: 430 lines** (70 lines under the 500-line limit) ✅
 
@@ -17,7 +17,7 @@ The checksy-workflow skill has been successfully restructured to meet the 500-li
 ## File Structure
 
 ```
-skills/checksy-workflow/
+skills/rulesy-workflow/
 ├── SKILL.md                              430 lines - Main skill (condensed)
 ├── EVALUATION.md                         495 lines - Quality evaluation
 ├── EVALUATION_FINAL.md                   350 lines - Final evaluation
@@ -50,7 +50,7 @@ skills/checksy-workflow/
 | Quick Reference | ~35 | ✅ Essential commands |
 | Installation & Setup | ~30 | ✅ Setup instructions |
 | Configuration | ~30 | ✅ Summary + link to refs |
-| Running checksy | ~60 | ✅ All commands |
+| Running Rulesy | ~60 | ✅ All commands |
 | Remote Configs | ~40 | ✅ Git/file remotes |
 | Fix Mode | ~35 | ✅ --fix explanation |
 | CI/CD Integration | ~50 | ✅ Template + examples |
@@ -190,7 +190,7 @@ The skill is **ready for distribution via skills.sh**.
 
 ## SUCCESS ✅
 
-**The checksy-workflow skill v1.0.0 is COMPLETE and PRODUCTION-READY.**
+**The rulesy-workflow skill v1.0.0 is COMPLETE and PRODUCTION-READY.**
 
 - ✅ Under 500-line limit (430 lines)
 - ✅ Progressive disclosure with reference files

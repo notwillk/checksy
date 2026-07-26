@@ -35,7 +35,7 @@ esac
 EOF
 chmod +x "$mock_bin/readelf"
 
-fake_binary="$test_dir/checksy"
+fake_binary="$test_dir/rulesy"
 cat >"$fake_binary" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -43,7 +43,7 @@ set -euo pipefail
 if [ "${1:-}" != "version" ]; then
   exit 2
 fi
-printf '%s\n' "${MOCK_BINARY_VERSION:-checksy 0.7.7}"
+printf '%s\n' "${MOCK_BINARY_VERSION:-rulesy 0.7.7}"
 exit "${MOCK_BINARY_STATUS:-0}"
 EOF
 chmod +x "$fake_binary"
@@ -97,8 +97,8 @@ assert_fails_with "has GLIBC version requirements" \
   env "MOCK_VERSION_INFO=  Name: GLIBC_2.39  Flags: none  Version: 2" \
   PATH="$mock_bin:$PATH" "$verifier" "$fake_binary" 0.7.7
 
-assert_fails_with "reported 'checksy 9.9.9'" \
-  env MOCK_BINARY_VERSION="checksy 9.9.9" PATH="$mock_bin:$PATH" \
+assert_fails_with "reported 'rulesy 9.9.9'" \
+  env MOCK_BINARY_VERSION="rulesy 9.9.9" PATH="$mock_bin:$PATH" \
   "$verifier" "$fake_binary" 0.7.7
 
 echo "verify-static-linux-binary tests passed"

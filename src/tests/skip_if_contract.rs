@@ -97,8 +97,8 @@ fn writable_fixture_copy() -> tempfile::TempDir {
     directory
 }
 
-fn checksy() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_checksy"))
+fn rulesy() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_rulesy"))
 }
 
 fn capture(mut command: Command, stdin: Option<&[u8]>, provisioning: bool) -> Output {
@@ -115,7 +115,7 @@ fn capture(mut command: Command, stdin: Option<&[u8]>, provisioning: bool) -> Ou
 }
 
 fn file_command(path: &Path, subcommand: &str, extra: &[&str]) -> Command {
-    let mut command = checksy();
+    let mut command = rulesy();
     command
         .arg("--config")
         .arg(path)
@@ -320,7 +320,7 @@ fn completed_nonzero_predicates_run_checks_without_leaking_output() {
         "hidden exit one",
         "hidden exit twenty-three",
         "hidden exit one-twenty-seven",
-        "checksy-command-that-must-not-exist-for-skip-if-contract",
+        "rulesy-command-that-must-not-exist-for-skip-if-contract",
     ] {
         assert!(
             !combined.contains(hidden),
@@ -422,7 +422,7 @@ fn all_configuration_entrypoints_and_deprecated_diagnose_apply_skip_if() {
     let mut runs: Vec<(&str, PathBuf, Output)> = Vec::new();
 
     let mut command = file_command(&config, "check", &[]);
-    command.env("CHECKSY_SKIP_IF_ENTRYPOINT", "explicit-file");
+    command.env("RULESY_SKIP_IF_ENTRYPOINT", "explicit-file");
     runs.push((
         "explicit-file",
         copy.path().to_path_buf(),
@@ -430,33 +430,33 @@ fn all_configuration_entrypoints_and_deprecated_diagnose_apply_skip_if() {
     ));
 
     let auto_directory = copy.path().join("autodiscovery");
-    let mut command = checksy();
+    let mut command = rulesy();
     command
         .arg("check")
         .current_dir(&auto_directory)
-        .env("CHECKSY_SKIP_IF_ENTRYPOINT", "auto-discovery");
+        .env("RULESY_SKIP_IF_ENTRYPOINT", "auto-discovery");
     runs.push((
         "auto-discovery",
         auto_directory.clone(),
         capture(command, None, false),
     ));
 
-    let mut command = checksy();
+    let mut command = rulesy();
     command
         .args(["--stdin-config", "check"])
         .current_dir(copy.path())
-        .env("CHECKSY_SKIP_IF_ENTRYPOINT", "stdin-config");
+        .env("RULESY_SKIP_IF_ENTRYPOINT", "stdin-config");
     runs.push((
         "stdin-config",
         copy.path().to_path_buf(),
         capture(command, Some(&config_bytes), false),
     ));
 
-    let mut command = checksy();
+    let mut command = rulesy();
     command
         .args(["--config", "-", "check"])
         .current_dir(copy.path())
-        .env("CHECKSY_SKIP_IF_ENTRYPOINT", "config-dash");
+        .env("RULESY_SKIP_IF_ENTRYPOINT", "config-dash");
     runs.push((
         "config-dash",
         copy.path().to_path_buf(),
@@ -464,14 +464,14 @@ fn all_configuration_entrypoints_and_deprecated_diagnose_apply_skip_if() {
     ));
 
     let mut command = file_command(&config, "diagnose", &[]);
-    command.env("CHECKSY_SKIP_IF_ENTRYPOINT", "diagnose");
+    command.env("RULESY_SKIP_IF_ENTRYPOINT", "diagnose");
     runs.push((
         "diagnose",
         copy.path().to_path_buf(),
         capture(command, None, false),
     ));
 
-    assert_eq!(auto_case.fixture, "autodiscovery/.checksy.yaml");
+    assert_eq!(auto_case.fixture, "autodiscovery/.rulesy.yaml");
     for (mode, marker_directory, output) in runs {
         assert_exit(mode, &output, 0);
         assert!(
@@ -509,7 +509,7 @@ fn environment_and_command_availability_gates_use_inherited_environment() {
     let path = std::env::join_paths(path_entries).unwrap();
     let mut command = file_command(&present_copy.path().join(&case.fixture), "check", &[]);
     command
-        .env("CHECKSY_SKIP_IF_ENV_GATE", "enabled")
+        .env("RULESY_SKIP_IF_ENV_GATE", "enabled")
         .env("PATH", path);
     let output = capture(command, None, false);
     assert_exit("present gates", &output, 0);
@@ -518,7 +518,7 @@ fn environment_and_command_availability_gates_use_inherited_environment() {
 
     let absent_copy = writable_fixture_copy();
     let mut command = file_command(&absent_copy.path().join(&case.fixture), "check", &[]);
-    command.env_remove("CHECKSY_SKIP_IF_ENV_GATE");
+    command.env_remove("RULESY_SKIP_IF_ENV_GATE");
     let output = capture(command, None, false);
     assert_exit("absent gates", &output, 0);
     assert_eq!(

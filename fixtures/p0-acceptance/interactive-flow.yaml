@@ -2,8 +2,8 @@ rules:
   - name: interactive lifecycle
     timeout: 3s
     check: |
-      printf 'interactive-check\n' >> "$CHECKSY_P0_INTERACTIVE_TRACE"
-      test -f "$CHECKSY_P0_INTERACTIVE_FIXED"
+      printf 'interactive-check\n' >> "$RULESY_P0_INTERACTIVE_TRACE"
+      test -f "$RULESY_P0_INTERACTIVE_FIXED"
     interactive-fix: |
       printf 'approval: '
       IFS= read -r answer
@@ -11,8 +11,8 @@ rules:
         printf 'unexpected approval: %s\n' "$answer" >&2
         exit 23
       fi
-      printf 'interactive-fix\n' >> "$CHECKSY_P0_INTERACTIVE_TRACE"
-      : > "$CHECKSY_P0_INTERACTIVE_FIXED"
+      printf 'interactive-fix\n' >> "$RULESY_P0_INTERACTIVE_TRACE"
+      : > "$RULESY_P0_INTERACTIVE_FIXED"
   - name: later interactive lifecycle rule
     timeout: 2s
-    check: printf 'later-check\n' >> "$CHECKSY_P0_INTERACTIVE_TRACE"
+    check: printf 'later-check\n' >> "$RULESY_P0_INTERACTIVE_TRACE"

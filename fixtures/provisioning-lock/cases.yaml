@@ -15,7 +15,7 @@ cases:
       - fix
       - check
   - id: auto-discovered-fix
-    fixture: autodiscovery/.checksy.yaml
+    fixture: autodiscovery/.rulesy.yaml
     assets:
       - scripts/record-fix.sh
     modes:
