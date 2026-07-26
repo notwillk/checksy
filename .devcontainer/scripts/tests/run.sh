@@ -36,6 +36,7 @@ assert_fails() {
 assert_equal 0.8.1 "$RULESY_VERSION" "Rulesy version pin"
 assert_equal 0.145.0 "$CODEX_CLI_VERSION" "Codex CLI version pin"
 assert_equal 1.57.0 "$JUST_VERSION" "Just version pin"
+assert_equal 2.4.5 "$MOON_VERSION" "Moon version pin"
 assert_equal 1.29.0 "$RUSTUP_VERSION" "Rustup version pin"
 assert_equal 1.94.1 "$RUST_TOOLCHAIN_VERSION" "Rust toolchain version pin"
 assert_equal 0.88.0 "$DEVCONTAINER_CLI_VERSION" "Dev Container CLI version pin"
@@ -208,6 +209,10 @@ assert_fails \
 unset MOCK_RUSTUP_FAIL
 grep -F 'build-essential' "$SCRIPTS_DIR/rustup/install.sh" >/dev/null || \
   fail "Rustup installer must provision the native build prerequisite"
+grep -F 'xz' "$SCRIPTS_DIR/prerequisites/check.sh" >/dev/null || \
+  fail "provisioning prerequisites must require xz archive support"
+grep -F 'xz-utils' "$SCRIPTS_DIR/prerequisites/install.sh" >/dev/null || \
+  fail "provisioning prerequisites must install xz archive support"
 if grep -F 'sh.rustup.rs' "$SCRIPTS_DIR/rustup/install.sh" >/dev/null; then
   fail "Rustup installer must not execute the mutable shell bootstrap"
 fi
@@ -229,6 +234,13 @@ assert_equal x86_64-unknown-linux-musl "$x86_target" "x86_64 target mapping"
 assert_equal aarch64-unknown-linux-musl "$arm_target" "aarch64 target mapping"
 assert_equal "$arm_target" "$(just_target_for_arch arm64)" "arm64 target alias"
 assert_fails "unsupported architecture" just_target_for_arch riscv64
+
+moon_x86_target=$(moon_target_for_arch x86_64)
+moon_arm_target=$(moon_target_for_arch aarch64)
+assert_equal x86_64-unknown-linux-musl "$moon_x86_target" "x86_64 Moon target mapping"
+assert_equal aarch64-unknown-linux-musl "$moon_arm_target" "aarch64 Moon target mapping"
+assert_equal "$moon_arm_target" "$(moon_target_for_arch arm64)" "Moon arm64 target alias"
+assert_fails "unsupported Moon architecture" moon_target_for_arch riscv64
 
 rustup_x86_target=$(rustup_target_for_arch x86_64)
 rustup_arm_target=$(rustup_target_for_arch aarch64)
@@ -272,6 +284,25 @@ assert_equal \
   "$(just_checksum_for_target "$arm_target")" \
   "aarch64 Just checksum"
 
+moon_x86_url=$(moon_download_url "$moon_x86_target")
+moon_arm_url=$(moon_download_url "$moon_arm_target")
+assert_equal \
+  "https://github.com/moonrepo/moon/releases/download/v2.4.5/moon_cli-x86_64-unknown-linux-musl.tar.xz" \
+  "$moon_x86_url" \
+  "x86_64 Moon download"
+assert_equal \
+  "https://github.com/moonrepo/moon/releases/download/v2.4.5/moon_cli-aarch64-unknown-linux-musl.tar.xz" \
+  "$moon_arm_url" \
+  "aarch64 Moon download"
+assert_equal \
+  627f99ec29e7f52829daef9c48dfb70840313e01980d297d09e58fd9dbe1a6e9 \
+  "$(moon_checksum_for_target "$moon_x86_target")" \
+  "x86_64 Moon checksum"
+assert_equal \
+  41cca0fcca0a63de1f7c4d94d275f55c2b26ef559bf19cf7d5bbf29c2ae5df53 \
+  "$(moon_checksum_for_target "$moon_arm_target")" \
+  "aarch64 Moon checksum"
+
 MOCK_CURL_URL=""
 curl() {
   if [[ $1 != --proto || $2 != '=https' || $3 != --tlsv1.2 || \
@@ -295,6 +326,34 @@ assert_fails \
   verify_sha256 "$TEST_ROOT/checksum" \
   0000000000000000000000000000000000000000000000000000000000000000
 
+mock_moon_bin="$TEST_ROOT/moon-bin"
+mkdir -p "$mock_moon_bin"
+cat >"$mock_moon_bin/moon" <<'EOF'
+#!/usr/bin/env bash
+printf 'moon 2.4.5\n'
+EOF
+cat >"$mock_moon_bin/moonx" <<'EOF'
+#!/usr/bin/env bash
+printf 'moon-exec 2.4.5\n'
+EOF
+chmod 0755 "$mock_moon_bin/moon" "$mock_moon_bin/moonx"
+PATH="$mock_moon_bin:/usr/bin:/bin" bash "$SCRIPTS_DIR/moon/check.sh" || \
+  fail "Moon check rejected the pinned binaries"
+cat >"$mock_moon_bin/moonx" <<'EOF'
+#!/usr/bin/env bash
+printf 'moon-exec 2.4.4\n'
+EOF
+chmod 0755 "$mock_moon_bin/moonx"
+assert_fails \
+  "mismatched Moon executor version" \
+  env PATH="$mock_moon_bin:/usr/bin:/bin" bash "$SCRIPTS_DIR/moon/check.sh"
+grep -F 'tar --extract --xz' "$SCRIPTS_DIR/moon/install.sh" >/dev/null || \
+  fail "Moon installer must extract the pinned tar.xz archive"
+grep -F '"$extracted_directory/moon"' "$SCRIPTS_DIR/moon/install.sh" >/dev/null || \
+  fail "Moon installer must stage the moon binary from the verified archive"
+grep -F '"$extracted_directory/moonx"' "$SCRIPTS_DIR/moon/install.sh" >/dev/null || \
+  fail "Moon installer must stage the moonx binary from the verified archive"
+
 assert_equal 20 "$(node_major_from_version v20.11.1)" "prefixed Node major"
 assert_equal 22 "$(node_major_from_version 22.0.0)" "unprefixed Node major"
 node_version_is_supported v20.0.0 || fail "minimum Node version was rejected"
@@ -311,6 +370,8 @@ expected_files=(
   entr/install.sh
   just/check.sh
   just/install.sh
+  moon/check.sh
+  moon/install.sh
   prerequisites/check.sh
   prerequisites/install.sh
   rustup/check.sh
@@ -330,7 +391,7 @@ for index in "${!expected_files[@]}"; do
   assert_equal "${expected_files[$index]}" "${actual_files[$index]}" "script layout entry $index"
 done
 
-expected_tools=(prerequisites entr just rustup devcontainer-cli codex-cli)
+expected_tools=(prerequisites entr just moon rustup devcontainer-cli codex-cli)
 for tool in "${expected_tools[@]}"; do
   grep -F "check: exec bash ./scripts/$tool/check.sh" "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
     fail "rulesy.yaml does not reference ./scripts/$tool/check.sh"

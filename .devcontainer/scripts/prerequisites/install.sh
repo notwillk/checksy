@@ -22,6 +22,7 @@ packages=()
 command -v curl >/dev/null || packages+=(curl)
 command -v tar >/dev/null || packages+=(tar)
 command -v sha256sum >/dev/null || packages+=(coreutils)
+command -v xz >/dev/null || packages+=(xz-utils)
 
 if ((${#packages[@]} == 0)); then
   exit 0

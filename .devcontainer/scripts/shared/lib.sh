@@ -44,6 +44,9 @@ load_tool_versions() {
     JUST_VERSION \
     JUST_X86_64_SHA256 \
     JUST_AARCH64_SHA256 \
+    MOON_VERSION \
+    MOON_X86_64_SHA256 \
+    MOON_AARCH64_SHA256 \
     RUSTUP_VERSION \
     RUSTUP_X86_64_SHA256 \
     RUSTUP_AARCH64_SHA256 \
@@ -59,6 +62,7 @@ load_tool_versions() {
   if ! is_release_version "$RULESY_VERSION" || \
     ! is_release_version "$CODEX_CLI_VERSION" || \
     ! is_release_version "$JUST_VERSION" || \
+    ! is_release_version "$MOON_VERSION" || \
     ! is_release_version "$RUSTUP_VERSION" || \
     ! is_release_version "$RUST_TOOLCHAIN_VERSION" || \
     ! is_release_version "$DEVCONTAINER_CLI_VERSION"; then
@@ -68,6 +72,8 @@ load_tool_versions() {
 
   if [[ ! $JUST_X86_64_SHA256 =~ ^[0-9a-f]{64}$ ]] || \
     [[ ! $JUST_AARCH64_SHA256 =~ ^[0-9a-f]{64}$ ]] || \
+    [[ ! $MOON_X86_64_SHA256 =~ ^[0-9a-f]{64}$ ]] || \
+    [[ ! $MOON_AARCH64_SHA256 =~ ^[0-9a-f]{64}$ ]] || \
     [[ ! $RUSTUP_X86_64_SHA256 =~ ^[0-9a-f]{64}$ ]] || \
     [[ ! $RUSTUP_AARCH64_SHA256 =~ ^[0-9a-f]{64}$ ]]; then
     provision_fail "download checksums must be 64 lowercase hexadecimal characters"
@@ -119,6 +125,49 @@ just_download_url() {
   local archive
   archive=$(just_archive_name "$target")
   printf 'https://github.com/casey/just/releases/download/%s/%s\n' "$JUST_VERSION" "$archive"
+}
+
+moon_target_for_arch() {
+  case ${1:-} in
+    x86_64)
+      printf 'x86_64-unknown-linux-musl\n'
+      ;;
+    aarch64|arm64)
+      printf 'aarch64-unknown-linux-musl\n'
+      ;;
+    *)
+      provision_fail "unsupported Linux architecture for Moon: ${1:-<empty>}"
+      return 1
+      ;;
+  esac
+}
+
+moon_checksum_for_target() {
+  case ${1:-} in
+    x86_64-unknown-linux-musl)
+      printf '%s\n' "$MOON_X86_64_SHA256"
+      ;;
+    aarch64-unknown-linux-musl)
+      printf '%s\n' "$MOON_AARCH64_SHA256"
+      ;;
+    *)
+      provision_fail "unsupported Moon release target: ${1:-<empty>}"
+      return 1
+      ;;
+  esac
+}
+
+moon_archive_name() {
+  printf 'moon_cli-%s.tar.xz\n' "$1"
+}
+
+moon_download_url() {
+  local target=$1
+  local archive
+  archive=$(moon_archive_name "$target")
+  printf 'https://github.com/moonrepo/moon/releases/download/v%s/%s\n' \
+    "$MOON_VERSION" \
+    "$archive"
 }
 
 download_file() {

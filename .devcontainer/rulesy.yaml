@@ -15,6 +15,11 @@ rules:
     fix: exec bash ./scripts/just/install.sh
     timeout: 10m
 
+  - name: Moon is pinned for the task-runner migration
+    check: exec bash ./scripts/moon/check.sh
+    fix: exec bash ./scripts/moon/install.sh
+    timeout: 10m
+
   - name: Rust is pinned with development components
     check: exec bash ./scripts/rustup/check.sh
     fix: exec bash ./scripts/rustup/install.sh
