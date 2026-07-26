@@ -41,10 +41,11 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-version_file="products/rulesy/src/version.rs"
-current_version=$(grep -Eo 'VERSION: &str = "[^"]+"' "$version_file" | sed -E 's/VERSION: &str = "([^"]+)"/\1/')
+manifest_file="products/rulesy/Cargo.toml"
+lock_file="products/rulesy/Cargo.lock"
+current_version=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' "$manifest_file")
 if [ -z "$current_version" ]; then
-  echo "Unable to read current version from $version_file" >&2
+  echo "Unable to read current version from $manifest_file" >&2
   exit 1
 fi
 
@@ -67,10 +68,27 @@ case "$bump" in
 new_version="$major.$minor.$patch"
 
 tmp_file=$(mktemp)
-sed -E "s/(VERSION: &str = \").*?(\")/\1$new_version\2/" "$version_file" > "$tmp_file"
-mv "$tmp_file" "$version_file"
+awk -v new_version="$new_version" '
+  !updated && /^version = "[^"]+"$/ {
+    print "version = \"" new_version "\""
+    updated = 1
+    next
+  }
+  { print }
+  END {
+    if (!updated) {
+      exit 1
+    }
+  }
+' "$manifest_file" > "$tmp_file"
+mv "$tmp_file" "$manifest_file"
 
-git add -- "$version_file"
+cargo update \
+  --manifest-path "$manifest_file" \
+  --package rulesy \
+  --precise "$new_version"
+
+git add -- "$manifest_file" "$lock_file"
 git commit -m "Release v$new_version"
 
 tag="v$new_version"

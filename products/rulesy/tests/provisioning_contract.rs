@@ -51,6 +51,18 @@ fn public_help_describes_the_provisioning_cli() {
 }
 
 #[test]
+fn public_version_matches_cargo_package_metadata() {
+    let expected = format!("rulesy {}\n", env!("CARGO_PKG_VERSION"));
+
+    for argument in ["version", "--version"] {
+        let output = run(&[argument]);
+        assert_eq!(code(&output), 0);
+        assert!(output.stderr.is_empty());
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+    }
+}
+
+#[test]
 fn documentation_describes_the_implemented_strict_configuration_boundary() {
     for expected in [
         "strictly decodes the complete",

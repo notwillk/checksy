@@ -17,7 +17,7 @@
 
 ### Constants
 - **SCREAMING_SNAKE_CASE**: `DEFAULT_CACHE_PATH`, `GIT_CACHE_DIR`
-- **Version**: `VERSION` (simple constant in `version.rs`)
+- **Version**: `VERSION` (Cargo package version exposed by `version.rs`)
 
 ### Type Aliases
 - Avoid type aliases; use structs with strong types
@@ -269,6 +269,6 @@ fn traverse(
 
 ## Version Management
 
-- **Single source**: `version.rs` contains `VERSION` constant
-- **No build.rs**: Version hardcoded, not generated
+- **Single source**: the package version in `Cargo.toml`
+- **No build.rs**: `version.rs` exposes Cargo's `CARGO_PKG_VERSION`
 - **Semantic versioning**: Follow semver for releases

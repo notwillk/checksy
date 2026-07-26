@@ -65,9 +65,9 @@ tasks:
   get-version:
     description: "Print the Rulesy release version"
     script: |
-      VERSION="$(grep -Eo 'VERSION: &str = "[^"]+"' src/version.rs | sed -E 's/VERSION: &str = "([^"]+)"/\1/')"
+      VERSION="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' Cargo.toml)"
       if [ -z "$VERSION" ]; then
-        echo "Unable to determine version from version.rs" >&2
+        echo "Unable to determine version from Cargo.toml" >&2
         exit 1
       fi
       echo "$VERSION"
@@ -83,9 +83,9 @@ tasks:
           echo "Usage: moon run rulesy:ensure-tag-matches-version -- <vX.Y.Z>" >&2
           exit 2
         fi
-        VERSION="$(grep -Eo 'VERSION: &str = "[^"]+"' src/version.rs | sed -E 's/VERSION: &str = "([^"]+)"/\1/')"
+        VERSION="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' Cargo.toml)"
         if [ -z "$VERSION" ]; then
-          echo "Unable to determine version from version.rs" >&2
+          echo "Unable to determine version from Cargo.toml" >&2
           exit 1
         fi
         VERSION="v$VERSION"
