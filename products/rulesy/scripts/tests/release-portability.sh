@@ -6,6 +6,10 @@ workspace_root="$(CDPATH= cd -- "$project_root/../.." && pwd)"
 cross_config="$project_root/Cross.toml"
 cross_compile="$project_root/scripts/cross-compile.sh"
 release_script="$project_root/scripts/release.sh"
+rulesy_manifest="$project_root/Cargo.toml"
+rulesy_lock="$project_root/Cargo.lock"
+rulesy_version="$project_root/src/version.rs"
+moon_project="$project_root/moon.yml"
 ci_workflow="$workspace_root/.github/workflows/ci.yml"
 release_workflow="$workspace_root/.github/workflows/release.yml"
 moon_workspace="$workspace_root/.moon/workspace.yml"
@@ -49,8 +53,36 @@ grep -F 'dist_dir="$project_root/dist"' "$cross_compile" >/dev/null ||
 grep -F 'workspace_root="$(CDPATH= cd -- "$project_root/../.." && pwd)"' \
   "$release_script" >/dev/null ||
   fail "release script does not resolve the monorepo root from the Rulesy project"
-grep -F 'version_file="products/rulesy/src/version.rs"' "$release_script" >/dev/null ||
-  fail "release script does not update the Rulesy project version file"
+grep -F 'manifest_file="products/rulesy/Cargo.toml"' "$release_script" >/dev/null ||
+  fail "release script does not update the Rulesy manifest"
+grep -F 'lock_file="products/rulesy/Cargo.lock"' "$release_script" >/dev/null ||
+  fail "release script does not identify the Rulesy lockfile"
+grep -F -- '--manifest-path "$manifest_file"' "$release_script" >/dev/null ||
+  fail "release script does not update the lockfile through the Rulesy manifest"
+grep -F -- '--package rulesy' "$release_script" >/dev/null ||
+  fail "release script does not target the Rulesy package lock entry"
+grep -F -- '--precise "$new_version"' "$release_script" >/dev/null ||
+  fail "release script does not synchronize the precise Rulesy lock version"
+grep -F 'git add -- "$manifest_file" "$lock_file"' "$release_script" >/dev/null ||
+  fail "release script does not stage the Rulesy manifest and lockfile"
+require_line 'pub const VERSION: &str = env!("CARGO_PKG_VERSION");' "$rulesy_version"
+for version_consumer in \
+  "$moon_project" \
+  "$release_script" \
+  "$ci_workflow" \
+  "$release_workflow"; do
+  if grep -F 'src/version.rs' "$version_consumer" >/dev/null; then
+    fail "$version_consumer still reads the superseded handwritten version"
+  fi
+done
+grep -F 'Cargo.toml' "$moon_project" >/dev/null ||
+  fail "Moon version tasks do not read the Rulesy manifest"
+grep -F 'products/rulesy/Cargo.toml' "$ci_workflow" >/dev/null ||
+  fail "CI artifact verification does not read the Rulesy manifest"
+grep -F 'products/rulesy/Cargo.toml' "$release_workflow" >/dev/null ||
+  fail "release artifact verification does not read the Rulesy manifest"
+test -f "$rulesy_manifest" || fail "Rulesy manifest is missing"
+test -f "$rulesy_lock" || fail "Rulesy lockfile is missing"
 grep -F 'cmds=(cargo sha256sum tar)' "$cross_compile" >/dev/null ||
   fail "Linux cross-build dependencies must not require rustup"
 grep -F 'Missing required command for macOS builds: rustup' "$cross_compile" >/dev/null ||

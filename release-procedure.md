@@ -28,9 +28,10 @@ moon run rulesy:release -- patch   # or minor / major
 
 The script:
 
-1. Reads the existing version from `products/rulesy/src/version.rs`
+1. Reads the existing package version from `products/rulesy/Cargo.toml`
 2. Increments it according to the argument
-3. Commits the version bump with message `Release vX.Y.Z`
+3. Updates `products/rulesy/Cargo.lock` and commits the manifest and lockfile
+   with message `Release vX.Y.Z`
 4. Creates an annotated tag `vX.Y.Z`
 5. Pushes `main` and the new tag to `origin`
 

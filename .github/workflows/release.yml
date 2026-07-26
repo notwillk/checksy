@@ -89,7 +89,7 @@ jobs:
           set -euo pipefail
           mkdir -p products/rulesy/dist/verify
           tar -xzf "products/rulesy/dist/rulesy_linux_${{ matrix.arch }}.tar.gz" -C products/rulesy/dist/verify
-          expected_version="$(sed -n 's/^pub const VERSION: &str = "\(.*\)";$/\1/p' products/rulesy/src/version.rs)"
+          expected_version="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' products/rulesy/Cargo.toml)"
           test -n "$expected_version"
           ./products/rulesy/scripts/verify-static-linux-binary.sh products/rulesy/dist/verify/rulesy "$expected_version"
           smoke_config="$(mktemp)"
