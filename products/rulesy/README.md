@@ -15,7 +15,7 @@ compatibility, but it is not part of the target architecture.
 Rulesy is the implemented provisioner in the
 [Rulesy family monorepo](../../README.md). The
 [product-family documentation](../../docs/README.md) records the completed
-rename, current repository organization, and two proposed adjacent products:
+rename, current repository organization, and two adjacent products:
 
 - **RulesyOS** — a firmware-style Buildroot Linux substrate that owns verified
   boot, configuration acquisition and authentication, persistent generations,
@@ -26,10 +26,11 @@ rename, current repository organization, and two proposed adjacent products:
 
 The historical [product-family decision](../../docs/decisions/rulesy-product-family.md)
 and current [monorepo decision](../../docs/decisions/monorepo.md) preserve
-these boundaries. RulesyOS has bootstrap-only build and KVM test
-infrastructure, while Rulesy Compose remains documentation-only. Rulesy
-remains the same trusted local check/fix CLI; acquisition, authentication,
-firmware state, artifact building, and publication stay outside it.
+these boundaries. RulesyOS has a functional baked-configuration reference
+image and KVM acceptance tests, while Rulesy Compose remains
+documentation-only. Rulesy remains the same trusted local check/fix CLI;
+acquisition, authentication, firmware state, artifact building, and
+publication stay outside it.
 
 ## Provisioning contract
 

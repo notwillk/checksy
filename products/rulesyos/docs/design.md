@@ -1,6 +1,7 @@
 # RulesyOS product requirements and implementation design
 
-**Status:** Bootstrap test infrastructure implemented; product functionality proposed
+**Status:** First baked-configuration functional reference slice implemented;
+remaining production milestones proposed
 
 **Date:** 2026-07-26
 
@@ -11,6 +12,24 @@ a machine by running an authenticated Rulesy configuration. This document owns
 the stage-zero, Buildroot, boot, state, recovery, hardening, and OS-test
 design. Host-side artifact composition belongs to the separate
 [Rulesy Compose design](../../rulesy-compose/docs/design.md).
+
+## Implemented reference slice
+
+The implemented x86-64 development slice directly boots Linux `6.12.27` under
+KVM from a Buildroot `2025.02.16` image. Its GPT disk has a read-only root and
+a separate 64 MiB ext4 state partition. Permanent Rust stage zero `0.1.0`
+validates the runtime layout and released Rulesy `0.8.2`, materializes one
+baked configuration, runs Rulesy on every boot, and writes atomic schema-v1
+status plus bounded root-only logs. The acceptance test boots the same disk
+twice and proves that the first boot applies the baked fix while the second is
+already converged.
+
+This reference slice uses direct kernel boot and deliberately has no network
+device or login prompt. Signed seed and HTTPS bundles, generations,
+promotion/quarantine, the payload hook, `rulesyosctl`, UEFI, dm-verity,
+production hardening, A/B updates, recovery, firmware releases, and Compose
+integration remain deferred. Unless marked as implemented above, the sections
+below describe the target production design.
 
 ## 1. Product boundary
 
@@ -148,7 +167,7 @@ fix.
 Use a pinned Buildroot release or commit with a project-owned `BR2_EXTERNAL`
 tree. Do not maintain an unnecessary Buildroot fork.
 
-Suggested product layout:
+Implemented and planned product layout:
 
 ```text
 products/rulesyos/
@@ -180,7 +199,7 @@ products/rulesyos/
     fixtures/
 ```
 
-Future Rust code under this product owns a Cargo workspace independent from
+Rust code under this product owns a Cargo workspace independent from
 `products/rulesy/Cargo.toml`.
 
 ### Build pipeline
@@ -441,30 +460,33 @@ Stage zero atomically replaces
   "schemaVersion": 1,
   "bootId": "opaque-id",
   "rulesyosVersion": "0.1.0",
-  "firmwareSlot": "A",
+  "firmwareSlot": null,
   "firmwareHealthy": true,
-  "sourceKind": "https-bundle",
+  "sourceKind": "baked",
   "configDigest": "sha256:...",
   "candidateDigest": null,
-  "rulesyVersion": "x.y.z",
+  "rulesyVersion": "0.8.2",
+  "rulesyDigest": "sha256:4f1ca0cd30e85d450247973d672460ed2141496bab4b656c0787d0f65e391f39",
   "rulesyExit": 0,
+  "rulesySignal": null,
   "outcome": "converged",
   "durationMs": 7000
 }
 ```
 
-Stable outcomes include `unprovisioned`, `acquisition-failed`,
-`verification-failed`, `candidate-quarantined`, `converged`,
-`compliance-failed`, `operational-failed`, `lock-contended`, `interrupted`,
-and `firmware-degraded`.
+The current slice records `converged`, `compliance-failed`,
+`operational-failed`, `lock-contended`, `interrupted`, or
+`firmware-degraded`. The target external-configuration pipeline additionally
+defines `unprovisioned`, `acquisition-failed`, `verification-failed`, and
+`candidate-quarantined`.
 
-Wall-clock fields may be null when time is not trustworthy. Preserve bounded
-per-boot stage-zero and Rulesy logs and rotate by both bytes and boot count.
-Remote telemetry is not mandatory in v1.
+The current schema records monotonic `durationMs` and does not require
+trustworthy wall-clock time. Stage zero preserves at most eight root-only
+per-boot logs. Remote telemetry is not mandatory in v1.
 
 ## 16. Release artifacts
 
-Each RulesyOS release emits:
+A future production RulesyOS release is expected to emit:
 
 - complete QEMU/flashable disk image;
 - authenticated kernel/initramfs or unified boot artifact;
@@ -536,7 +558,7 @@ The tests boot actual produced images and cover:
 
 ## 18. Acceptance criteria
 
-The functional MVP:
+The target functional MVP:
 
 - boots the reference QEMU image through the verified stage-zero path;
 - runs a pinned released Rulesy on every boot;
@@ -556,8 +578,9 @@ security tests.
 
 1. **Contract freeze:** pin a released Rulesy and close bundle, result, version,
    target, and lock-path contracts.
-2. **Bootable reference image:** Buildroot, BusyBox init, immutable root,
-   persistent state, console status, and baked configuration.
+2. **Bootable reference image (implemented development slice):** Buildroot,
+   BusyBox init, read-only root, persistent state, console status, and baked
+   configuration under direct-kernel x86-64 KVM.
 3. **Trusted configuration pipeline:** signed seed/HTTPS bundles, generations,
    Rulesy execution, promotion, quarantine, and payload hook.
 4. **Production boot hardening:** verified boot, dm-verity, capability
@@ -590,8 +613,9 @@ Rulesy Compose milestones are independent and live in its own design.
 
 ## 21. Implementation rule
 
-Start with milestone 0 and the QEMU reference profile. Do not add cloud
-publishers, Compose code, package-manager policy, or extra hardware before the
-stage-zero contracts are executable and tested. When a contract requires a
-Rulesy change, keep that change generic and independently useful to the
-provisioner rather than adding RulesyOS semantics.
+Continue by closing the remaining milestone 0 contracts before accepting
+signed external bundles. Do not add cloud publishers, Compose code,
+package-manager policy, or extra hardware before the stage-zero contracts are
+executable and tested. When a contract requires a Rulesy change, keep that
+change generic and independently useful to the provisioner rather than adding
+RulesyOS semantics.

@@ -17,7 +17,8 @@ through another product's private implementation.
 
 ## Stable cross-product contracts
 
-The family shares only narrow, versioned surfaces:
+The family shares, or will share once independently released, only narrow,
+versioned surfaces:
 
 - Rulesy's released executable, CLI, configuration schema, exit statuses, and
   structured/human reporting;
@@ -40,11 +41,11 @@ filesystem.
 ## Workspace and build boundaries
 
 The repository root is orchestration and documentation, not a shared
-application package. Rulesy owns its Rust package and Cargo workspace under
-`products/rulesy/`. Future Rust implementations for RulesyOS or Rulesy Compose
-must own separate Cargo workspaces in their product directories unless a later
-decision explicitly changes that boundary. They must not become members of
-Rulesy's Cargo workspace merely because they share this repository.
+application package. Rulesy and RulesyOS own separate Cargo workspaces under
+their product directories. Any future Rulesy Compose Rust implementation must
+likewise own a separate workspace unless a later decision explicitly changes
+that boundary. Product crates must not become members of another product's
+Cargo workspace merely because they share this repository.
 
 Repository task orchestration may coordinate products, but product builds and
 release artifacts remain independently addressable. Moon `2.4.5` coordinates
