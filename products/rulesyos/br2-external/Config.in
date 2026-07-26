@@ -1,5 +1,6 @@
 menu "RulesyOS"
 
 source "$BR2_EXTERNAL_RULESYOS_PATH/package/rulesy/Config.in"
+source "$BR2_EXTERNAL_RULESYOS_PATH/package/rulesyos-stage0/Config.in"
 
 endmenu

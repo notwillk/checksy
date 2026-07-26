@@ -1,0 +1,6 @@
+config BR2_PACKAGE_RULESYOS_STAGE0
+	bool "rulesyos-stage0"
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+	select BR2_PACKAGE_HOST_RUSTC
+	help
+	  RulesyOS stage-zero boot orchestrator.
