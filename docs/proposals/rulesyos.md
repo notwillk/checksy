@@ -8,17 +8,14 @@
 
 **Product:** RulesyOS
 
-**Related tools:** Rulesy, formerly Checksy; Rulesy Compose (`rulesy-compose`)
-
-**Former working name:** ChecksyOS
+**Related tools:** Rulesy; Rulesy Compose (`rulesy-compose`)
 
 **Audience:** An implementation agent or engineer starting the RulesyOS repository
 
-> As of Checksy `v0.7.7`, this repository, executable, crate, default
-> configuration filenames, distribution artifacts, and provisioning-lock
-> namespace are still named Checksy. Rulesy, RulesyOS, and `rulesy-compose` are
-> proposed names and products. This document implements none of them. See the
-> [product-family and rename proposal](rulesy-product-family.md).
+> The Rulesy rename is implemented by the associated repository change.
+> RulesyOS and `rulesy-compose` remain proposed products; this document
+> implements neither. See the
+> [product-family decision](rulesy-product-family.md).
 
 This document records the intended product boundary and reference architecture.
 It is deliberately specific enough to begin implementation, but it does not
@@ -29,7 +26,7 @@ require Rulesy to become an operating-system framework.
 Milestone 0 must resolve these reviewed gaps against the then-current Rulesy
 source rather than assuming interfaces that do not exist:
 
-1. **Authenticated configuration closure.** Current Checksy preserves
+1. **Authenticated configuration closure.** Current Rulesy preserves
    per-definition working directories and strictly decodes the discovered local
    include graph, but trusted local includes and some patterns may intentionally
    escape their defining tree through `..` or absolute paths. RulesyOS cannot
@@ -38,7 +35,7 @@ source rather than assuming interfaces that do not exist:
    exists or stage zero can validate the complete closure without becoming a
    second Rulesy interpreter. This is a blocking design decision, not an
    invitation to add provider or OS semantics to Rulesy.
-2. **Machine-readable validation results.** Current Checksy exposes stable
+2. **Machine-readable validation results.** Current Rulesy exposes stable
    overall exit classes and bounded human-readable output, not a stable
    per-rule JSON report. Rulesy Compose may bind the overall exit and captured
    output initially. Any claim about structured individual results requires a
@@ -46,15 +43,15 @@ source rather than assuming interfaces that do not exist:
    text or reinterpret Rulesy YAML.
 3. **Version authority.** The release tag and CLI currently report `0.7.7`,
    while Cargo package metadata has historically used a separate version.
-   Rename and Buildroot work must select one release-version authority and test
-   every displayed and packaged version against it.
-4. **Target libc.** Official Checksy Linux archives are static musl binaries
+   Release and Buildroot work must select one release-version authority and
+   test every displayed and packaged version against it.
+4. **Target libc.** Official Rulesy Linux archives are static musl binaries
    beginning with `0.7.7`. The proposed x86-64 RulesyOS profile uses glibc.
    Its Buildroot package therefore builds the pinned Rulesy source for the
    selected Buildroot toolchain rather than copying the official musl archive.
 
-All paths and commands containing `rulesy`, `rulesyos`, or `rulesy-compose`
-below are proposed target interfaces.
+Rulesy paths and commands below are current. Paths and commands containing
+`rulesyos` or `rulesy-compose` remain proposed target interfaces.
 
 ---
 
@@ -248,8 +245,7 @@ These are product decisions, not implementation suggestions.
      check --fix --non-interactive
    ```
 
-   The adapter SHALL be updated if the completed rename changes only spelling
-   or paths. It SHALL NOT create a new Rulesy lifecycle command.
+   The adapter SHALL NOT create a new Rulesy lifecycle command.
 7. **Rulesy runs on every normal boot**, including when the selected
    configuration digest is unchanged.
 8. **The reference root filesystem is SquashFS protected by dm-verity and
@@ -538,8 +534,8 @@ GPT and leave documented expansion room for `/state`.
 - `/` is mounted read-only after dm-verity activation.
 - `/run` and `/tmp` are fresh tmpfs mounts on every boot.
 - `/var` is a fresh tmpfs hierarchy. Before invoking Rulesy, stage zero creates
-  the renamed equivalent of `/var/lib/checksy` with the ownership and mode
-  required by Rulesy’s provisioning lock.
+  `/var/lib/rulesy` with the ownership and mode required by Rulesy’s
+  provisioning lock.
 - `/state` is mounted `nodev,nosuid` by default but remains executable because
   the central product use case is installing project artifacts there.
 - No general overlay is mounted over `/`.
@@ -1947,7 +1943,7 @@ versioned schema:
 If trustworthy wall-clock time is unavailable, fields may be null and
 monotonic duration should be recorded separately.
 
-This is a proposed RulesyOS envelope. It does not imply that current Checksy
+This is a proposed RulesyOS envelope. It does not imply that current Rulesy
 emits a machine-readable per-rule report.
 
 ### 17.2 Outcome vocabulary
@@ -2074,9 +2070,8 @@ The Buildroot package must:
 - expose the final binary as `/usr/bin/rulesy`; and
 - avoid downloading Rust dependencies outside the pinned/hashed build process.
 
-If the Rulesy rename is incomplete when implementation starts, finish or
-explicitly pin the rename first. Do not ship an ambiguous mix of `checksy` and
-`rulesy` paths in the first RulesyOS release.
+Build from an immutable released Rulesy revision and use Rulesy names
+consistently in the first RulesyOS release.
 
 ### 18.4 Init choice
 
@@ -2278,7 +2273,7 @@ The MVP is complete when:
 - a clean command builds the x86-64 QEMU image from pinned inputs;
 - the image boots into a read-only Buildroot root filesystem;
 - `/state` persists;
-- the renamed Rulesy binary runs unchanged;
+- the Rulesy binary runs unchanged;
 - a baked configuration and a signed local bundle both converge;
 - Rulesy runs again after reboot even when the configuration is unchanged;
 - invalid/unsigned external configuration cannot execute;
@@ -2309,7 +2304,7 @@ A release may be described as production hardened only when:
 
 ### Milestone 0: Contract freeze
 
-- Complete or pin the Checksy-to-Rulesy rename.
+- Pin the completed Rulesy rename to an immutable Rulesy release.
 - Select one authoritative Rulesy release version and align CLI, package, and
   source pins.
 - Record the current Rulesy CLI, exit statuses, Bash requirement, lock
@@ -2624,10 +2619,10 @@ implementation, not a substitute for dependency locking:
 
 ### A.1 Rulesy source baseline
 
-- [Checksy source at the revision inspected for this
-  design](https://github.com/notwillk/checksy/tree/c16d699c8e347fe6754d079a333664c2a82802c4)
-  — current Rulesy behavior and CLI boundary before the planned rename. Replace
-  this with an immutable Rulesy repository permalink after the rename.
+- [Rulesy source at the revision inspected for this
+  design](https://github.com/notwillk/rulesy/tree/c16d699c8e347fe6754d079a333664c2a82802c4)
+  — immutable behavior and CLI snapshot. RulesyOS implementation must pin the
+  immutable Rulesy revision it actually consumes.
 
 ### A.2 Buildroot, userland, and image construction
 

@@ -1,7 +1,11 @@
-# checksy - AI Agent Context
+# Rulesy - AI Agent Context
 
 ## What This System Does
-checksy is a Rust CLI tool for running health checks in development environments. It reads YAML configuration files containing shell command-based rules, executes them, and reports pass/fail status with severity levels (debug, info, warn, error).
+Rulesy is a Rust CLI tool for running health checks in development environments. It reads YAML configuration files containing shell command-based rules, executes them, and reports pass/fail status with severity levels (debug, info, warn, error).
+
+The Rulesy rename is a clean cutover: current executables, environment
+variables, default configuration names, cache and lock paths, release
+artifacts, and documentation use Rulesy names.
 
 **Key Features:**
 - YAML-based rule definitions with shell commands
@@ -17,7 +21,7 @@ checksy is a Rust CLI tool for running health checks in development environments
 ### Config
 ```rust
 struct Config {
-    cache_path: Option<String>,      // Default: ".checksy-cache"
+    cache_path: Option<String>,      // Default: ".rulesy-cache"
     check_severity: Option<Severity>, // Min severity to run
     fail_severity: Option<Severity>,  // Min severity to fail
     preconditions: Vec<Rule>,         // Run before main rules
@@ -42,7 +46,7 @@ struct Rule {
 
 **Remote Rule Types:**
 - **File remote**: `remote: path/to/config.yaml` - Relative path
-- **Git remote**: `git+<url>#<ref>:<path>` - e.g., `git+https://github.com/org/repo.git#main:.checksy.yaml`
+- **Git remote**: `git+<url>#<ref>:<path>` - e.g., `git+https://github.com/org/repo.git#main:.rulesy.yaml`
 
 **Important:** Remote rules can ONLY have the `remote` property set (no name,
 check, severity, fix, interactive-fix, hint, or timeout allowed).
@@ -66,10 +70,10 @@ use without disabling ordinary fixes.
    - Dispatch to command handler (check, install, init, schema, version)
 
 2. **Config Loading** (`config.rs`)
-   - Resolve config path (explicit or auto-detect `.checksy.yaml`)
+   - Resolve config path (explicit or auto-detect `.rulesy.yaml`)
    - Parse YAML, apply defaults
    - **Expand remotes recursively** (preventing circular refs via visited HashSet)
-   - For git remotes: verify cache exists or error with "Run 'checksy install'"
+   - For git remotes: verify cache exists or error with "Run 'rulesy install'"
 
 3. **Git Caching** (`install` command → `cli.rs`)
    - Parse config without remote expansion to collect all git remotes
@@ -86,7 +90,7 @@ use without disabling ordinary fixes.
 ### Cache Directory Structure
 ```
 <config-dir>/
-└── <cache-path>/              # e.g., ".checksy-cache"
+└── <cache-path>/              # e.g., ".rulesy-cache"
     └── git/                  # Fixed subdirectory
         └── <encoded-repo>/   # URL-safe repo name
             └── <ref>/         # Branch/tag name
@@ -127,7 +131,7 @@ a path in the active include chain is an error that reports the ordered cycle;
 reaching a fully completed path again is a no-op.
 
 ### 3. Git Remote Caching Requirement
-Git remotes must be cached via `checksy install` BEFORE running `checksy check`. Uncached git remotes error with clear message.
+Git remotes must be cached via `rulesy install` BEFORE running `rulesy check`. Uncached git remotes error with clear message.
 
 ### 4. Severity Inheritance
 - Rules without severity inherit from `check_severity` config field
@@ -141,7 +145,7 @@ and executes relative to the caller's current working directory. Public flat
 execution uses the single working directory supplied in `Options`.
 
 ### 6. All-or-Nothing Install
-`checksy install` fails entirely if ANY git remote fails to clone.
+`rulesy install` fails entirely if ANY git remote fails to clone.
 
 ## Common Tasks
 
@@ -161,7 +165,7 @@ execution uses the single working directory supplied in `Options`.
 1. Parse git URL via `parse_git_remote()` in `config.rs`
 2. Check cache via `CacheManager::is_cached()`
 3. Get cached path via `CacheManager::get_config_path()`
-4. Error if not cached: "Run 'checksy install' first"
+4. Error if not cached: "Run 'rulesy install' first"
 
 ### Add New Rule Property
 1. Add to `Rule` struct in `schema.rs`

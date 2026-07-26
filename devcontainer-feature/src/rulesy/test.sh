@@ -6,27 +6,27 @@ TMP_PROJECT="$(mktemp -d)"
 trap 'rm -rf "$TMP_PROJECT"' EXIT
 
 cp -R "$PROJECT_ROOT/src" "$TMP_PROJECT/src"
-mkdir -p "$TMP_PROJECT/test/checksy"
+mkdir -p "$TMP_PROJECT/test/rulesy"
 
-cat >"$TMP_PROJECT/test/checksy/test.sh" <<'EOS'
+cat >"$TMP_PROJECT/test/rulesy/test.sh" <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
 
 # shellcheck source=/dev/null
 source dev-container-features-test-lib
 
-check "checksy available" checksy --version
+check "Rulesy available" rulesy --version
 
 reportResults
 EOS
-chmod +x "$TMP_PROJECT/test/checksy/test.sh"
+chmod +x "$TMP_PROJECT/test/rulesy/test.sh"
 
-cat >"$TMP_PROJECT/test/checksy/scenarios.json" <<'EOS'
+cat >"$TMP_PROJECT/test/rulesy/scenarios.json" <<'EOS'
 {
   "bare-version": {
     "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
     "features": {
-      "checksy": {
+      "rulesy": {
         "version": "0.7.5"
       }
     }
@@ -34,7 +34,7 @@ cat >"$TMP_PROJECT/test/checksy/scenarios.json" <<'EOS'
 }
 EOS
 
-cat >"$TMP_PROJECT/test/checksy/bare-version.sh" <<'EOS'
+cat >"$TMP_PROJECT/test/rulesy/bare-version.sh" <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -42,13 +42,13 @@ set -euo pipefail
 source dev-container-features-test-lib
 
 check "bare version installs exact release" \
-  bash -c 'test "$(checksy --version)" = "checksy 0.7.5"'
+  bash -c 'test "$(rulesy --version)" = "rulesy 0.7.5"'
 
 reportResults
 EOS
-chmod +x "$TMP_PROJECT/test/checksy/bare-version.sh"
+chmod +x "$TMP_PROJECT/test/rulesy/bare-version.sh"
 
 devcontainer features test \
   --project-folder "$TMP_PROJECT" \
-  --features checksy \
+  --features rulesy \
   --base-image mcr.microsoft.com/devcontainers/base:ubuntu

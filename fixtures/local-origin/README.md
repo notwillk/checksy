@@ -11,7 +11,7 @@ check, ordinary repair, and final check all validate the child's copies. Root
 patterns run before child patterns, and each group has its own negations.
 Excluded scripts write a forbidden sentinel and fail if they are ever invoked.
 
-The executable test selects `root.yaml` by absolute path while Checksy's current
+The executable test selects `root.yaml` by absolute path while Rulesy's current
 directory is an unrelated temporary directory. Trace and repair state also live
 outside this fixture, and the test snapshots the complete corpus before and
 after execution to prove that the checked-in files remain unchanged.

@@ -3,8 +3,8 @@ build:
 
 compile:
     mkdir -p dist
-    cd src && cargo build --release --bin checksy
-    cp src/target/release/checksy dist/checksy
+    cd src && cargo build --release --bin rulesy
+    cp src/target/release/rulesy dist/rulesy
     echo "Rebuilt"
 
 dev:

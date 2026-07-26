@@ -1,16 +1,15 @@
-# Rulesy product-family proposal
+# Rulesy product-family decision
 
-**Status:** Proposed; not implemented
+**Status:** Rulesy rename implemented; adjacent products proposed
 
 **Date:** 2026-07-25
 
-**Current released product:** Checksy `0.7.7`
+**Release baseline:** Rulesy `0.7.7`
 
 ## Decision
 
-Rename Checksy to **Rulesy** and use that name for the focused machine
-provisioner. Introduce two adjacent products without expanding the
-provisioner's responsibility:
+Use **Rulesy** as the name for the focused machine provisioner. Define two
+adjacent products without expanding the provisioner's responsibility:
 
 | Product | Responsibility | Explicit boundary |
 | --- | --- | --- |
@@ -21,35 +20,25 @@ provisioner's responsibility:
 The full RulesyOS and Rulesy Compose design is recorded in the
 [implementation handoff](rulesyos.md).
 
-## Current versus proposed names
+## Public vocabulary
 
-The rename has not happened. Until a dedicated rename milestone lands:
+The clean cutover uses Rulesy consistently:
 
-- the executable and Rust crate are `checksy`;
-- configuration discovery uses `.checksy.yaml` and `.checksy.yml`;
-- documentation examples invoke `checksy`;
-- installer, archive, OCI Feature, repository, and release coordinates retain
-  their Checksy names;
-- the provisioning-lock namespace retains its Checksy path; and
-- current public Rust types and CLI compatibility promises remain unchanged.
-
-The proposed target vocabulary is:
-
-| Current | Proposed target |
+| Surface | Name |
 | --- | --- |
-| Checksy | Rulesy |
-| `checksy` | `rulesy` |
-| ChecksyOS (former working name) | RulesyOS |
-| image-composition sibling | Rulesy Compose / `rulesy-compose` |
+| Product | Rulesy |
+| Executable and crate | `rulesy` |
+| Default configuration | `.rulesy.yaml`, `.rulesy.yml` |
+| Default cache | `.rulesy-cache` |
+| Firmware-style sibling | RulesyOS |
+| Image-composition sibling | Rulesy Compose / `rulesy-compose` |
 
-Documentation may use “Rulesy, formerly Checksy” when referring to the future
-product family. It must not present proposed command names as currently
-available.
+Current commands, configuration names, paths, packages, and documentation use
+Rulesy without compatibility aliases.
 
 ## Rename invariants
 
-The rename is a compatibility migration, not an opportunity to redesign the
-provisioning lifecycle.
+The rename changes public names, not the provisioning lifecycle.
 
 1. Preserve `check`, `check --fix`, `--non-interactive`, local configuration,
    stdin configuration, strict decoding, severity behavior, `skip-if`,
@@ -61,48 +50,16 @@ provisioning lifecycle.
 4. Keep trusted configuration as arbitrary Bash with the invoking identity's
    authority.
 5. Do not claim transactional rollback of arbitrary fixes.
-6. Do not publish a release containing an ambiguous mixture of user-facing
-   `checksy` and `rulesy` paths.
+6. Use Rulesy names consistently across every user-facing path.
 7. Keep RulesyOS state, trust, update, and recovery formats outside the Rulesy
    configuration schema.
 8. Keep composition variants, artifacts, publishers, provenance, and
    validation metadata outside the Rulesy configuration schema.
 
-## Required rename plan
-
-Before implementation, freeze one migration plan covering all externally
-observable names together:
-
-- repository and package naming;
-- executable and Rust crate naming;
-- one release-version authority shared by tags, CLI output, Cargo metadata,
-  installers, and packaged artifacts;
-- help/version output;
-- installer and uninstaller URLs;
-- release archive and checksum names;
-- OCI Feature coordinates and options;
-- default configuration filenames and discovery order;
-- environment variables, generated schema identifiers, and documentation
-  examples;
-- user and root provisioning-lock paths;
-- development-container bootstrap references;
-- compatibility aliases, warnings, and their removal release;
-- Git-acquisition deprecation sequencing; and
-- downstream RulesyOS Buildroot package pins.
-
-The provisioning-lock migration requires special care. Old and new executables
-must not acquire different files and therefore run concurrent provisioning
-operations during a compatibility window.
-
-The plan must state whether `.checksy.yaml`, the `checksy` executable, and
-existing package coordinates receive temporary aliases, how long those aliases
-remain, and how conflicts are diagnosed. Tests must cover mixed-version
-invocations and prove that aliases preserve one provisioning semaphore.
-
 ## Repository boundaries
 
-This repository remains the focused provisioner repository through the rename.
-RulesyOS starts in its own repository after the rename is complete or pinned.
+This repository remains the focused provisioner repository. RulesyOS starts in
+its own repository after an immutable Rulesy revision is available.
 Rulesy Compose is a sibling host-side project and may share a workspace with
 RulesyOS, but it is not compiled into the firmware and does not become a Rulesy
 subcommand.
@@ -115,14 +72,12 @@ Cross-repository contracts should be versioned and narrow:
 - Rulesy Compose composition, lockfile, provenance, validation, artifact, and
   publication contracts.
 
-## Approval gates
+## Adjacent-product approval gates
 
-No rename or add-on implementation begins from this document alone.
+The rename decision does not authorize the proposed add-ons.
 
-1. Approve the complete rename and compatibility plan.
-2. Implement and release the rename as a focused vertical slice.
-3. Freeze the Rulesy CLI snapshot consumed by RulesyOS.
-4. Start the RulesyOS repository at milestone 0 of its
+1. Freeze the Rulesy CLI snapshot consumed by RulesyOS.
+2. Start the RulesyOS repository at milestone 0 of its
    [implementation handoff](rulesyos.md).
-5. Start Rulesy Compose only after the signed-seed, structured-status, and
+3. Start Rulesy Compose only after the signed-seed, structured-status, and
    check-only validation protocols it consumes are stable.

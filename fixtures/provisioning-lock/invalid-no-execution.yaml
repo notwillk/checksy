@@ -1,6 +1,6 @@
 rules:
   - name: invalid configuration starts no command
     check: |
-      printf 'unexpected-command\n' >> "$CHECKSY_PROVISION_TRACE"
+      printf 'unexpected-command\n' >> "$RULESY_PROVISION_TRACE"
       true
     unknownProvisioningField: rejected

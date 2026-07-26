@@ -166,8 +166,8 @@ mod unix {
 
     const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 
-    fn checksy() -> Command {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_checksy"));
+    fn rulesy() -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_rulesy"));
         command.process_group(0);
         command
     }
@@ -175,7 +175,7 @@ mod unix {
     fn code(output: &Output) -> i32 {
         output.status.code().unwrap_or_else(|| {
             panic!(
-                "checksy exited by signal: stdout={:?} stderr={:?}",
+                "Rulesy exited by signal: stdout={:?} stderr={:?}",
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             )
@@ -207,7 +207,7 @@ mod unix {
                         unsafe { libc::kill(-pid, libc::SIGKILL) };
                         match receiver.recv_timeout(Duration::from_secs(3)) {
                             Ok(output) => output.unwrap(),
-                            Err(_) => panic!("checksy did not exit after watchdog: {error}"),
+                            Err(_) => panic!("Rulesy did not exit after watchdog: {error}"),
                         }
                     }
                 }
@@ -230,7 +230,7 @@ mod unix {
     }
 
     fn file_command(root: &Path, fixture: &str, command: &str, extra: &[&str]) -> Command {
-        let mut process = checksy();
+        let mut process = rulesy();
         process
             .current_dir(root)
             .arg("--config")
@@ -241,7 +241,7 @@ mod unix {
     }
 
     fn stdin_command(root: &Path, command: &str, extra: &[&str], dash: bool) -> Command {
-        let mut process = checksy();
+        let mut process = rulesy();
         process.current_dir(root);
         if dash {
             process.args(["--config", "-"]);
@@ -254,8 +254,8 @@ mod unix {
 
     fn set_trace_environment(command: &mut Command, trace: &Path, fixed: &Path) {
         command
-            .env("CHECKSY_PROVISION_TRACE", trace)
-            .env("CHECKSY_PROVISION_FIXED", fixed);
+            .env("RULESY_PROVISION_TRACE", trace)
+            .env("RULESY_PROVISION_FIXED", fixed);
     }
 
     fn assert_lock_held(output: &Output, deprecated: bool) {
@@ -263,7 +263,7 @@ mod unix {
         assert!(output.stdout.is_empty(), "{}", output_context(output));
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(stderr.contains(
-            "provisioning lock held: another checksy check --fix is already running for this user"
+            "provisioning lock held: another rulesy check --fix is already running for this user"
         ));
         assert_eq!(stderr.contains("diagnose\" is deprecated"), deprecated);
     }
@@ -320,8 +320,8 @@ mod unix {
             };
             set_trace_environment(&mut command, &trace, &fixed);
             command
-                .env("CHECKSY_PROVISION_READY_FIFO", &ready_path)
-                .env("CHECKSY_PROVISION_RELEASE_FIFO", &release_path)
+                .env("RULESY_PROVISION_READY_FIFO", &ready_path)
+                .env("RULESY_PROVISION_RELEASE_FIFO", &release_path)
                 .env("HOME", root.join(".ignored-home"))
                 .env("XDG_STATE_HOME", root.join(".ignored-xdg-state"))
                 .stdin(if stdin { Stdio::piped() } else { Stdio::null() })
@@ -624,8 +624,8 @@ mod unix {
         fs::create_dir(&repository).unwrap();
         for arguments in [
             vec!["init", "--initial-branch", "main"],
-            vec!["config", "user.name", "Checksy Fixture"],
-            vec!["config", "user.email", "checksy-fixture@example.invalid"],
+            vec!["config", "user.name", "Rulesy Fixture"],
+            vec!["config", "user.email", "rulesy-fixture@example.invalid"],
         ] {
             let status = Command::new("git")
                 .current_dir(&repository)
@@ -637,14 +637,11 @@ mod unix {
             assert!(status.success());
         }
         fs::write(
-            repository.join(".checksy.yaml"),
+            repository.join(".rulesy.yaml"),
             "rules:\n  - name: cloned local definition\n    check: 'true'\n",
         )
         .unwrap();
-        for arguments in [
-            vec!["add", ".checksy.yaml"],
-            vec!["commit", "-m", "fixture"],
-        ] {
+        for arguments in [vec!["add", ".rulesy.yaml"], vec!["commit", "-m", "fixture"]] {
             let status = Command::new("git")
                 .current_dir(&repository)
                 .args(arguments)
@@ -659,7 +656,7 @@ mod unix {
         fs::write(
             &successful_config,
             format!(
-                "cachePath: .successful-legacy-cache\nrules:\n  - remote: 'git+{}#main:.checksy.yaml'\n",
+                "cachePath: .successful-legacy-cache\nrules:\n  - remote: 'git+{}#main:.rulesy.yaml'\n",
                 repository.display()
             ),
         )
@@ -703,9 +700,9 @@ mod unix {
         );
         command
             .env("PATH", path)
-            .env("CHECKSY_REAL_GIT", real_git)
-            .env("CHECKSY_PROVISION_GIT_READY_FIFO", &ready_path)
-            .env("CHECKSY_PROVISION_GIT_RELEASE_FIFO", &release_path)
+            .env("RULESY_REAL_GIT", real_git)
+            .env("RULESY_PROVISION_GIT_READY_FIFO", &ready_path)
+            .env("RULESY_PROVISION_GIT_RELEASE_FIFO", &release_path)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -739,7 +736,7 @@ mod unix {
         let holder = Holder::spawn(copy.path(), "autodiscovery", false);
         let trace = copy.path().join(".autodiscovery-contender-trace");
         let fixed = copy.path().join(".autodiscovery-contender-fixed");
-        let mut contender = checksy();
+        let mut contender = rulesy();
         contender
             .current_dir(copy.path().join("autodiscovery"))
             .args(["check", "--fix", "--non-interactive"]);
@@ -755,7 +752,7 @@ mod unix {
             output_context(&holder_output)
         );
 
-        let mut command = checksy();
+        let mut command = rulesy();
         command
             .current_dir(copy.path().join("autodiscovery"))
             .args(["check", "--fix", "--non-interactive"]);

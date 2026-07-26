@@ -1,6 +1,6 @@
-# checksy Configuration Examples
+# Rulesy Configuration Examples
 
-Quick reference and comprehensive examples for checksy configurations.
+Quick reference and comprehensive examples for Rulesy configurations.
 
 ---
 
@@ -43,7 +43,7 @@ rules:
     timeout: 30m
 ```
 
-`checksy check --fix --non-interactive` still runs ordinary fixes but leaves a
+`rulesy check --fix --non-interactive` still runs ordinary fixes but leaves a
 needed interactive repair as a normal rule failure. Stdin configurations are
 always non-interactive.
 
@@ -51,7 +51,7 @@ always non-interactive.
 
 ```yaml
 # Settings
-cachePath: .checksy-cache
+cachePath: .rulesy-cache
 checkSeverity: warn
 failSeverity: error
 
@@ -103,7 +103,7 @@ patterns:
 
 ## Complete Production Example
 
-This example shows a full `.checksy.yaml` for a Node.js project with:
+This example shows a full `.rulesy.yaml` for a Node.js project with:
 - Preconditions (dependency checks)
 - Multiple rule types (inline, remote, patterns)
 - Severity levels
@@ -112,15 +112,15 @@ This example shows a full `.checksy.yaml` for a Node.js project with:
 - Git-based remote configs
 
 ```yaml
-# .checksy.yaml - Production-ready configuration
-# checksy version: >=0.7.0
+# .rulesy.yaml - Production-ready configuration
+# Rulesy version: >=0.7.0
 
 # ============================================
 # Optional Settings
 # ============================================
 
 # Cache location for git-based remote configs
-cachePath: .checksy-cache
+cachePath: .rulesy-cache
 
 # Default severities
 checkSeverity: warn      # Run warn+ rules (default: debug)
@@ -229,7 +229,7 @@ rules:
   # Local file remote
   - remote: ./shared/team-checks.yaml
 
-  # Git-based remote (requires 'checksy install' first)
+  # Git-based remote (requires 'rulesy install' first)
   - remote: git+https://github.com/org/shared-checks.git#main
 
   # Git remote with custom path
@@ -287,13 +287,13 @@ patterns:
 
 ```bash
 # First time setup
-checksy install              # Cache git remotes
-checksy check --fix          # Run with auto-fix
+rulesy install              # Cache git remotes
+rulesy check --fix          # Run with auto-fix
 
 # Daily development
-checksy check                # Quick validation
-checksy check --cs error     # Only blocking checks
+rulesy check                # Quick validation
+rulesy check --cs error     # Only blocking checks
 
 # CI/CD pipeline
-checksy check --cs warn --fs error  # Run warn+, fail on error
+rulesy check --cs warn --fs error  # Run warn+, fail on error
 ```

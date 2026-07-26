@@ -95,7 +95,7 @@ while (($#)); do
 done
 [[ -n $target ]]
 mkdir -p "target/$target/release"
-printf 'mock checksy\n' >"target/$target/release/checksy"
+printf 'mock rulesy\n' >"target/$target/release/rulesy"
 EOF
 chmod 0755 "$mock_bin/cargo" "$mock_bin/cross"
 

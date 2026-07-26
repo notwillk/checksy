@@ -1,7 +1,7 @@
 # P0 acceptance contract
 
 This closed, network-free corpus proves the complete P0 provisioning workflow
-through the compiled `checksy` CLI. [`cases.yaml`](cases.yaml) maps each of the
+through the compiled `rulesy` CLI. [`cases.yaml`](cases.yaml) maps each of the
 five configurations to its executable scenario in
 [`p0_acceptance.rs`](../../src/tests/p0_acceptance.rs). Tests copy configurations
 to temporary writable directories; the checked-in corpus remains unchanged.

@@ -67,8 +67,8 @@ fn fixture_snapshot() -> BTreeMap<String, Vec<u8>> {
         .collect()
 }
 
-fn checksy() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_checksy"))
+fn rulesy() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_rulesy"))
 }
 
 fn capture(mut command: Command, stdin: Option<&[u8]>) -> Output {
@@ -160,7 +160,7 @@ fn absolute_local_includes_preserve_origins_end_to_end() {
 
     let output = capture(
         {
-            let mut command = checksy();
+            let mut command = rulesy();
             command
                 .current_dir(unrelated.path())
                 .arg("--config")
@@ -168,9 +168,9 @@ fn absolute_local_includes_preserve_origins_end_to_end() {
                 .arg("check")
                 .arg("--fix")
                 .arg("--non-interactive")
-                .env("CHECKSY_LOCAL_ORIGIN_TRACE", &trace)
-                .env("CHECKSY_LOCAL_ORIGIN_FIXED", &fixed)
-                .env("CHECKSY_LOCAL_ORIGIN_FORBIDDEN", &forbidden);
+                .env("RULESY_LOCAL_ORIGIN_TRACE", &trace)
+                .env("RULESY_LOCAL_ORIGIN_FIXED", &fixed)
+                .env("RULESY_LOCAL_ORIGIN_FORBIDDEN", &forbidden);
             command
         },
         None,
@@ -229,7 +229,7 @@ fn active_cycle_is_a_preflight_error_with_an_ordered_chain() {
         concat!(
             "rules:\n",
             "  - name: cycle marker must not run\n",
-            "    check: ': > \"$CHECKSY_LOCAL_ORIGIN_MARKER\"'\n",
+            "    check: ': > \"$RULESY_LOCAL_ORIGIN_MARKER\"'\n",
             "  - remote: b.yaml\n",
         ),
     )
@@ -239,13 +239,13 @@ fn active_cycle_is_a_preflight_error_with_an_ordered_chain() {
 
     let output = capture(
         {
-            let mut command = checksy();
+            let mut command = rulesy();
             command
                 .current_dir(unrelated.path())
                 .arg("--config")
                 .arg(&a)
                 .arg("check")
-                .env("CHECKSY_LOCAL_ORIGIN_MARKER", &marker);
+                .env("RULESY_LOCAL_ORIGIN_MARKER", &marker);
             command
         },
         None,
@@ -288,7 +288,7 @@ fn completed_diamond_include_executes_once_at_first_seen_position() {
         concat!(
             "rules:\n",
             "  - name: diamond left\n",
-            "    check: \"printf 'left\\\\n' >> \\\"$CHECKSY_LOCAL_ORIGIN_TRACE\\\"\"\n",
+            "    check: \"printf 'left\\\\n' >> \\\"$RULESY_LOCAL_ORIGIN_TRACE\\\"\"\n",
             "  - remote: shared.yaml\n",
         ),
     )
@@ -298,7 +298,7 @@ fn completed_diamond_include_executes_once_at_first_seen_position() {
         concat!(
             "rules:\n",
             "  - name: diamond right\n",
-            "    check: \"printf 'right\\\\n' >> \\\"$CHECKSY_LOCAL_ORIGIN_TRACE\\\"\"\n",
+            "    check: \"printf 'right\\\\n' >> \\\"$RULESY_LOCAL_ORIGIN_TRACE\\\"\"\n",
             "  - remote: shared.yaml\n",
         ),
     )
@@ -308,20 +308,20 @@ fn completed_diamond_include_executes_once_at_first_seen_position() {
         concat!(
             "rules:\n",
             "  - name: diamond shared\n",
-            "    check: \"printf 'shared\\\\n' >> \\\"$CHECKSY_LOCAL_ORIGIN_TRACE\\\"\"\n",
+            "    check: \"printf 'shared\\\\n' >> \\\"$RULESY_LOCAL_ORIGIN_TRACE\\\"\"\n",
         ),
     )
     .unwrap();
 
     let output = capture(
         {
-            let mut command = checksy();
+            let mut command = rulesy();
             command
                 .current_dir(unrelated.path())
                 .arg("--config")
                 .arg(&root)
                 .arg("check")
-                .env("CHECKSY_LOCAL_ORIGIN_TRACE", &trace);
+                .env("RULESY_LOCAL_ORIGIN_TRACE", &trace);
             command
         },
         None,
@@ -355,7 +355,7 @@ fn stdin_remains_cwd_rooted_and_self_contained() {
             "#!/usr/bin/env bash\n",
             "set -euo pipefail\n",
             "[[ $(<asset.txt) == stdin-origin ]]\n",
-            "printf 'stdin-pattern\\n' >> \"$CHECKSY_LOCAL_ORIGIN_TRACE\"\n",
+            "printf 'stdin-pattern\\n' >> \"$RULESY_LOCAL_ORIGIN_TRACE\"\n",
         ),
     )
     .unwrap();
@@ -366,23 +366,23 @@ fn stdin_remains_cwd_rooted_and_self_contained() {
         "    skip-if: |\n",
         "      set -eu\n",
         "      test \"$(cat ./asset.txt)\" = \"stdin-origin\"\n",
-        "      printf 'stdin-skip\\n' >> \"$CHECKSY_LOCAL_ORIGIN_TRACE\"\n",
+        "      printf 'stdin-skip\\n' >> \"$RULESY_LOCAL_ORIGIN_TRACE\"\n",
         "      exit 1\n",
         "    check: |\n",
         "      set -eu\n",
         "      test \"$(cat ./asset.txt)\" = \"stdin-origin\"\n",
-        "      printf 'stdin-check\\n' >> \"$CHECKSY_LOCAL_ORIGIN_TRACE\"\n",
+        "      printf 'stdin-check\\n' >> \"$RULESY_LOCAL_ORIGIN_TRACE\"\n",
         "patterns:\n",
         "  - patterns/*.sh\n",
     );
     let output = capture(
         {
-            let mut command = checksy();
+            let mut command = rulesy();
             command
                 .current_dir(directory.path())
                 .arg("--stdin-config")
                 .arg("check")
-                .env("CHECKSY_LOCAL_ORIGIN_TRACE", &trace);
+                .env("RULESY_LOCAL_ORIGIN_TRACE", &trace);
             command
         },
         Some(document.as_bytes()),
@@ -407,19 +407,19 @@ fn stdin_remains_cwd_rooted_and_self_contained() {
         concat!(
             "rules:\n",
             "  - name: stdin include must not run\n",
-            "    check: ': > \"$CHECKSY_LOCAL_ORIGIN_MARKER\"'\n",
+            "    check: ': > \"$RULESY_LOCAL_ORIGIN_MARKER\"'\n",
         ),
     )
     .unwrap();
     let rejected = capture(
         {
-            let mut command = checksy();
+            let mut command = rulesy();
             command
                 .current_dir(directory.path())
                 .arg("--config")
                 .arg("-")
                 .arg("check")
-                .env("CHECKSY_LOCAL_ORIGIN_MARKER", &marker);
+                .env("RULESY_LOCAL_ORIGIN_MARKER", &marker);
             command
         },
         Some(b"rules:\n  - remote: child.yaml\n"),

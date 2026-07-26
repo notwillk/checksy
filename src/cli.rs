@@ -12,8 +12,8 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-const DEFAULT_INIT_CONFIG_FILENAME: &str = ".checksy.config.yaml";
-const DEFAULT_INIT_CONFIG_TEMPLATE: &str = r#"# checksy configuration
+const DEFAULT_INIT_CONFIG_FILENAME: &str = ".rulesy.config.yaml";
+const DEFAULT_INIT_CONFIG_TEMPLATE: &str = r#"# Rulesy configuration
 rules:
   - name: "Example rule"
     severity: error
@@ -60,7 +60,7 @@ fn run_with_lock_acquirer(
         "install" => run_install(cmd_args.to_vec(), globals, stdout, stderr),
         "schema" => run_schema(cmd_args.to_vec(), stdout, stderr),
         "version" | "--version" => {
-            writeln!(stdout, "checksy {}", VERSION).ok();
+            writeln!(stdout, "rulesy {}", VERSION).ok();
             0
         }
         _ => {
@@ -133,7 +133,7 @@ fn run_diagnose(
 ) -> i32 {
     let _ = writeln!(
         stderr,
-        "⚠️  \"checksy diagnose\" is deprecated, please use \"checksy check\" instead"
+        "⚠️  \"rulesy diagnose\" is deprecated, please use \"rulesy check\" instead"
     );
     run_check(args, globals, stdout, stderr, acquire_lock)
 }
@@ -208,7 +208,7 @@ fn run_check(
     let resolved = match resolve_path(&config_path) {
         Ok(Some(p)) => p,
         Ok(None) => {
-            writeln!(stderr, "no configuration file found; specify --config or add .checksy.yaml to the workspace").ok();
+            writeln!(stderr, "no configuration file found; specify --config or add .rulesy.yaml to the workspace").ok();
             return 2;
         }
         Err(e) => {
@@ -265,7 +265,7 @@ fn run_check(
             Err(ProvisioningLockError::Held) => {
                 let _ = writeln!(
                     stderr,
-                    "provisioning lock held: another checksy check --fix is already running for this user"
+                    "provisioning lock held: another rulesy check --fix is already running for this user"
                 );
                 return 4;
             }
@@ -536,7 +536,7 @@ fn run_install(
     let resolved = match resolve_path(&config_path) {
         Ok(Some(p)) => p,
         Ok(None) => {
-            writeln!(stderr, "no configuration file found; specify --config or add .checksy.yaml to the workspace").ok();
+            writeln!(stderr, "no configuration file found; specify --config or add .rulesy.yaml to the workspace").ok();
             return 2;
         }
         Err(e) => {
@@ -786,16 +786,16 @@ fn run_schema(_args: Vec<String>, stdout: &mut dyn Write, stderr: &mut dyn Write
 fn print_usage(stdout: &mut dyn Write) {
     let _ = writeln!(
         stdout,
-        "checksy - provision the current machine from trusted configuration"
+        "rulesy - provision the current machine from trusted configuration"
     );
     let _ = writeln!(stdout);
     let _ = writeln!(stdout, "Usage:");
-    let _ = writeln!(stdout, "  checksy [global flags] <command> [command flags]");
+    let _ = writeln!(stdout, "  rulesy [global flags] <command> [command flags]");
     let _ = writeln!(stdout);
     let _ = writeln!(stdout, "Global Flags:");
     let _ = writeln!(
         stdout,
-        "  --config string   path to config file (defaults to .checksy.yaml)"
+        "  --config string   path to config file (defaults to .rulesy.yaml)"
     );
     let _ = writeln!(stdout, "  --stdin-config    read config from stdin");
     let _ = writeln!(stdout);
@@ -1007,7 +1007,7 @@ fn reraise_parent_signal(signal: i32) -> i32 {
     // been flushed so the invoking shell observes conventional signal status.
     // signal-hook deliberately leaves its dispatcher installed after the last
     // registration is removed. Emulate the platform default so the parent
-    // observes signal termination instead of an ordinary Checksy exit code.
+    // observes signal termination instead of an ordinary Rulesy exit code.
     let _ = signal_hook::low_level::emulate_default_handler(signal);
     2
 }
@@ -1405,7 +1405,7 @@ mod tests {
             assert_eq!(
                 String::from_utf8(stderr).unwrap(),
                 concat!(
-                    "provisioning lock held: another checksy check --fix is already running ",
+                    "provisioning lock held: another rulesy check --fix is already running ",
                     "for this user\n"
                 )
             );

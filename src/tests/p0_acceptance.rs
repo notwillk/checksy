@@ -245,12 +245,12 @@ mod unix {
         directory
     }
 
-    fn checksy() -> Command {
-        Command::new(env!("CARGO_BIN_EXE_checksy"))
+    fn rulesy() -> Command {
+        Command::new(env!("CARGO_BIN_EXE_rulesy"))
     }
 
     fn file_command(root: &Path, fixture: &str, extra: &[&str]) -> Command {
-        let mut command = checksy();
+        let mut command = rulesy();
         command
             .current_dir(root)
             .arg("--config")
@@ -261,7 +261,7 @@ mod unix {
     }
 
     fn stdin_command(root: &Path, extra: &[&str]) -> Command {
-        let mut command = checksy();
+        let mut command = rulesy();
         command
             .current_dir(root)
             .arg("--stdin-config")
@@ -334,7 +334,7 @@ mod unix {
                 kill_group_if_present(pid);
                 match receiver.recv_timeout(Duration::from_secs(3)) {
                     Ok(output) => output.unwrap(),
-                    Err(_) => panic!("Checksy did not exit after watchdog: {error}"),
+                    Err(_) => panic!("Rulesy did not exit after watchdog: {error}"),
                 }
             }
         }
@@ -347,7 +347,7 @@ mod unix {
         } else {
             command.stdin(Stdio::null());
         }
-        // SAFETY: setsid is async-signal-safe and detaches Checksy from the
+        // SAFETY: setsid is async-signal-safe and detaches Rulesy from the
         // test runner's terminal while also creating a watchdog process group.
         unsafe {
             command.pre_exec(|| rustix::process::setsid().map(|_| ()).map_err(Into::into));
@@ -368,7 +368,7 @@ mod unix {
     fn exit_code(output: &Output) -> i32 {
         output.status.code().unwrap_or_else(|| {
             panic!(
-                "Checksy exited by signal: stdout={:?} stderr={:?}",
+                "Rulesy exited by signal: stdout={:?} stderr={:?}",
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             )
@@ -400,10 +400,10 @@ mod unix {
 
     fn set_core_environment(command: &mut Command, root: &Path) {
         command
-            .env("CHECKSY_P0_TRACE", root.join("trace"))
-            .env("CHECKSY_P0_FIXED", root.join("fixed"))
+            .env("RULESY_P0_TRACE", root.join("trace"))
+            .env("RULESY_P0_FIXED", root.join("fixed"))
             .env(
-                "CHECKSY_P0_MISSING_COMMAND",
+                "RULESY_P0_MISSING_COMMAND",
                 root.join("guaranteed-missing-command"),
             );
     }
@@ -604,7 +604,7 @@ mod unix {
                     kill_group_if_present(self.pid);
                     match self.status.recv_timeout(Duration::from_secs(3)) {
                         Ok(status) => status,
-                        Err(_) => panic!("PTY Checksy did not exit after watchdog: {error}"),
+                        Err(_) => panic!("PTY Rulesy did not exit after watchdog: {error}"),
                     }
                 }
             };
@@ -645,21 +645,21 @@ mod unix {
             .current_dir(root)
             .args([
                 "-c",
-                "exec \"$CHECKSY_P0_BIN\" --stdin-config check --fix < \"$CHECKSY_P0_CONFIG\"",
+                "exec \"$RULESY_P0_BIN\" --stdin-config check --fix < \"$RULESY_P0_CONFIG\"",
             ])
-            .env("CHECKSY_P0_BIN", env!("CARGO_BIN_EXE_checksy"))
-            .env("CHECKSY_P0_CONFIG", root.join(fixture));
+            .env("RULESY_P0_BIN", env!("CARGO_BIN_EXE_rulesy"))
+            .env("RULESY_P0_CONFIG", root.join(fixture));
         command
     }
 
     fn set_interactive_environment(command: &mut Command, root: &Path) {
         command
             .env(
-                "CHECKSY_P0_INTERACTIVE_TRACE",
+                "RULESY_P0_INTERACTIVE_TRACE",
                 root.join("interactive-trace"),
             )
             .env(
-                "CHECKSY_P0_INTERACTIVE_FIXED",
+                "RULESY_P0_INTERACTIVE_FIXED",
                 root.join("interactive-fixed"),
             );
     }
@@ -790,11 +790,11 @@ mod unix {
                 file_command(root, fixture, &["--fix", "--non-interactive"])
             };
             command
-                .env("CHECKSY_P0_LOCK_TRACE", root.join(format!("{label}-trace")))
-                .env("CHECKSY_P0_LOCK_FIXED", root.join(format!("{label}-fixed")))
-                .env("CHECKSY_P0_LOCK_READY_FIFO", &ready_path)
-                .env("CHECKSY_P0_LOCK_RELEASE_FIFO", &release_path)
-                .env("CHECKSY_P0_LOCK_HOLDER", "1")
+                .env("RULESY_P0_LOCK_TRACE", root.join(format!("{label}-trace")))
+                .env("RULESY_P0_LOCK_FIXED", root.join(format!("{label}-fixed")))
+                .env("RULESY_P0_LOCK_READY_FIFO", &ready_path)
+                .env("RULESY_P0_LOCK_RELEASE_FIFO", &release_path)
+                .env("RULESY_P0_LOCK_HOLDER", "1")
                 .stdin(if stdin { Stdio::piped() } else { Stdio::null() })
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
@@ -839,7 +839,7 @@ mod unix {
         assert!(output.stdout.is_empty(), "{}", output_context(output));
         assert_eq!(
             String::from_utf8_lossy(&output.stderr),
-            "provisioning lock held: another checksy check --fix is already running for this user\n"
+            "provisioning lock held: another rulesy check --fix is already running for this user\n"
         );
     }
 
@@ -870,9 +870,9 @@ mod unix {
             };
             let contender_trace = copy.path().join("contender-trace");
             contender
-                .env("CHECKSY_P0_LOCK_TRACE", &contender_trace)
-                .env("CHECKSY_P0_LOCK_FIXED", copy.path().join("contender-fixed"))
-                .env("CHECKSY_P0_LOCK_HOLDER", "0");
+                .env("RULESY_P0_LOCK_TRACE", &contender_trace)
+                .env("RULESY_P0_LOCK_FIXED", copy.path().join("contender-fixed"))
+                .env("RULESY_P0_LOCK_HOLDER", "0");
             let output = run_headless(contender, contender_is_stdin.then_some(document.as_slice()));
             assert_lock_contention(&output);
             assert!(!contender_trace.exists());
@@ -922,8 +922,8 @@ mod unix {
                 "p0_acceptance_tree_helper",
                 "--nocapture",
             ])
-            .env("CHECKSY_P0_TREE_ROLE", role)
-            .env("CHECKSY_P0_TREE_DIR", directory)
+            .env("RULESY_P0_TREE_ROLE", role)
+            .env("RULESY_P0_TREE_DIR", directory)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
@@ -938,7 +938,7 @@ mod unix {
             line.clear();
             let bytes = reader.read_line(&mut line).unwrap();
             assert_ne!(bytes, 0, "tree helper exited before readiness");
-            if line.trim() == "CHECKSY_P0_TREE_READY" {
+            if line.trim() == "RULESY_P0_TREE_READY" {
                 return;
             }
         }
@@ -950,13 +950,13 @@ mod unix {
         unsafe {
             libc::signal(libc::SIGTERM, libc::SIG_IGN);
         }
-        let role = std::env::var("CHECKSY_P0_TREE_ROLE").unwrap();
-        let directory = PathBuf::from(std::env::var_os("CHECKSY_P0_TREE_DIR").unwrap());
+        let role = std::env::var("RULESY_P0_TREE_ROLE").unwrap();
+        let directory = PathBuf::from(std::env::var_os("RULESY_P0_TREE_DIR").unwrap());
         let _lock = hold_advisory_lock(&directory.join(format!("{role}.lock")));
 
         match role.as_str() {
             "grandchild" => {
-                println!("CHECKSY_P0_TREE_READY");
+                println!("RULESY_P0_TREE_READY");
                 std::io::stdout().flush().unwrap();
                 loop {
                     thread::park();
@@ -967,7 +967,7 @@ mod unix {
                     .spawn()
                     .unwrap();
                 wait_for_helper_ready(&mut grandchild);
-                println!("CHECKSY_P0_TREE_READY");
+                println!("RULESY_P0_TREE_READY");
                 std::io::stdout().flush().unwrap();
                 let _grandchild = grandchild;
                 loop {
@@ -985,7 +985,7 @@ mod unix {
                 let mut child = tree_helper_command("child", &directory).spawn().unwrap();
                 wait_for_helper_ready(&mut child);
                 let socket_path =
-                    PathBuf::from(std::env::var_os("CHECKSY_P0_TREE_READY_SOCKET").unwrap());
+                    PathBuf::from(std::env::var_os("RULESY_P0_TREE_READY_SOCKET").unwrap());
                 UnixDatagram::unbound()
                     .unwrap()
                     .send_to(b"ready", socket_path)
@@ -1020,12 +1020,12 @@ mod unix {
             &["--fix", "--non-interactive", "--no-fail"],
         );
         command
-            .env("CHECKSY_P0_TREE_HELPER", std::env::current_exe().unwrap())
-            .env("CHECKSY_P0_TREE_ROLE", "leader")
-            .env("CHECKSY_P0_TREE_DIR", copy.path())
-            .env("CHECKSY_P0_TREE_READY_SOCKET", &ready_path)
-            .env("CHECKSY_P0_TREE_UNEXPECTED_CHECK", &unexpected_check)
-            .env("CHECKSY_P0_TREE_UNEXPECTED_LATER", &unexpected_later)
+            .env("RULESY_P0_TREE_HELPER", std::env::current_exe().unwrap())
+            .env("RULESY_P0_TREE_ROLE", "leader")
+            .env("RULESY_P0_TREE_DIR", copy.path())
+            .env("RULESY_P0_TREE_READY_SOCKET", &ready_path)
+            .env("RULESY_P0_TREE_UNEXPECTED_CHECK", &unexpected_check)
+            .env("RULESY_P0_TREE_UNEXPECTED_LATER", &unexpected_later)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .stdin(Stdio::null());
@@ -1078,7 +1078,7 @@ mod unix {
             } else {
                 file_command(copy.path(), &invalid.fixture, &["--fix", "--no-fail"])
             };
-            command.env("CHECKSY_P0_INVALID_MARKER", &marker);
+            command.env("RULESY_P0_INVALID_MARKER", &marker);
             let output = run_headless(command, stdin.then_some(document.as_slice()));
             assert_exit(&output, 2);
             assert!(!marker.exists());
@@ -1090,7 +1090,7 @@ mod unix {
         let holder = Holder::spawn(copy.path(), &lock_case.fixture, false, "invalid-holder");
         let marker = copy.path().join("invalid-marker-under-lock");
         let mut command = file_command(copy.path(), &invalid.fixture, &["--fix", "--no-fail"]);
-        command.env("CHECKSY_P0_INVALID_MARKER", &marker);
+        command.env("RULESY_P0_INVALID_MARKER", &marker);
         let output = run_headless(command, None);
         assert_exit(&output, 2);
         assert!(!marker.exists());

@@ -1,7 +1,7 @@
 # `skip-if` contract fixtures
 
 This closed, network-free corpus exercises `skip-if` through the compiled
-`checksy` binary. [`cases.yaml`](cases.yaml) maps every YAML configuration and
+`rulesy` binary. [`cases.yaml`](cases.yaml) maps every YAML configuration and
 shell asset in this directory to an executable test in
 `src/tests/skip_if_contract.rs`. Tests copy the corpus to a temporary directory
 before commands create marker files, leaving the checked-in fixtures unchanged.

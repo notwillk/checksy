@@ -3,4 +3,4 @@ rules:
     severity: error
     timeout: 2s
     check: "true"
-    interactive-fix: ': > "$CHECKSY_UNEXPECTED_INTERACTIVE"'
+    interactive-fix: ': > "$RULESY_UNEXPECTED_INTERACTIVE"'

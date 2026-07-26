@@ -1,7 +1,7 @@
 # Process-runner contract fixtures
 
 This closed, network-free corpus exercises the supervised command runner through the
-compiled `checksy` binary. [`cases.yaml`](cases.yaml) maps every checked-in YAML
+compiled `rulesy` binary. [`cases.yaml`](cases.yaml) maps every checked-in YAML
 configuration and shell asset to an executable Rust integration test in
 `src/tests/process_runner_contract.rs`.
 
@@ -16,7 +16,7 @@ All commands are local Bash and require no public network. The parent-interrupti
 case invokes an ignored helper in the Rust integration-test executable. Its child
 and grandchild hold advisory locks, announce readiness with pipe and Unix-datagram
 handshakes, and use bounded watchdogs; the test does not use sleeps for readiness.
-The TTY case starts Checksy with a real controlling pseudoterminal and proves that a
+The TTY case starts Rulesy with a real controlling pseudoterminal and proves that a
 runner child has neither readable stdin nor access to `/dev/tty`.
 
 Run the complete executable contract from the crate directory:

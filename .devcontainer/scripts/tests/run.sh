@@ -33,7 +33,7 @@ assert_fails() {
   fi
 }
 
-assert_equal 0.7.6 "$CHECKSY_VERSION" "Checksy version pin"
+assert_equal 0.7.6 "$RULESY_VERSION" "Rulesy version pin"
 assert_equal 0.145.0 "$CODEX_CLI_VERSION" "Codex CLI version pin"
 assert_equal 1.57.0 "$JUST_VERSION" "Just version pin"
 assert_equal 1.29.0 "$RUSTUP_VERSION" "Rustup version pin"
@@ -43,19 +43,19 @@ is_release_version 1.57.0 || fail "valid release version was rejected"
 assert_fails "two-component release version" is_release_version 1.57
 assert_fails "prefixed release version" is_release_version v1.57.0
 
-mapfile -t checksy_feature_refs < <(
-  grep -oE 'ghcr\.io/notwillk/checksy/checksy[^"[:space:]]*' \
+mapfile -t rulesy_feature_refs < <(
+  grep -oE 'ghcr\.io/notwillk/rulesy/rulesy[^"[:space:]]*' \
     "$DEVCONTAINER_DIR/devcontainer.json" || true
 )
-if ((${#checksy_feature_refs[@]} != 1)); then
-  fail "devcontainer.json must contain exactly one canonical Checksy Feature reference"
+if ((${#rulesy_feature_refs[@]} != 1)); then
+  fail "devcontainer.json must contain exactly one canonical Rulesy Feature reference"
 fi
-checksy_feature_ref=${checksy_feature_refs[0]}
-if [[ ! $checksy_feature_ref =~ ^ghcr\.io/notwillk/checksy/checksy@sha256:[0-9a-f]{64}$ ]]; then
-  fail "Checksy Feature must use the canonical package name and a lowercase SHA-256 digest"
+rulesy_feature_ref=${rulesy_feature_refs[0]}
+if [[ ! $rulesy_feature_ref =~ ^ghcr\.io/notwillk/rulesy/rulesy@sha256:[0-9a-f]{64}$ ]]; then
+  fail "Rulesy Feature must use the canonical package name and a lowercase SHA-256 digest"
 fi
-feature_checksy_version=$(
-  awk -v feature="\"$checksy_feature_ref\"" '
+feature_rulesy_version=$(
+  awk -v feature="\"$rulesy_feature_ref\"" '
     index($0, feature) { in_feature = 1; next }
     in_feature && /"version"[[:space:]]*:/ {
       line = $0
@@ -67,7 +67,7 @@ feature_checksy_version=$(
     in_feature && /^[[:space:]]*}/ { exit }
   ' "$DEVCONTAINER_DIR/devcontainer.json"
 )
-assert_equal "$CHECKSY_VERSION" "$feature_checksy_version" "Checksy Feature version option"
+assert_equal "$RULESY_VERSION" "$feature_rulesy_version" "Rulesy Feature version option"
 devcontainer_base=$(
   sed -nE 's/^[[:space:]]*"image":[[:space:]]*"([^"]+)",?$/\1/p' \
     "$DEVCONTAINER_DIR/devcontainer.json"
@@ -77,11 +77,11 @@ assert_equal \
   "$devcontainer_base" \
   "devcontainer base image"
 if grep -F 'devcontainer-features/rustup' "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null; then
-  fail "Rustup must be provisioned by Checksy rather than a devcontainer Feature"
+  fail "Rustup must be provisioned by Rulesy rather than a devcontainer Feature"
 fi
 grep -F '"/home/vscode/.local/opt/codex-cli/bin:/home/vscode/.local/bin:/home/vscode/.cargo/bin:${containerEnv:PATH}"' \
   "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
-  fail "devcontainer remote PATH must expose user-installed Checksy provisioning tools"
+  fail "devcontainer remote PATH must expose user-installed Rulesy provisioning tools"
 if grep -E 'sudo[^#]*npm[[:space:]]+install' \
   "$SCRIPTS_DIR/devcontainer-cli/install.sh" >/dev/null; then
   fail "Dev Container CLI npm lifecycle scripts must not run as root"
@@ -102,7 +102,7 @@ grep -F '"GITHUB_ACTIONS": "${localEnv:GITHUB_ACTIONS}"' \
   "$DEVCONTAINER_DIR/devcontainer.json" >/dev/null || \
   fail "devcontainer must propagate the GitHub Actions marker"
 grep -F 'skip-if: '\''[ "${GITHUB_ACTIONS:-}" = "true" ]'\''' \
-  "$DEVCONTAINER_DIR/checksy.yaml" >/dev/null || \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
   fail "Codex CLI rule must skip only in GitHub Actions"
 GITHUB_ACTIONS=true bash -c '[ "${GITHUB_ACTIONS:-}" = "true" ]' || \
   fail "Codex CLI predicate did not skip GitHub Actions"
@@ -332,10 +332,10 @@ done
 
 expected_tools=(prerequisites entr just rustup devcontainer-cli codex-cli)
 for tool in "${expected_tools[@]}"; do
-  grep -F "check: exec bash ./scripts/$tool/check.sh" "$DEVCONTAINER_DIR/checksy.yaml" >/dev/null || \
-    fail "checksy.yaml does not reference ./scripts/$tool/check.sh"
-  grep -F "fix: exec bash ./scripts/$tool/install.sh" "$DEVCONTAINER_DIR/checksy.yaml" >/dev/null || \
-    fail "checksy.yaml does not reference ./scripts/$tool/install.sh"
+  grep -F "check: exec bash ./scripts/$tool/check.sh" "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+    fail "rulesy.yaml does not reference ./scripts/$tool/check.sh"
+  grep -F "fix: exec bash ./scripts/$tool/install.sh" "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+    fail "rulesy.yaml does not reference ./scripts/$tool/install.sh"
   [[ -f $SCRIPTS_DIR/$tool/check.sh ]] || fail "missing $tool/check.sh"
   [[ -f $SCRIPTS_DIR/$tool/install.sh ]] || fail "missing $tool/install.sh"
   grep -F 'source "$SCRIPT_DIR/../shared/lib.sh"' "$SCRIPTS_DIR/$tool/check.sh" >/dev/null || \
@@ -343,8 +343,8 @@ for tool in "${expected_tools[@]}"; do
   grep -F 'source "$SCRIPT_DIR/../shared/lib.sh"' "$SCRIPTS_DIR/$tool/install.sh" >/dev/null || \
     fail "$tool/install.sh does not source shared/lib.sh relative to itself"
 done
-if grep -F '.devcontainer/scripts/' "$DEVCONTAINER_DIR/checksy.yaml" >/dev/null; then
-  fail "checksy.yaml helper paths must be relative to its .devcontainer working directory"
+if grep -F '.devcontainer/scripts/' "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null; then
+  fail "rulesy.yaml helper paths must be relative to its .devcontainer working directory"
 fi
 
 printf 'Devcontainer provisioning helper tests passed\n'

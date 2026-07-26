@@ -1,8 +1,8 @@
-# checksy Architecture
+# Rulesy Architecture
 
 ## System Overview
 
-checksy is a CLI provisioner: it takes a trusted configuration for the current
+Rulesy is a CLI provisioner: it takes a trusted configuration for the current
 machine, runs checks, optionally applies fixes, and re-runs checks to confirm the
 result. `check --fix` is the sole provisioning lifecycle. The target
 architecture has no `apply` command, daemon, scheduler manager, enrollment
@@ -11,21 +11,20 @@ database, or rollback engine.
 
 Configuration enters through a local file, automatic local discovery, or
 stdin. Acquisition, updates, authentication, and unpacking compose outside
-Checksy. The current built-in Git cache and `install` command are legacy
+Rulesy. The current built-in Git cache and `install` command are legacy
 compatibility surfaces pending a separate deprecation milestone; they are not a
 foundation for new architecture.
 
-## Proposed sibling-product boundary
+## Sibling-product boundary
 
-The current Checksy architecture above remains normative until an explicitly
-approved rename lands. The [product-family
-proposal](docs/proposals/rulesy-product-family.md) would rename Checksy to
-Rulesy without changing its lifecycle and defines two separate sibling
-products:
+The Rulesy rename changed the provisioner's public name without changing its
+lifecycle. The
+[product-family decision](docs/proposals/rulesy-product-family.md) also defines
+two proposed sibling products:
 
 | Product | Owns | Must not add to this crate |
 | --- | --- | --- |
-| Checksy today / Rulesy after the proposed rename | Trusted local configuration decoding and the existing check, optional fix, and final-check lifecycle | OS policy, source providers, persistent generations, image formats, or publishers |
+| Rulesy | Trusted local configuration decoding and the existing check, optional fix, and final-check lifecycle | OS policy, source providers, persistent generations, image formats, or publishers |
 | RulesyOS | Verified stage zero, acquisition and authentication, boot-time configuration generations, firmware updates, recovery, and status | A second rule evaluator or OS-specific Rulesy semantics |
 | Rulesy Compose | Host-side composition, sealing, exact-artifact validation, provenance, and explicit publication | A second Rulesy interpreter or hidden publication from a local build |
 
@@ -40,13 +39,13 @@ publication, and OS concerns must not be backported into this provisioner.
 
 The development container exercises the provisioning lifecycle against a real
 machine image. Its [devcontainer definition](.devcontainer/devcontainer.json)
-bootstraps Checksy `0.7.6` with Feature `1.0.1` pinned by canonical OCI manifest
+bootstraps Rulesy `0.7.6` with Feature `1.0.1` pinned by canonical OCI manifest
 digest. Pinning both layers prevents a mutable Feature tag or its default
 version from silently changing the bootstrap.
 
 Once the workspace exists, `postCreateCommand` runs
-`checksy --config=.devcontainer/checksy.yaml check --fix --non-interactive` as
-the remote user. The [flat provisioning definition](.devcontainer/checksy.yaml)
+`rulesy --config=.devcontainer/rulesy.yaml check --fix --non-interactive` as
+the remote user. The [flat provisioning definition](.devcontainer/rulesy.yaml)
 uses [shared version data](.devcontainer/tool-versions.env) and
 [repository-local helpers](.devcontainer/scripts/) to provision Entr, Just
 `1.57.0`, Rustup `1.29.0` with Rust `1.94.1`, and Dev Container CLI `0.88.0`.
@@ -66,9 +65,9 @@ network-free [test runner](.devcontainer/scripts/tests/run.sh). Their paths are
 relative to the defining `.devcontainer/` configuration directory.
 
 This is deliberately a guest-userland boundary. The base image,
-Docker-in-Docker, editor customization, and immutable Checksy Feature must exist
-before Checksy can run or belong to the container/editor lifecycle, so they
-remain declared outside Checksy. Rustup and Rust are provisioned inside that
+Docker-in-Docker, editor customization, and immutable Rulesy Feature must exist
+before Rulesy can run or belong to the container/editor lifecycle, so they
+remain declared outside Rulesy. Rustup and Rust are provisioned inside that
 boundary. Quality CI first converges the same definition and then runs it
 check-only before invoking the provisioned `cargo`, `rustfmt`, and `clippy`,
 proving provisioning and idempotence through the public CLI.
@@ -76,7 +75,7 @@ proving provisioning and idempotence through the public CLI.
 ## Security and mutation boundary
 
 Configured checks and fixes are trusted arbitrary Bash executed with the
-invoking user's authority. They are not sandboxed. Checksy does not invoke
+invoking user's authority. They are not sandboxed. Rulesy does not invoke
 `sudo`, cannot transactionally roll back shell mutations, and may leave partial
 machine changes when a fix fails. Correct and idempotent fixes remain the
 configuration author's responsibility. Process supervision adds no CPU,
@@ -133,7 +132,7 @@ in-group descendants remain subject to the same command deadline and cleanup.
 
 Temporary handlers cover `SIGINT`, `SIGTERM`, `SIGHUP`, and `SIGQUIT`. The first
 parent signal is forwarded to the group and starts the same grace period; a
-second termination signal forces immediate `KILL`. Checksy finishes group and
+second termination signal forces immediate `KILL`. Rulesy finishes group and
 leader cleanup and flushes retained diagnostics while its temporary handlers
 remain active. It then restores the exact saved signal dispositions and
 emulates the first signal's platform-default action so its parent observes the
@@ -179,11 +178,11 @@ compiled-binary file and stdin scenarios.
 ### Interactive command lifecycle
 
 Terminal access is resolved lazily only after a rule actually fails and needs
-an `interactive-fix`. For an eligible file-backed run, Checksy opens and
+an `interactive-fix`. For an eligible file-backed run, Rulesy opens and
 validates `/dev/tty`, requires itself to own the foreground terminal, allocates
 an inner PTY, copies terminal state and window size, and launches the repair as
 a new session/process-group leader with the PTY slave as its controlling
-terminal. No Checksy confirmation is synthesized; the repair command owns its
+terminal. No Rulesy confirmation is synthesized; the repair command owns its
 prompts.
 
 The supervisor relays terminal input and merged output nonblockingly. Output is
@@ -194,7 +193,7 @@ to interactive repairs. Exact outer terminal attributes are restored after
 success, completed nonzero exit, setup or relay failure, timeout, and
 interruption. Unsupported job-control suspension is cleaned up and reported as
 an operational failure rather than allowing supervision to hang. During the
-relay, Checksy also guards against outer `SIGTSTP`/`SIGTTIN`/`SIGTTOU`,
+relay, Rulesy also guards against outer `SIGTSTP`/`SIGTTIN`/`SIGTTOU`,
 revalidates foreground ownership, and fails operationally if terminal ownership
 is lost; the child receives default job-control dispositions.
 
@@ -207,16 +206,16 @@ precedence over an explicit `--non-interactive`.
 
 ### Provisioning-lock identity
 
-The lock namespace is `checksy-provision`, keyed only by effective UID. It is
+The lock namespace is `rulesy-provision`, keyed only by effective UID. It is
 not keyed by configuration, source, working directory, include graph, or
 legacy `cachePath`.
 
 | Platform and effective user | Lock file |
 | --- | --- |
-| Linux non-root | `<account-home>/.local/state/checksy/provision.lock` |
-| macOS non-root | `<account-home>/Library/Application Support/checksy/provision.lock` |
-| Linux root | `/var/lib/checksy/provision.lock` |
-| macOS root | `/Library/Application Support/checksy/provision.lock` |
+| Linux non-root | `<account-home>/.local/state/rulesy/provision.lock` |
+| macOS non-root | `<account-home>/Library/Application Support/rulesy/provision.lock` |
+| Linux root | `/var/lib/rulesy/provision.lock` |
+| macOS root | `/Library/Application Support/rulesy/provision.lock` |
 
 Non-root account homes come from the operating-system account database rather
 than environment variables. All file-backed, auto-discovered, and stdin
@@ -230,19 +229,19 @@ materialization, progress output, or any configured command. The descriptor is
 held through initial checks, fixes, final checks, and reporting. Check-only
 runs and `install` do not lock.
 
-The final Checksy directory has exact mode `0700`. The persistent
+The final Rulesy directory has exact mode `0700`. The persistent
 `provision.lock` has exact mode `0600`, is owned by the effective UID, is opened
 without following links, and must remain a regular single-link file whose
 pathname still identifies the opened inode. A process-local device/inode
 registry makes a second acquisition in one process contend consistently with a
 separate process. The descriptor is close-on-exec, so configured descendants do
-not extend lock ownership. Checksy never reads, writes, truncates, or unlinks
+not extend lock ownership. Rulesy never reads, writes, truncates, or unlinks
 the lock file; descriptor close or process death releases the kernel lock and
 stale contents are irrelevant.
 
 Path, account lookup, ownership, permission, type, and other integrity failures
 are operational exit `2`. Only a held advisory lock is exit `4`, reported as
-`provisioning lock held: another checksy check --fix is already running for this user`.
+`provisioning lock held: another rulesy check --fix is already running for this user`.
 Neither result can be hidden by `--no-fail`. Unsupported native platforms fail
 closed for `check --fix` before a configured command starts.
 
@@ -291,7 +290,7 @@ types only after validation. Rules form a closed union between a remote-only
 include and an executable check. Stdin configurations are required to be
 self-contained and cannot include another definition.
 
-`checksy schema` uses Schemars to generate a deterministic Draft 7 schema from
+`rulesy schema` uses Schemars to generate a deterministic Draft 7 schema from
 that same strict model. Structural fixture cases must agree between generated
 schema validation and typed deserialization. YAML duplicate keys and multiple
 documents remain parser-layer errors because they do not yield a unique JSON
@@ -321,7 +320,7 @@ and exercises the compiled binary without a public network.
 - **Global flags**: `--config`, `--stdin-config` parsing
 
 ### config.rs (Configuration Layer)
-- **Path resolution**: Auto-detect `.checksy.yaml` or explicit path
+- **Path resolution**: Auto-detect `.rulesy.yaml` or explicit path
 - **Strict YAML parsing**: One decoder for root, nested, stdin, fix, and install paths
 - **Stream validation**: Reject duplicate keys and multiple YAML documents
 - **Remote expansion**: Recursive config inclusion (file & git)
@@ -419,7 +418,7 @@ run_install() [cli.rs]
   layer, generated schema shape, deterministic schema output, and stdout
   write/flush failures.
 - The [compiled strict-configuration tests](src/tests/strict_configuration.rs)
-  invoke `checksy` for file, auto-discovery, both stdin spellings, nested local
+  invoke `rulesy` for file, auto-discovery, both stdin spellings, nested local
   files, cached legacy Git files, `check --fix`, `install`, `init`, and
   `schema`.
 - The indexed fixture corpus is closed: every YAML document under its `valid/`
@@ -518,7 +517,7 @@ run_install() [cli.rs]
   installer syntax checks. A separate native ARM64 job rebuilds the actual
   devcontainer and checks its pinned bootstrap binary, covering the Docker
   Desktop on Apple Silicon architecture path.
-- Manual fresh-container validation asserts Checksy `0.7.6`, Entr availability, Just
+- Manual fresh-container validation asserts Rulesy `0.7.6`, Entr availability, Just
   `1.57.0`, Rust `1.94.1` with `rustfmt` and `clippy`, Dev Container CLI
   `0.88.0`, Codex CLI `0.145.0` for local development, and Node.js 20 or newer.
   A second convergence and check-only pass prove the fixes are idempotent;
@@ -528,8 +527,8 @@ run_install() [cli.rs]
 
 - The release pipeline produces statically linked musl artifacts for x86_64
   and aarch64 while preserving the existing archive names consumed by the
-  installer and Checksy Feature. This becomes the published Linux contract
-  with Checksy `0.7.7`.
+  installer and Rulesy Feature. This becomes the published Linux contract
+  with Rulesy `0.7.7`.
 - Cross itself and both cross-build images are pinned. CI and release
   publication reject Linux artifacts with an ELF interpreter, dynamic library
   dependencies, or GLIBC version requirements.
@@ -557,7 +556,7 @@ run_install() [cli.rs]
 - **tempfile**: Test utilities (dev dependency)
 
 ### File System Interactions
-- **Config discovery**: Looks for `.checksy.yaml`, `.checksy.yml` in CWD
+- **Config discovery**: Looks for `.rulesy.yaml`, `.rulesy.yml` in CWD
 - **Cache directory**: Creates `<cache-path>/git/` structure
 - **Work directory**: CLI-resolved file-backed commands run in their defining
   config's directory; stdin uses the caller's current directory. Public flat
@@ -568,14 +567,14 @@ run_install() [cli.rs]
 ## Entry Points
 
 ### CLI Entry (Primary)
-- **Binary**: `checksy` (main.rs → cli::run)
+- **Binary**: `rulesy` (main.rs → cli::run)
 - **Global flags**: `--config PATH`, `--stdin-config`
 - **Check/diagnose flags**: `--fix`, `--non-interactive`, severity controls, and
   `--no-fail`
 - **Commands**: check, install, init, schema, version, diagnose (deprecated)
 
 ### Library Entry (Rust API)
-- **Crate**: `checksy` (lib.rs)
+- **Crate**: `rulesy` (lib.rs)
 - **Public exports**:
   - `run()` - CLI entry
   - `load()` - Config loading

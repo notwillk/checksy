@@ -1,4 +1,4 @@
-# checksy Coding Conventions
+# Rulesy Coding Conventions
 
 ## Naming Conventions
 

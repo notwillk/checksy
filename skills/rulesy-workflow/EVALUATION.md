@@ -1,8 +1,8 @@
-# checksy-workflow Skill Quality Evaluation
+# rulesy-workflow Skill Quality Evaluation
 
 **Date:** 2026-04-26  
-**Skill:** checksy-workflow  
-**Location:** `/workspaces/checksy/skills/checksy-workflow/SKILL.md`  
+**Skill:** rulesy-workflow
+**Location:** `/workspaces/rulesy/skills/rulesy-workflow/SKILL.md`
 **Size:** 956 lines
 
 ---
@@ -11,7 +11,7 @@
 
 **Overall Quality: GOOD (7.5/10)**
 
-The checksy-workflow skill is comprehensive and well-structured. It covers all major use cases for checksy and provides detailed guidance. However, there are opportunities for improvement in test coverage, conciseness, and handling of ambiguous scenarios.
+The rulesy-workflow skill is comprehensive and well-structured. It covers all major use cases for Rulesy and provides detailed guidance. However, there are opportunities for improvement in test coverage, conciseness, and handling of ambiguous scenarios.
 
 ---
 
@@ -26,7 +26,7 @@ The checksy-workflow skill is comprehensive and well-structured. It covers all m
 
 **Evidence:**
 - 11 main sections with clear hierarchy
-- Every checksy command is documented
+- Every Rulesy command is documented
 - Configuration examples cover simple to complex scenarios
 
 ---
@@ -44,7 +44,7 @@ The checksy-workflow skill is comprehensive and well-structured. It covers all m
 31:## Quick Reference
 69:## Installation & Setup
 121:## Configuration
-244:## Running checksy
+244:## Running Rulesy
 347:## Remote Configs (Advanced)
 ...
 ```
@@ -73,7 +73,7 @@ The checksy-workflow skill is comprehensive and well-structured. It covers all m
 - Covers major use cases
 
 **Current Description:**
-> Configure, run, and debug checksy workspace health checks. Use when creating or editing .checksy.yaml files, troubleshooting rule failures, setting up git-based remote configs, using --fix auto-repair, integrating into CI/CD, or generating JSON schemas for IDE validation. Covers severity levels (debug/info/warn/error), preconditions, patterns, caching, and common errors — even if the user just says "health checks", "workspace validation", or mentions YAML config issues without naming checksy explicitly.
+> Configure, run, and debug Rulesy workspace health checks. Use when creating or editing .rulesy.yaml files, troubleshooting rule failures, setting up git-based remote configs, using --fix auto-repair, integrating into CI/CD, or generating JSON schemas for IDE validation. Covers severity levels (debug/info/warn/error), preconditions, patterns, caching, and common errors — even if the user just says "health checks", "workspace validation", or mentions YAML config issues without naming Rulesy explicitly.
 
 ---
 
@@ -93,12 +93,12 @@ Create `evals/evals.json` with test cases:
 
 ```json
 {
-  "skill_name": "checksy-workflow",
+  "skill_name": "rulesy-workflow",
   "evals": [
     {
       "id": 1,
-      "prompt": "I need to set up checksy for my Node.js project. What should my .checksy.yaml look like?",
-      "expected_output": "A valid .checksy.yaml with preconditions for node_modules and rules for tests, linting, and type checking",
+      "prompt": "I need to set up Rulesy for my Node.js project. What should my .rulesy.yaml look like?",
+      "expected_output": "A valid .rulesy.yaml with preconditions for node_modules and rules for tests, linting, and type checking",
       "files": [],
       "assertions": [
         "Output contains valid YAML with 'rules' array",
@@ -109,25 +109,25 @@ Create `evals/evals.json` with test cases:
     },
     {
       "id": 2,
-      "prompt": "My checksy check is failing with 'git remote not cached' error. How do I fix this?",
-      "expected_output": "Clear instructions to run 'checksy install' or use --fix flag",
+      "prompt": "My Rulesy check is failing with 'git remote not cached' error. How do I fix this?",
+      "expected_output": "Clear instructions to run 'rulesy install' or use --fix flag",
       "files": [],
       "assertions": [
-        "Mentions 'checksy install' command",
+        "Mentions 'rulesy install' command",
         "Mentions --fix flag as alternative",
         "Explains why the error occurs"
       ]
     },
     {
       "id": 3,
-      "prompt": "How do I integrate checksy into my GitHub Actions workflow?",
-      "expected_output": "Complete GitHub Actions YAML with checksy installation and execution",
+      "prompt": "How do I integrate Rulesy into my GitHub Actions workflow?",
+      "expected_output": "Complete GitHub Actions YAML with Rulesy installation and execution",
       "files": [],
       "assertions": [
         "Provides valid GitHub Actions workflow syntax",
-        "Includes checksy installation step",
-        "Includes 'checksy install' for remotes",
-        "Includes 'checksy check' execution"
+        "Includes Rulesy installation step",
+        "Includes 'rulesy install' for remotes",
+        "Includes 'rulesy check' execution"
       ]
     },
     {
@@ -143,13 +143,13 @@ Create `evals/evals.json` with test cases:
     },
     {
       "id": 5,
-      "prompt": "I want to share checksy configs across my team's repos. What's the best approach?",
+      "prompt": "I want to share Rulesy configs across my team's repos. What's the best approach?",
       "expected_output": "Explanation of git-based remote configs with proper URL format",
       "files": [],
       "assertions": [
         "Mentions 'remote:' property in rules",
         "Shows git+URL format",
-        "Mentions 'checksy install' requirement"
+        "Mentions 'rulesy install' requirement"
       ]
     }
   ]
@@ -174,10 +174,10 @@ Create `evals/evals.json` with test cases:
 **Fix:** Consolidate into one "Complete Example" with annotations:
 
 ```yaml
-# Complete .checksy.yaml Example
+# Complete .rulesy.yaml Example
 
 # Optional settings
-cachePath: .checksy-cache
+cachePath: .rulesy-cache
 checkSeverity: warn      # Run warn+ rules by default
 failSeverity: error      # Only errors cause failure
 
@@ -214,20 +214,20 @@ patterns:
 **Fix:** Create a "CI/CD Template" with variables:
 
 ```yaml
-# Template: checksy in CI/CD
+# Template: Rulesy in CI/CD
 
 # Generic steps (apply to any CI platform):
 # 1. Install: curl -fsSL .../install.sh | bash
-# 2. Cache remotes: checksy install  
-# 3. Run: checksy check
+# 2. Cache remotes: rulesy install
+# 3. Run: rulesy check
 
 # Platform-specific examples:
 # [GitHub Actions, GitLab CI, etc. with 10-15 lines each]
 ```
 
 #### C. Duplicate Command References
-**Current:** Commands shown in Quick Reference AND again in Running checksy section
-**Fix:** Keep Quick Reference table, expand Running checksy with context/explanations only
+**Current:** Commands shown in Quick Reference AND again in Running Rulesy section
+**Fix:** Keep Quick Reference table, expand Running Rulesy with context/explanations only
 
 ---
 
@@ -250,9 +250,9 @@ patterns:
 Use remote references to compose:
 
 ```yaml
-# .checksy.yaml (local)
+# .rulesy.yaml (local)
 rules:
-  - remote: ~/.config/checksy/global.yaml
+  - remote: ~/.config/rulesy/global.yaml
   - name: Project-specific check
     check: ./test.sh
 ```
@@ -263,9 +263,9 @@ Use `--config` flag with environment detection:
 ```bash
 # In your wrapper script
 if [ "$ENV" = "ci" ]; then
-  checksy --config=.checksy.ci.yaml check
+  rulesy --config=.rulesy.ci.yaml check
 else
-  checksy check
+  rulesy check
 fi
 ```
 ```
@@ -311,7 +311,7 @@ rules:
 
 3. **Split into remote configs:**
    - Group by domain (security, tests, linting)
-   - Run specific groups: `checksy --config=security.yaml check`
+   - Run specific groups: `rulesy --config=security.yaml check`
 
 4. **Cache expensive checks:**
    ```yaml
@@ -358,24 +358,24 @@ If you encounter an error not listed above:
 
 1. **Verify config syntax:**
    ```bash
-   checksy schema > /tmp/schema.json
+   rulesy schema > /tmp/schema.json
    # Use online YAML validator with schema
    ```
 
 2. **Run with minimal config:**
    ```bash
-   checksy --config=/dev/null check  # Test with empty stdin
+   rulesy --config=/dev/null check  # Test with empty stdin
    ```
 
 3. **Check version compatibility:**
    ```bash
-   checksy version
+   rulesy version
    # Compare with schema version in SKILL.md
    ```
 
 4. **Enable verbose output:**
    ```bash
-   checksy check --check-severity debug  # See all rules including debug
+   rulesy check --check-severity debug  # See all rules including debug
    ```
 ```
 
@@ -426,8 +426,8 @@ debug → Troubleshooting (verbose diagnostics)
 ### 6. ⚠️ No Version/Changelog Info (Score: 7/10) → **LOW**
 **Problem:**
 - Skill version is "1.0.0" but no context on what changed
-- Checksy itself may update - skill could become outdated
-- Users don't know if skill covers latest checksy features
+- Rulesy itself may update - skill could become outdated
+- Users don't know if skill covers latest Rulesy features
 
 **Impact:** LOW - Maintenance issue over time
 
@@ -439,12 +439,12 @@ metadata:
   author: opencode
   version: "1.0.0"
   category: dev-tools
-  checksy_version_compatibility: ">=0.7.0"
+  rulesy_version_compatibility: ">=0.7.0"
   last_updated: "2026-04-26"
   changelog:
     - version: "1.0.0"
       date: "2026-04-26"
-      notes: "Initial skill covering all checksy 0.7.0 features"
+      notes: "Initial skill covering all Rulesy 0.7.0 features"
 ```
 
 ---
@@ -489,7 +489,7 @@ metadata:
 
 ## Next Steps
 
-1. Create `skills/checksy-workflow/evals/evals.json` (see recommendation #1)
+1. Create `skills/rulesy-workflow/evals/evals.json` (see recommendation #1)
 2. Run evaluation using `evaluate-skill-quality` skill
 3. Address issues in priority order
 4. Re-evaluate after changes

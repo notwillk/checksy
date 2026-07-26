@@ -45,7 +45,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: checksy-${{ matrix.target }}-artifact
+          name: rulesy-${{ matrix.target }}-artifact
           path: |
             dist/*.tar.gz
             dist/*-checksum.txt
@@ -75,7 +75,7 @@ jobs:
       - name: Download Linux artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: checksy-${{ matrix.target }}-artifact
+          name: rulesy-${{ matrix.target }}-artifact
           path: dist
 
       - name: Verify static Linux binary
@@ -83,14 +83,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist/verify
-          tar -xzf "dist/checksy_linux_${{ matrix.arch }}.tar.gz" -C dist/verify
+          tar -xzf "dist/rulesy_linux_${{ matrix.arch }}.tar.gz" -C dist/verify
           expected_version="$(sed -n 's/^pub const VERSION: &str = "\(.*\)";$/\1/p' src/version.rs)"
           test -n "$expected_version"
-          ./scripts/verify-static-linux-binary.sh dist/verify/checksy "$expected_version"
+          ./scripts/verify-static-linux-binary.sh dist/verify/rulesy "$expected_version"
           smoke_config="$(mktemp)"
           trap 'rm -f "$smoke_config"' EXIT
           printf 'rules:\n  - name: static release smoke\n    check: test "$(uname -s)" = Linux\n' >"$smoke_config"
-          dist/verify/checksy --config="$smoke_config" check --fix --non-interactive
+          dist/verify/rulesy --config="$smoke_config" check --fix --non-interactive
 
   release:
     needs:

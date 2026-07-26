@@ -1,7 +1,7 @@
 # Provisioning-lock contract fixtures
 
 This closed, network-free corpus exercises the per-user provisioning semaphore
-through the compiled `checksy` binary and focused lock tests.
+through the compiled `rulesy` binary and focused lock tests.
 [`cases.yaml`](cases.yaml) maps every checked-in configuration and asset to an
 executable Rust test. Tests copy mutable cases to a temporary directory; the
 checked-in corpus remains unchanged.
@@ -41,6 +41,6 @@ Run the executable contract from the crate directory:
 cargo test --locked --test provisioning_lock_contract
 ```
 
-This semaphore coordinates Checksy provisioning only. It does not sandbox
+This semaphore coordinates Rulesy provisioning only. It does not sandbox
 trusted Bash, make partially applied fixes transactional, or prevent an
 unrelated process from modifying the machine without taking the advisory lock.

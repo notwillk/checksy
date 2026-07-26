@@ -627,7 +627,7 @@ pub mod schema {
 
     impl JsonSchema for Config {
         fn schema_name() -> Cow<'static, str> {
-            "checksy configuration".into()
+            "Rulesy configuration".into()
         }
 
         fn json_schema(generator: &mut SchemaGenerator) -> Schema {

@@ -4,20 +4,20 @@ rules:
       set -eu
       test "$(cat ./Brewfile)" = "child-brewfile"
       test "$(cat ./template.txt)" = "child-template"
-      printf 'child-skip\n' >> "$CHECKSY_LOCAL_ORIGIN_TRACE"
+      printf 'child-skip\n' >> "$RULESY_LOCAL_ORIGIN_TRACE"
       exit 1
     check: |
       set -eu
       test "$(cat ./Brewfile)" = "child-brewfile"
       test "$(cat ./template.txt)" = "child-template"
-      printf 'child-check\n' >> "$CHECKSY_LOCAL_ORIGIN_TRACE"
-      test -f "$CHECKSY_LOCAL_ORIGIN_FIXED"
+      printf 'child-check\n' >> "$RULESY_LOCAL_ORIGIN_TRACE"
+      test -f "$RULESY_LOCAL_ORIGIN_FIXED"
     fix: |
       set -eu
       test "$(cat ./Brewfile)" = "child-brewfile"
       test "$(cat ./template.txt)" = "child-template"
-      printf 'child-fix\n' >> "$CHECKSY_LOCAL_ORIGIN_TRACE"
-      : > "$CHECKSY_LOCAL_ORIGIN_FIXED"
+      printf 'child-fix\n' >> "$RULESY_LOCAL_ORIGIN_TRACE"
+      : > "$RULESY_LOCAL_ORIGIN_FIXED"
 
 patterns:
   - patterns/*.sh

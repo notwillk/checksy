@@ -1,14 +1,14 @@
 # Interactive-fix contract fixtures
 
 This closed, network-free corpus exercises terminal-capable repairs through the
-compiled `checksy` binary. [`cases.yaml`](cases.yaml) maps every checked-in YAML
+compiled `rulesy` binary. [`cases.yaml`](cases.yaml) maps every checked-in YAML
 configuration and shell asset to an executable Rust integration test. Tests copy
 the corpus to a temporary directory before running cases that create markers, so
 this directory remains unchanged.
 
 An `interactive-fix` is considered only during `check --fix` after its check
 fails. Eligible file-backed runs use a real controlling terminal and an inner
-PTY; Checksy adds no confirmation prompt. The configured command owns its
+PTY; Rulesy adds no confirmation prompt. The configured command owns its
 interaction. A successful repair receives one non-interactive final check. A
 completed nonzero repair keeps the original rule failure, skips that final
 check, and allows later rules to run.

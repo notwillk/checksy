@@ -42,7 +42,7 @@ cases:
       - stdin-config
     test: all_configuration_entrypoints_and_deprecated_diagnose_apply_skip_if
   - id: auto-discovered-entrypoint
-    fixture: autodiscovery/.checksy.yaml
+    fixture: autodiscovery/.rulesy.yaml
     assets: []
     modes:
       - auto-discovery
@@ -50,7 +50,7 @@ cases:
   - id: inherited-environment-gates
     fixture: inherited-environment-gates.yaml
     assets:
-      - bin/checksy-skip-if-contract-gate
+      - bin/rulesy-skip-if-contract-gate
     modes:
       - file-check-gates-absent
       - file-check-gates-present

@@ -27,7 +27,7 @@ impl fmt::Display for ProvisioningLockError {
         match self {
             Self::Held => write!(
                 formatter,
-                "provisioning lock held: another checksy check --fix is already running for this user"
+                "provisioning lock held: another rulesy check --fix is already running for this user"
             ),
             Self::State(message) => write!(formatter, "provisioning lock state failed: {message}"),
             Self::UnsupportedPlatform => write!(
@@ -65,7 +65,7 @@ impl ProvisioningLock {
         }
     }
 
-    /// Acquire a lock in an explicitly selected final Checksy directory.
+    /// Acquire a lock in an explicitly selected final Rulesy directory.
     ///
     /// This is crate-private so command-level tests can exercise orchestration
     /// without modifying the invoking account's real provisioning namespace.
@@ -214,7 +214,7 @@ mod supported {
             #[cfg(target_os = "linux")]
             return Ok((
                 PathBuf::from("/"),
-                ["var", "lib", "checksy"]
+                ["var", "lib", "rulesy"]
                     .into_iter()
                     .map(OsString::from)
                     .collect(),
@@ -223,7 +223,7 @@ mod supported {
             #[cfg(target_os = "macos")]
             return Ok((
                 PathBuf::from("/"),
-                ["Library", "Application Support", "checksy"]
+                ["Library", "Application Support", "rulesy"]
                     .into_iter()
                     .map(OsString::from)
                     .collect(),
@@ -235,9 +235,9 @@ mod supported {
 
     fn non_root_location(account_home: PathBuf) -> (PathBuf, Vec<OsString>) {
         #[cfg(target_os = "linux")]
-        let suffix = [".local", "state", "checksy"];
+        let suffix = [".local", "state", "rulesy"];
         #[cfg(target_os = "macos")]
-        let suffix = ["Library", "Application Support", "checksy"];
+        let suffix = ["Library", "Application Support", "rulesy"];
         (
             account_home,
             suffix.into_iter().map(OsString::from).collect(),
@@ -630,7 +630,7 @@ mod supported {
         }
 
         fn run_isolated(name: &str, scenario: fn()) {
-            const SCENARIO_ENV: &str = "CHECKSY_TEST_PROVISION_LOCK_ISOLATED";
+            const SCENARIO_ENV: &str = "RULESY_TEST_PROVISION_LOCK_ISOLATED";
             if std::env::var(SCENARIO_ENV).as_deref() == Ok(name) {
                 scenario();
                 return;
@@ -663,7 +663,7 @@ mod supported {
         }
 
         fn lock_directory(temporary: &tempfile::TempDir) -> PathBuf {
-            temporary.path().join("checksy")
+            temporary.path().join("rulesy")
         }
 
         fn assert_state(error: ProvisioningLockError, fragment: &str) {
@@ -733,8 +733,8 @@ mod supported {
             fs::create_dir(&real_parent).unwrap();
             let alias_parent = temporary.path().join("alias");
             symlink(&real_parent, &alias_parent).unwrap();
-            let real_directory = real_parent.join("checksy");
-            let alias_directory = alias_parent.join("checksy");
+            let real_directory = real_parent.join("rulesy");
+            let alias_directory = alias_parent.join("rulesy");
 
             let lock = ProvisioningLock::acquire_at(&real_directory, uid()).unwrap();
             assert_eq!(
@@ -783,14 +783,14 @@ mod supported {
 
             let parent = open_directory(temporary.path(), "test lock parent").unwrap();
             let descriptor =
-                open_or_create_directory(&parent, OsStr::new("checksy"), uid(), true).unwrap();
+                open_or_create_directory(&parent, OsStr::new("rulesy"), uid(), true).unwrap();
             let opened = OpenedLockDirectory {
                 descriptor,
                 parent,
-                name: OsString::from("checksy"),
+                name: OsString::from("rulesy"),
             };
 
-            fs::rename(&directory, temporary.path().join("displaced-checksy")).unwrap();
+            fs::rename(&directory, temporary.path().join("displaced-rulesy")).unwrap();
             fs::create_dir(&directory).unwrap();
             fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
 
@@ -903,15 +903,15 @@ mod supported {
             {
                 let (anchor, suffix) = production_location(0).unwrap();
                 assert_eq!(anchor, Path::new("/"));
-                assert_eq!(suffix, ["var", "lib", "checksy"]);
+                assert_eq!(suffix, ["var", "lib", "rulesy"]);
                 let (anchor, suffix) = non_root_location(PathBuf::from("/accounts/example"));
                 assert_eq!(anchor, Path::new("/accounts/example"));
-                assert_eq!(suffix, [".local", "state", "checksy"]);
+                assert_eq!(suffix, [".local", "state", "rulesy"]);
                 let home = account_home(uid()).unwrap();
                 if uid() != 0 {
                     let (anchor, suffix) = production_location(uid()).unwrap();
                     assert_eq!(anchor, home);
-                    assert_eq!(suffix, [".local", "state", "checksy"]);
+                    assert_eq!(suffix, [".local", "state", "rulesy"]);
                 }
             }
 
@@ -919,15 +919,15 @@ mod supported {
             {
                 let (anchor, suffix) = production_location(0).unwrap();
                 assert_eq!(anchor, Path::new("/"));
-                assert_eq!(suffix, ["Library", "Application Support", "checksy"]);
+                assert_eq!(suffix, ["Library", "Application Support", "rulesy"]);
                 let (anchor, suffix) = non_root_location(PathBuf::from("/accounts/example"));
                 assert_eq!(anchor, Path::new("/accounts/example"));
-                assert_eq!(suffix, ["Library", "Application Support", "checksy"]);
+                assert_eq!(suffix, ["Library", "Application Support", "rulesy"]);
                 let home = account_home(uid()).unwrap();
                 if uid() != 0 {
                     let (anchor, suffix) = production_location(uid()).unwrap();
                     assert_eq!(anchor, home);
-                    assert_eq!(suffix, ["Library", "Application Support", "checksy"]);
+                    assert_eq!(suffix, ["Library", "Application Support", "rulesy"]);
                 }
             }
         }
@@ -944,7 +944,7 @@ mod supported {
                     "provision_lock::supported::tests::provisioning_lock_holder_helper",
                     "--nocapture",
                 ])
-                .env("CHECKSY_TEST_PROVISION_LOCK_DIR", &directory)
+                .env("RULESY_TEST_PROVISION_LOCK_DIR", &directory)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -1022,7 +1022,7 @@ mod supported {
                     "provision_lock::supported::tests::provisioning_lock_holder_helper",
                     "--nocapture",
                 ])
-                .env("CHECKSY_TEST_PROVISION_LOCK_DIR", directory)
+                .env("RULESY_TEST_PROVISION_LOCK_DIR", directory)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -1069,7 +1069,7 @@ mod supported {
         #[test]
         #[ignore]
         fn provisioning_lock_holder_helper() {
-            let Some(directory) = std::env::var_os("CHECKSY_TEST_PROVISION_LOCK_DIR") else {
+            let Some(directory) = std::env::var_os("RULESY_TEST_PROVISION_LOCK_DIR") else {
                 return;
             };
             let _lock = ProvisioningLock::acquire_at(Path::new(&directory), uid()).unwrap();

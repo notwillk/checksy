@@ -1,4 +1,4 @@
-# checksy-workflow Skill - Final Evaluation Report
+# rulesy-workflow Skill - Final Evaluation Report
 
 **Date:** 2026-04-26  
 **Version:** 1.2.0  
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The checksy-workflow skill has been thoroughly evaluated and is **ready for production use**. All requirements have been implemented, tested, and validated.
+The rulesy-workflow skill has been thoroughly evaluated and is **ready for production use**. All requirements have been implemented, tested, and validated.
 
 **Final Quality Score: 9.0/10** ⭐⭐⭐⭐⭐
 
@@ -45,7 +45,7 @@ The checksy-workflow skill has been thoroughly evaluated and is **ready for prod
 ### 1. Description Quality ✅
 
 **Current Description:**
-> Configure, run, and debug checksy workspace health checks. Use when creating or editing .checksy.yaml files, troubleshooting rule failures, setting up git-based remote configs, using --fix auto-repair, integrating into CI/CD, or generating JSON schemas for IDE validation. Covers severity levels (debug/info/warn/error), preconditions, patterns, caching, and common errors — even if the user just says "health checks", "workspace validation", or mentions YAML config issues without naming checksy explicitly. Does NOT handle infrastructure health checks (Kubernetes probes, Docker HEALTHCHECK, application monitoring) — use this skill specifically for checksy CLI configuration and workspace validation.
+> Configure, run, and debug Rulesy workspace health checks. Use when creating or editing .rulesy.yaml files, troubleshooting rule failures, setting up git-based remote configs, using --fix auto-repair, integrating into CI/CD, or generating JSON schemas for IDE validation. Covers severity levels (debug/info/warn/error), preconditions, patterns, caching, and common errors — even if the user just says "health checks", "workspace validation", or mentions YAML config issues without naming Rulesy explicitly. Does NOT handle infrastructure health checks (Kubernetes probes, Docker HEALTHCHECK, application monitoring) — use this skill specifically for Rulesy CLI configuration and workspace validation.
 
 **Score: 9/10**
 
@@ -68,7 +68,7 @@ The checksy-workflow skill has been thoroughly evaluated and is **ready for prod
 1. Quick Reference
 2. Installation & Setup
 3. Configuration
-4. Running checksy
+4. Running Rulesy
 5. Remote Configs (Advanced)
 6. Fix Mode
 7. CI/CD Integration
@@ -169,7 +169,7 @@ The checksy-workflow skill has been thoroughly evaluated and is **ready for prod
 ### 6. User Experience ✅
 
 **Feedback Section:**
-- Clear PR link to https://github.com/notwillk/checksy/
+- Clear PR link to https://github.com/notwillk/rulesy/
 - Template for bug reports
 - Reference to source code
 
@@ -276,7 +276,7 @@ The checksy-workflow skill has been thoroughly evaluated and is **ready for prod
 
 ## Conclusion
 
-**The checksy-workflow skill is COMPLETE and PRODUCTION-READY.**
+**The rulesy-workflow skill is COMPLETE and PRODUCTION-READY.**
 
 All requirements have been implemented:
 1. ✅ Trigger evaluation queries (20 cases)

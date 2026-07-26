@@ -1,7 +1,7 @@
 use std::io;
 
 fn run(args: Vec<String>, stdout: &mut dyn io::Write, stderr: &mut dyn io::Write) -> i32 {
-    checksy::run(args, stdout, stderr)
+    rulesy::run(args, stdout, stderr)
 }
 
 fn main() {

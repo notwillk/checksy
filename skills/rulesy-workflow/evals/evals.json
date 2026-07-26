@@ -1,11 +1,11 @@
 {
-  "skill_name": "checksy-workflow",
+  "skill_name": "rulesy-workflow",
   "evals": [
     {
       "id": 1,
       "name": "basic-config-setup",
-      "prompt": "I need to set up checksy for my Node.js project. What should my .checksy.yaml look like?",
-      "expected_output": "A valid .checksy.yaml with preconditions for node_modules and rules for tests, linting, and type checking",
+      "prompt": "I need to set up Rulesy for my Node.js project. What should my .rulesy.yaml look like?",
+      "expected_output": "A valid .rulesy.yaml with preconditions for node_modules and rules for tests, linting, and type checking",
       "files": [],
       "assertions": [
         "Output contains valid YAML with 'rules' array",
@@ -17,11 +17,11 @@
     {
       "id": 2,
       "name": "git-cache-error-fix",
-      "prompt": "My checksy check is failing with 'git remote not cached' error. How do I fix this?",
-      "expected_output": "Clear instructions to run 'checksy install' or use --fix flag",
+      "prompt": "My Rulesy check is failing with 'git remote not cached' error. How do I fix this?",
+      "expected_output": "Clear instructions to run 'rulesy install' or use --fix flag",
       "files": [],
       "assertions": [
-        "Mentions 'checksy install' command",
+        "Mentions 'rulesy install' command",
         "Mentions --fix flag as alternative",
         "Explains why the error occurs"
       ]
@@ -29,14 +29,14 @@
     {
       "id": 3,
       "name": "github-actions-integration",
-      "prompt": "How do I integrate checksy into my GitHub Actions workflow?",
-      "expected_output": "Complete GitHub Actions YAML with checksy installation and execution",
+      "prompt": "How do I integrate Rulesy into my GitHub Actions workflow?",
+      "expected_output": "Complete GitHub Actions YAML with Rulesy installation and execution",
       "files": [],
       "assertions": [
         "Provides valid GitHub Actions workflow syntax",
-        "Includes checksy installation step",
-        "Includes 'checksy install' for remotes",
-        "Includes 'checksy check' execution"
+        "Includes Rulesy installation step",
+        "Includes 'rulesy install' for remotes",
+        "Includes 'rulesy check' execution"
       ]
     },
     {
@@ -54,13 +54,13 @@
     {
       "id": 5,
       "name": "remote-config-setup",
-      "prompt": "I want to share checksy configs across my team's repos. What's the best approach?",
+      "prompt": "I want to share Rulesy configs across my team's repos. What's the best approach?",
       "expected_output": "Explanation of git-based remote configs with proper URL format",
       "files": [],
       "assertions": [
         "Mentions 'remote:' property in rules",
         "Shows git+URL format",
-        "Mentions 'checksy install' requirement"
+        "Mentions 'rulesy install' requirement"
       ]
     },
     {
@@ -79,11 +79,11 @@
       "id": 7,
       "name": "implicit-trigger-health-checks",
       "prompt": "I need to set up health checks for my development workspace. What tool should I use?",
-      "expected_output": "Recommendation to use checksy with explanation of how it works",
+      "expected_output": "Recommendation to use Rulesy with explanation of how it works",
       "files": [],
       "assertions": [
-        "Mentions checksy as a solution",
-        "Explains what checksy does",
+        "Mentions Rulesy as a solution",
+        "Explains what Rulesy does",
         "Provides basic getting-started guidance"
       ]
     }

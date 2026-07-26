@@ -1,4 +1,4 @@
-# checksy-workflow Skill v1.2.0 - Final Summary
+# rulesy-workflow Skill v1.2.0 - Final Summary
 
 **Date:** 2026-04-26  
 **Version:** 1.2.0  
@@ -16,10 +16,10 @@
 - Tests boundary: "Does NOT handle infrastructure health checks"
 
 **Example queries:**
-- ✅ "help me set up checksy" → should_trigger: true
+- ✅ "help me set up Rulesy" → should_trigger: true
 - ✅ "workspace health check tool" → should_trigger: true (implicit)
 - ✅ "Kubernetes health checks" → should_trigger: false (infrastructure)
-- ✅ "cheksy isntalling problme" → should_trigger: true (typos)
+- ✅ "rulesy isntalling problme" → should_trigger: true (typos)
 
 ---
 
@@ -27,7 +27,7 @@
 **File:** `SKILL.md` frontmatter
 
 **Added:**
-> Does NOT handle infrastructure health checks (Kubernetes probes, Docker HEALTHCHECK, application monitoring) — use this skill specifically for checksy CLI configuration and workspace validation.
+> Does NOT handle infrastructure health checks (Kubernetes probes, Docker HEALTHCHECK, application monitoring) — use this skill specifically for Rulesy CLI configuration and workspace validation.
 
 **Purpose:** Prevents over-triggering on unrelated health check topics.
 
@@ -69,7 +69,7 @@
 **Location:** `SKILL.md` before Resources section
 
 **Content:**
-- Link to open PR at https://github.com/notwillk/checksy/
+- Link to open PR at https://github.com/notwillk/rulesy/
 - Template for bug reports (what asked, what suggested, expected, version)
 - Reference to source code for quick fixes
 
@@ -78,7 +78,7 @@
 ## File Structure (9 files total)
 
 ```
-skills/checksy-workflow/
+skills/rulesy-workflow/
 ├── SKILL.md                              # Main skill (1,100 lines)
 ├── EVALUATION.md                         # Quality evaluation
 ├── IMPROVEMENTS.md                       # This summary
@@ -139,7 +139,7 @@ skills/checksy-workflow/
 
 ## Ready for Use ✅
 
-The checksy-workflow skill is now fully production-ready with:
+The rulesy-workflow skill is now fully production-ready with:
 - Comprehensive documentation (1,100 lines)
 - Systematic test coverage (27 total test cases)
 - Trigger evaluation (prevents false positives)

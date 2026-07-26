@@ -51,7 +51,7 @@ if [[ -z $rustup ]]; then
   target=$(rustup_target_for_arch "$(uname -m)")
   url=$(rustup_download_url "$target")
   checksum=$(rustup_checksum_for_target "$target")
-  temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/checksy-rustup.XXXXXX")
+  temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/rulesy-rustup.XXXXXX")
   installer="$temporary_directory/rustup-init"
   download_file "$url" "$installer"
   if ! verify_sha256 "$installer" "$checksum"; then

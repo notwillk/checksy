@@ -1,6 +1,6 @@
 # Best Practices Guide
 
-Guidelines for effective checksy configuration and usage.
+Guidelines for effective Rulesy configuration and usage.
 
 ---
 
@@ -93,9 +93,9 @@ rules:
 
 | Scenario | Action |
 |----------|--------|
-| First setup (missing dependencies) | `checksy check --fix` |
+| First setup (missing dependencies) | `rulesy check --fix` |
 | CI/CD (deterministic environment) | Don't use --fix |
-| Developer workstations | `checksy check --fix` |
+| Developer workstations | `rulesy check --fix` |
 | Shared configs | Define fix scripts in rules |
 
 ---
@@ -105,15 +105,15 @@ rules:
 Standard locations (checked in order):
 
 1. Path specified by `--config`
-2. `.checksy.yaml` in current directory
-3. `.checksy.yml` in current directory
+2. `.rulesy.yaml` in current directory
+3. `.rulesy.yml` in current directory
 
 **Recommended project structure:**
 
 ```
 project/
-├── .checksy.yaml          # Root config
-├── .checksy.schema.json   # Generated schema (not committed)
+├── .rulesy.yaml          # Root config
+├── .rulesy.schema.json   # Generated schema (not committed)
 ├── scripts/
 │   └── checks/           # Pattern-based rules
 │       ├── check-deps.sh
@@ -129,10 +129,10 @@ project/
 ```gitignore
 # .gitignore
 # Don't commit generated schema (regenerate in CI)
-.checksy.schema.json
+.rulesy.schema.json
 
 # Cache directory (will be regenerated)
-.checksy-cache/
+.rulesy-cache/
 ```
 
 ---
@@ -143,16 +143,16 @@ Generate schema for IDE support but don't commit it:
 
 ```bash
 # .gitignore
-.checksy.schema.json
+.rulesy.schema.json
 
 # Generate locally for IDE
-just generate-schema  # Or: checksy schema > .checksy.schema.json
+just generate-schema  # Or: rulesy schema > .rulesy.schema.json
 
 # VS Code settings
 # .vscode/settings.json
 {
   "yaml.schemas": {
-    "./.checksy.schema.json": ".checksy.yaml"
+    "./.rulesy.schema.json": ".rulesy.yaml"
   }
 }
 ```
@@ -172,7 +172,7 @@ rules:
     interactive-fix: '${EDITOR:-vi} .env.local'
 ```
 
-Run automation as `checksy check --fix --non-interactive`. Ordinary fixes still
+Run automation as `rulesy check --fix --non-interactive`. Ordinary fixes still
 run, while a needed interactive repair remains a severity-governed failure
 instead of prompting. Configuration supplied through stdin is always
 non-interactive.

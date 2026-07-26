@@ -157,9 +157,9 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dest = temp_dir.path().join("clone");
 
-        // Clone a small public repo (checksy itself)
+        // Clone a small public repo (Rulesy itself)
         let result =
-            GitCache::shallow_clone("https://github.com/notwillk/checksy.git", "main", &dest);
+            GitCache::shallow_clone("https://github.com/notwillk/rulesy.git", "main", &dest);
 
         assert!(result.is_ok(), "Clone failed: {:?}", result.err());
         assert!(dest.join(".git").exists());
@@ -186,8 +186,8 @@ mod tests {
     #[test]
     #[ignore = "requires network access and git installed"]
     fn test_get_remote_sha_public_repo() {
-        // Test against a well-known public repo (checksy itself)
-        let result = GitCache::get_remote_sha("https://github.com/notwillk/checksy.git", "main");
+        // Test against a well-known public repo (Rulesy itself)
+        let result = GitCache::get_remote_sha("https://github.com/notwillk/rulesy.git", "main");
 
         assert!(
             result.is_ok(),
@@ -230,7 +230,7 @@ mod tests {
         let dest = temp_dir.path().join("clone");
 
         // Clone a repo
-        GitCache::shallow_clone("https://github.com/notwillk/checksy.git", "main", &dest)
+        GitCache::shallow_clone("https://github.com/notwillk/rulesy.git", "main", &dest)
             .expect("Clone should succeed");
 
         // Get local SHA
@@ -238,9 +238,8 @@ mod tests {
         assert_eq!(local_sha.len(), 40, "SHA should be 40 characters");
 
         // Get remote SHA for same ref
-        let remote_sha =
-            GitCache::get_remote_sha("https://github.com/notwillk/checksy.git", "main")
-                .expect("Should get remote SHA");
+        let remote_sha = GitCache::get_remote_sha("https://github.com/notwillk/rulesy.git", "main")
+            .expect("Should get remote SHA");
 
         // They should match (since we just cloned)
         assert_eq!(local_sha, remote_sha, "SHAs should match after fresh clone");

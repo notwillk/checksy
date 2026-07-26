@@ -72,7 +72,7 @@ git add "$version_file"
 git commit -m "Release v$new_version"
 
 tag="v$new_version"
-git tag -a "$tag" -m "checksy $tag"
+git tag -a "$tag" -m "Rulesy $tag"
 
 git push origin main
 git push origin "$tag"

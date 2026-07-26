@@ -1,13 +1,13 @@
 ---
-name: checksy-workflow
-description: Configure, run, and debug checksy workspace health checks. Use when creating or editing .checksy.yaml files, troubleshooting rule failures, setting up git-based remote configs, choosing ordinary or interactive --fix repairs, integrating into CI/CD, or generating JSON schemas for IDE validation. Covers severity levels (debug/info/warn/error), preconditions, patterns, caching, terminal/headless execution, and common errors — even if the user just says "health checks", "workspace validation", or mentions YAML config issues without naming checksy explicitly. Do NOT use for infrastructure health checks (Kubernetes probes, Docker HEALTHCHECK, application monitoring); use only for checksy CLI configuration and workspace validation.
+name: rulesy-workflow
+description: Configure, run, and debug Rulesy workspace health checks. Use when creating or editing .rulesy.yaml files, troubleshooting rule failures, setting up git-based remote configs, choosing ordinary or interactive --fix repairs, integrating into CI/CD, or generating JSON schemas for IDE validation. Covers severity levels (debug/info/warn/error), preconditions, patterns, caching, terminal/headless execution, and common errors — even if the user just says "health checks", "workspace validation", or mentions YAML config issues without naming Rulesy explicitly. Do NOT use for infrastructure health checks (Kubernetes probes, Docker HEALTHCHECK, application monitoring); use only for Rulesy CLI configuration and workspace validation.
 license: MIT
-compatibility: Requires checksy binary in PATH. Git required for remote configs. Bash required for rule execution.
+compatibility: Requires rulesy binary in PATH. Git required for remote configs. Bash required for rule execution.
 metadata:
   author: opencode
   version: "1.0.1"
   category: dev-tools
-  checksy_version_compatibility: ">=0.7.0"
+  rulesy_version_compatibility: ">=0.7.0"
   last_updated: "2026-07-22"
   changelog:
     - version: "1.0.1"
@@ -18,16 +18,16 @@ metadata:
       notes: "Initial release"
 ---
 
-# checksy Workflow
+# Rulesy Workflow
 
-This skill guides you through configuring, running, and debugging [checksy](https://github.com/notwillk/checksy) — a Rust-based CLI tool for running lightweight health checks in development workspaces.
+This skill guides you through configuring, running, and debugging [Rulesy](https://github.com/notwillk/rulesy) — a Rust-based CLI tool for running lightweight health checks in development workspaces.
 
 ## Table of Contents
 
 1. [Quick Reference](#quick-reference)
 2. [Installation & Setup](#installation--setup)
 3. [Configuration](#configuration)
-4. [Running checksy](#running-checksy)
+4. [Running Rulesy](#running-rulesy)
 5. [Remote Configs](#remote-configs)
 6. [Fix Mode](#fix-mode)
 7. [CI/CD Integration](#cicd-integration)
@@ -46,12 +46,12 @@ This skill guides you through configuring, running, and debugging [checksy](http
 ### Essential Commands
 
 ```bash
-checksy check                    # Run all checks
-checksy check --fix             # Run with auto-fix
-checksy check --fix --non-interactive  # Allow only headless repairs
-checksy check --cs warn --fs error  # Filter by severity
-checksy install                 # Cache git remotes
-checksy schema > .checksy.schema.json  # Generate IDE schema
+rulesy check                    # Run all checks
+rulesy check --fix             # Run with auto-fix
+rulesy check --fix --non-interactive  # Allow only headless repairs
+rulesy check --cs warn --fs error  # Filter by severity
+rulesy install                 # Cache git remotes
+rulesy schema > .rulesy.schema.json  # Generate IDE schema
 ```
 
 ### Severity Levels
@@ -72,8 +72,8 @@ debug < info < warn < error
 ### Standard Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/notwillk/checksy/main/scripts/install.sh | bash
-checksy version
+curl -fsSL https://raw.githubusercontent.com/notwillk/rulesy/main/scripts/install.sh | bash
+rulesy version
 ```
 
 ### Devcontainer
@@ -81,7 +81,7 @@ checksy version
 ```json
 {
   "features": {
-    "ghcr.io/notwillk/checksy-feature:latest": {}
+    "ghcr.io/notwillk/rulesy-feature:latest": {}
   }
 }
 ```
@@ -89,8 +89,8 @@ checksy version
 ### Build from Source
 
 ```bash
-git clone https://github.com/notwillk/checksy.git
-cd checksy && just compile
+git clone https://github.com/notwillk/rulesy.git
+cd rulesy && just compile
 ```
 
 ---
@@ -136,24 +136,24 @@ patterns:
 CLI flags → Rule-level → Top-level defaults:
 
 ```bash
-checksy check --cs warn --fs error
+rulesy check --cs warn --fs error
 ```
 
 **For detailed examples** including production configs and patterns, see [references/config-examples.md](references/config-examples.md).
 
 ---
 
-## Running checksy
+## Running Rulesy
 
 ### The check Command
 
 ```bash
-checksy check                          # Default config
-checksy --config=./team.yaml check     # Specific config
-cat config.yaml | checksy --stdin-config check  # From stdin
-checksy check --fix                    # Auto-fix failures
-checksy check --fix --non-interactive  # Ordinary fixes only; prohibit terminal repairs
-checksy check --no-fail                # Never exit with failure
+rulesy check                          # Default config
+rulesy --config=./team.yaml check     # Specific config
+cat config.yaml | rulesy --stdin-config check  # From stdin
+rulesy check --fix                    # Auto-fix failures
+rulesy check --fix --non-interactive  # Ordinary fixes only; prohibit terminal repairs
+rulesy check --no-fail                # Never exit with failure
 ```
 
 ### The install Command
@@ -161,8 +161,8 @@ checksy check --no-fail                # Never exit with failure
 Cache git remotes before using:
 
 ```bash
-checksy install           # Cache remotes
-checksy install --prune   # Update and clean
+rulesy install           # Cache remotes
+rulesy install --prune   # Update and clean
 ```
 
 ### The init Command
@@ -170,7 +170,7 @@ checksy install --prune   # Update and clean
 Create starter config:
 
 ```bash
-checksy init  # Creates .checksy.config.yaml
+rulesy init  # Creates .rulesy.config.yaml
 ```
 
 ### The schema Command
@@ -178,7 +178,7 @@ checksy init  # Creates .checksy.config.yaml
 Generate JSON Schema for IDE:
 
 ```bash
-checksy schema > .checksy.schema.json
+rulesy schema > .rulesy.schema.json
 ```
 
 ---
@@ -203,7 +203,7 @@ rules:
   - remote: git+https://github.com/org/shared-checks.git#v1.0.0:configs/dev.yaml
 ```
 
-**Important:** Run `checksy install` before using git remotes.
+**Important:** Run `rulesy install` before using git remotes.
 
 ### Remote Rules Limitations
 
@@ -244,7 +244,7 @@ rules:
     interactive-fix: '${EDITOR:-vi} .env.local'
 ```
 
-Checksy opens a terminal only after this check fails during `check --fix`; it
+Rulesy opens a terminal only after this check fails during `check --fix`; it
 does not add a confirmation prompt. File-backed runs require a usable foreground
 terminal. `--non-interactive`, `--stdin-config`, and `--config -` prohibit the
 interactive repair but do not disable ordinary `fix` commands. A required
@@ -267,13 +267,13 @@ failure, so CI should use `--non-interactive` explicitly.
 
 ```bash
 # Install
-curl -fsSL https://raw.githubusercontent.com/notwillk/checksy/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/notwillk/rulesy/main/scripts/install.sh | bash
 
 # Cache remotes (if using git configs)
-checksy install
+rulesy install
 
 # Run checks
-checksy check
+rulesy check
 ```
 
 ### GitHub Actions
@@ -286,20 +286,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: curl -fsSL https://raw.githubusercontent.com/notwillk/checksy/main/scripts/install.sh | bash
-      - run: checksy install
-      - run: checksy check
+      - run: curl -fsSL https://raw.githubusercontent.com/notwillk/rulesy/main/scripts/install.sh | bash
+      - run: rulesy install
+      - run: rulesy check
 ```
 
 ### GitLab CI
 
 ```yaml
-checksy:
+rulesy:
   stage: test
   before_script:
-    - curl -fsSL https://raw.githubusercontent.com/notwillk/checksy/main/scripts/install.sh | bash
-    - checksy install
-  script: checksy check
+    - curl -fsSL https://raw.githubusercontent.com/notwillk/rulesy/main/scripts/install.sh | bash
+    - rulesy install
+  script: rulesy check
 ```
 
 ---
@@ -309,7 +309,7 @@ checksy:
 ### Dry-Run Validation
 
 ```bash
-checksy check --check-severity debug --no-fail
+rulesy check --check-severity debug --no-fail
 ```
 
 ### Fixture-Based Testing
@@ -319,15 +319,15 @@ Create test fixtures in `fixtures/`:
 ```
 fixtures/
 ├── passing/
-│   └── .checksy.yaml
+│   └── .rulesy.yaml
 └── failing/
-    └── .checksy.yaml
+    └── .rulesy.yaml
 ```
 
 ### Schema Validation
 
 ```bash
-checksy schema > /tmp/schema.json
+rulesy schema > /tmp/schema.json
 # Validate configs against schema
 ```
 
@@ -350,7 +350,7 @@ checksy schema > /tmp/schema.json
 
 | Error | Solution |
 |-------|----------|
-| `git remote not cached` | Run `checksy install` or use `--fix` |
+| `git remote not cached` | Run `rulesy install` or use `--fix` |
 | `failed to load config` | Check YAML syntax; use valid severities |
 | `invalid remote rule` | Remote rules can ONLY have `remote` property |
 | Rules not running | Check severity hierarchy with `--cs` flag |
@@ -410,17 +410,17 @@ rules:
 
 | Command | Purpose |
 |---------|---------|
-| `checksy check` | Run all checks |
-| `checksy check --fix` | Run with auto-fix |
-| `checksy check --fix --non-interactive` | Run ordinary fixes but prohibit terminal repairs |
-| `checksy check --cs warn --fs error` | Filter by severity |
-| `checksy check --no-fail` | Never exit with failure |
-| `checksy install` | Cache git remotes |
-| `checksy install --prune` | Update and clean cache |
-| `checksy init` | Create starter config |
-| `checksy schema` | Output JSON schema |
-| `checksy version` | Show version |
-| `checksy help` | Show help |
+| `rulesy check` | Run all checks |
+| `rulesy check --fix` | Run with auto-fix |
+| `rulesy check --fix --non-interactive` | Run ordinary fixes but prohibit terminal repairs |
+| `rulesy check --cs warn --fs error` | Filter by severity |
+| `rulesy check --no-fail` | Never exit with failure |
+| `rulesy install` | Cache git remotes |
+| `rulesy install --prune` | Update and clean cache |
+| `rulesy init` | Create starter config |
+| `rulesy schema` | Output JSON schema |
+| `rulesy version` | Show version |
+| `rulesy help` | Show help |
 
 ---
 
@@ -428,22 +428,22 @@ rules:
 
 If this skill gives incorrect advice, contains outdated information, or could be improved:
 
-1. **Open an issue or PR** at https://github.com/notwillk/checksy/
+1. **Open an issue or PR** at https://github.com/notwillk/rulesy/
 2. **Include:**
    - What you asked for
    - What the skill suggested
    - What you expected instead
-   - Your checksy version (`checksy version`)
+   - Your Rulesy version (`rulesy version`)
 
-3. **For quick fixes:** Check the [source code](https://github.com/notwillk/checksy) for the latest SKILL.md updates
+3. **For quick fixes:** Check the [source code](https://github.com/notwillk/rulesy) for the latest SKILL.md updates
 
 ---
 
 ## Resources
 
-- **Source Code:** https://github.com/notwillk/checksy
-- **Issues:** https://github.com/notwillk/checksy/issues
-- **Schema:** Run `checksy schema` for official JSON Schema
+- **Source Code:** https://github.com/notwillk/rulesy
+- **Issues:** https://github.com/notwillk/rulesy/issues
+- **Schema:** Run `rulesy schema` for official JSON Schema
 
 ---
 

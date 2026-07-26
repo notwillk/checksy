@@ -156,7 +156,7 @@ impl fmt::Display for InteractiveUnavailable {
                 formatter.write_str("no usable controlling terminal is available")
             }
             Self::NotForeground => formatter.write_str(
-                "Checksy does not own the controlling terminal's foreground process group",
+                "Rulesy does not own the controlling terminal's foreground process group",
             ),
         }
     }
@@ -255,7 +255,7 @@ impl std::error::Error for ProcessError {
     }
 }
 
-/// Run a configured command under Checksy's bounded process supervisor.
+/// Run a configured command under Rulesy's bounded process supervisor.
 ///
 /// The caller owns arguments, environment, and working directory. This
 /// function overrides all three standard streams: stdin is `/dev/null`, while
@@ -1210,7 +1210,7 @@ mod supported {
             // Keep interrupt and quit processing in the outer terminal so the
             // parent signal-forwarding path observes Ctrl-C/Ctrl-\\. Disable
             // suspension so Ctrl-Z reaches the inner PTY, where a stopped
-            // child is resumed and terminated instead of hanging Checksy.
+            // child is resumed and terminated instead of hanging Rulesy.
             relay.c_lflag |= ISIG;
             relay.c_cc[VSUSP] = libc::_POSIX_VDISABLE as _;
             tcsetattr(&terminal.fd, OptionalActions::Now, &relay)
@@ -1241,7 +1241,7 @@ mod supported {
             Ok(())
         } else {
             Err(io::Error::other(
-                "Checksy lost ownership of the controlling terminal's foreground process group",
+                "Rulesy lost ownership of the controlling terminal's foreground process group",
             ))
         }
     }
@@ -1467,13 +1467,13 @@ mod supported {
             },
             TerminationCause::OuterJobControl(signal) => ProcessError::Supervision {
                 source: io::Error::other(format!(
-                    "Checksy received job-control signal {signal} while relaying the interactive terminal"
+                    "Rulesy received job-control signal {signal} while relaying the interactive terminal"
                 )),
                 output,
             },
             TerminationCause::ForegroundOwnershipLost => ProcessError::Supervision {
                 source: io::Error::other(
-                    "Checksy lost ownership of the controlling terminal's foreground process group",
+                    "Rulesy lost ownership of the controlling terminal's foreground process group",
                 ),
                 output,
             },
@@ -1538,7 +1538,7 @@ mod supported {
         if let Some(signal) = job_control.take_signal() {
             return Err(ProcessError::Supervision {
                 source: io::Error::other(format!(
-                    "Checksy received job-control signal {signal} while restoring the interactive terminal"
+                    "Rulesy received job-control signal {signal} while restoring the interactive terminal"
                 )),
                 output,
             });
@@ -1705,7 +1705,7 @@ mod supported {
         action: libc::sigaction,
     }
 
-    /// Prevents outer-terminal job control from stopping Checksy while it owns
+    /// Prevents outer-terminal job control from stopping Rulesy while it owns
     /// a raw relay terminal. The child resets these dispositions after
     /// `setsid`, before acquiring its private controlling PTY.
     struct InteractiveJobControlGuard {
@@ -2399,10 +2399,10 @@ mod tests {
     use std::time::Instant;
     use tempfile::tempdir;
 
-    const HARNESS_MODE: &str = "CHECKSY_PROCESS_HARNESS_MODE";
-    const HARNESS_ROOT: &str = "CHECKSY_PROCESS_HARNESS_ROOT";
-    const HARNESS_NONCE: &str = "CHECKSY_PROCESS_HARNESS_NONCE";
-    const HARNESS_PGID: &str = "CHECKSY_PROCESS_HARNESS_PGID";
+    const HARNESS_MODE: &str = "RULESY_PROCESS_HARNESS_MODE";
+    const HARNESS_ROOT: &str = "RULESY_PROCESS_HARNESS_ROOT";
+    const HARNESS_NONCE: &str = "RULESY_PROCESS_HARNESS_NONCE";
+    const HARNESS_PGID: &str = "RULESY_PROCESS_HARNESS_PGID";
     const HELPER_TEST: &str = "process_runner::tests::process_harness_helper";
     const INNER_WATCHDOG: Duration = Duration::from_secs(8);
     const OUTER_WATCHDOG: Duration = Duration::from_secs(15);
@@ -2453,7 +2453,7 @@ mod tests {
     #[test]
     fn spawn_failure_is_distinct() {
         let result = run(
-            Command::new("/definitely/not/a/checksy-command"),
+            Command::new("/definitely/not/a/rulesy-command"),
             short_limits(Duration::from_secs(2)),
         );
         assert!(matches!(result, Err(ProcessError::Spawn(_))));
@@ -2606,7 +2606,7 @@ mod tests {
         command
             .arg("-c")
             .arg("trap '' TERM; exec \"$@\"")
-            .arg("checksy-term-wrapper")
+            .arg("rulesy-term-wrapper")
             .arg(program)
             .args(arguments);
         for (key, value) in environment {
