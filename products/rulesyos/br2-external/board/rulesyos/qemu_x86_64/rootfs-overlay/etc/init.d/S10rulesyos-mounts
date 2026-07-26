@@ -1,0 +1,58 @@
+#!/bin/sh
+set -eu
+
+has_mount() {
+	awk -v path="$1" -v type="${2:-}" '
+		$2 == path && (type == "" || $3 == type) {
+			found = 1
+		}
+		END {
+			exit !found
+		}
+	' /proc/mounts
+}
+
+has_mount_option() {
+	awk -v path="$1" -v option="$2" '
+		$2 == path {
+			count = split($4, options, ",")
+			for (item = 1; item <= count; item++) {
+				if (options[item] == option) {
+					found = 1
+				}
+			}
+		}
+		END {
+			exit !found
+		}
+	' /proc/mounts
+}
+
+case "${1:-}" in
+	start)
+		has_mount_option / ro
+		has_mount /run tmpfs
+		has_mount /tmp tmpfs
+		has_mount /state ext4
+		has_mount_option /state rw
+		chown 0:0 /state
+		chmod 0700 /state
+
+		mkdir -p /run/rulesy-lock
+		chown 0:0 /run/rulesy-lock
+		chmod 0700 /run/rulesy-lock
+		mount -o bind /run/rulesy-lock /var/lib/rulesy
+		has_mount /var/lib/rulesy tmpfs
+		has_mount_option /var/lib/rulesy rw
+		chown 0:0 /var/lib/rulesy
+		chmod 0700 /var/lib/rulesy
+
+		: >/run/rulesyos-mounts.ready
+		;;
+	stop)
+		;;
+	*)
+		printf 'Usage: %s {start|stop}\n' "$0" >&2
+		exit 2
+		;;
+esac

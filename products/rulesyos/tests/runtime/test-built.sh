@@ -19,9 +19,11 @@ fi
 
 "$PROJECT_DIR/scripts/build.sh"
 buildroot_dir=$("$PROJECT_DIR/scripts/prepare-buildroot.sh")
+disk="$PROJECT_DIR/output/images/rulesyos.img"
+test -f "$disk"
 
 exec python3 "$SCRIPT_DIR/run.py" \
   --buildroot "$buildroot_dir" \
   built \
   --kernel "$PROJECT_DIR/output/images/bzImage" \
-  --rootfs "$PROJECT_DIR/output/images/rootfs.ext2"
+  --disk "$disk"

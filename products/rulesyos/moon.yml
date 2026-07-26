@@ -1,34 +1,42 @@
 $schema: "https://moonrepo.dev/schemas/project.json"
 
-language: "unknown"
+language: "rust"
 layer: "application"
 stack: "systems"
 tags:
   - "product"
   - "operating-system"
-  - "bootstrap"
+  - "reference-image"
 
 taskOptions:
   cache: false
 
 tasks:
   build:
-    description: "Build the blank x86-64 RulesyOS bootstrap image"
+    description: "Build the x86-64 RulesyOS reference image"
     command: "./scripts/build.sh"
     options:
       runInCI: false
       timeout: 3600
       outputStyle: "stream"
 
+  format:
+    description: "Check RulesyOS Rust formatting"
+    command: "cargo fmt --all -- --check"
+
   lint:
-    description: "Check RulesyOS bootstrap test syntax"
+    description: "Run Clippy and check RulesyOS script syntax"
     script: |
+      cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       bash -n scripts/build.sh scripts/prepare-buildroot.sh scripts/dependencies/build/check.sh scripts/dependencies/build/install.sh scripts/dependencies/kvm-test/check.sh scripts/dependencies/kvm-test/install.sh tests/runtime/test-built.sh tests/runtime/test-known-good.sh
+      sh -n br2-external/board/rulesyos/qemu_x86_64/post-build.sh br2-external/board/rulesyos/qemu_x86_64/post-image.sh br2-external/board/rulesyos/qemu_x86_64/rootfs-overlay/etc/init.d/S10rulesyos-mounts br2-external/board/rulesyos/qemu_x86_64/rootfs-overlay/etc/init.d/S50rulesyos-stage0
       python3 -c 'from pathlib import Path; compile(Path("tests/runtime/run.py").read_text(), "tests/runtime/run.py", "exec")'
 
   test:
-    description: "Boot the blank RulesyOS Buildroot image under KVM"
-    command: "./tests/runtime/test-built.sh"
+    description: "Run RulesyOS Rust tests and boot the reference image under KVM"
+    script: |
+      cargo test --locked --workspace --all-features
+      ./tests/runtime/test-built.sh
     options:
       runInCI: false
       timeout: 3600

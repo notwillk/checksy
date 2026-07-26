@@ -30,3 +30,4 @@ make -C "$buildroot_dir" \
 
 test -f "$OUTPUT_DIR/images/bzImage"
 test -f "$OUTPUT_DIR/images/rootfs.ext2"
+test -f "$OUTPUT_DIR/images/rulesyos.img"
