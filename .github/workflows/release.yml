@@ -26,29 +26,34 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Install just
+      - name: Install Moon
+        run: bash .github/scripts/install-moon.sh
+
+      - name: Verify Moon version
         run: |
-          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-            brew install just
-          else
-            cargo install just --locked
-          fi
+          test "$(moon --version)" = "moon 2.4.5"
+          test "$(moonx --version)" = "moon-exec 2.4.5"
 
       - name: Ensure tag matches version
-        run: just ensure-tag-matches-version ${{ github.ref_name }}
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: moon run rulesy:ensure-tag-matches-version -- "$RELEASE_TAG"
 
       - name: Build and package
-        run: just cross-compile ${{ matrix.target }}
+        env:
+          RULESY_TARGET: ${{ matrix.target }}
+        run: moon run rulesy:cross-compile -- "$RULESY_TARGET"
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: rulesy-${{ matrix.target }}-artifact
           path: |
-            dist/*.tar.gz
-            dist/*-checksum.txt
+            products/rulesy/dist/*.tar.gz
+            products/rulesy/dist/*-checksum.txt
 
   verify-linux:
     name: Verify Linux release (${{ matrix.arch }})
@@ -76,21 +81,21 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: rulesy-${{ matrix.target }}-artifact
-          path: dist
+          path: products/rulesy/dist
 
       - name: Verify static Linux binary
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist/verify
-          tar -xzf "dist/rulesy_linux_${{ matrix.arch }}.tar.gz" -C dist/verify
-          expected_version="$(sed -n 's/^pub const VERSION: &str = "\(.*\)";$/\1/p' src/version.rs)"
+          mkdir -p products/rulesy/dist/verify
+          tar -xzf "products/rulesy/dist/rulesy_linux_${{ matrix.arch }}.tar.gz" -C products/rulesy/dist/verify
+          expected_version="$(sed -n 's/^pub const VERSION: &str = "\(.*\)";$/\1/p' products/rulesy/src/version.rs)"
           test -n "$expected_version"
-          ./scripts/verify-static-linux-binary.sh dist/verify/rulesy "$expected_version"
+          ./products/rulesy/scripts/verify-static-linux-binary.sh products/rulesy/dist/verify/rulesy "$expected_version"
           smoke_config="$(mktemp)"
           trap 'rm -f "$smoke_config"' EXIT
           printf 'rules:\n  - name: static release smoke\n    check: test "$(uname -s)" = Linux\n' >"$smoke_config"
-          dist/verify/rulesy --config="$smoke_config" check --fix --non-interactive
+          products/rulesy/dist/verify/rulesy --config="$smoke_config" check --fix --non-interactive
 
   release:
     needs:
@@ -110,18 +115,18 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          path: artifacts
+          path: products/rulesy/dist/artifacts
           merge-multiple: true
 
       - name: Prepare checksums
-        run: cat artifacts/*-checksum.txt > artifacts/checksums.txt
+        run: cat products/rulesy/dist/artifacts/*-checksum.txt > products/rulesy/dist/artifacts/checksums.txt
 
       - name: Sign checksums
         run: |
           mkdir -p /tmp/gpg
           printf "%s" "${{ secrets.GPG_PRIVATE_KEY }}" > /tmp/gpg/release.key
           gpg --batch --import "/tmp/gpg/release.key"
-          gpg --batch --yes --output "artifacts/checksums.txt.sig" --detach-sign "artifacts/checksums.txt"
+          gpg --batch --yes --output "products/rulesy/dist/artifacts/checksums.txt.sig" --detach-sign "products/rulesy/dist/artifacts/checksums.txt"
           echo "Created checksums.txt.sig"
           rm -rf /tmp/gpg
 
@@ -129,9 +134,9 @@ jobs:
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
-            artifacts/*.tar.gz
-            artifacts/checksums.txt
-            artifacts/checksums.txt.sig
+            products/rulesy/dist/artifacts/*.tar.gz
+            products/rulesy/dist/artifacts/checksums.txt
+            products/rulesy/dist/artifacts/checksums.txt.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -146,6 +151,6 @@ jobs:
         uses: devcontainers/action@1082abd5d2bf3a11abccba70eef98df068277772 # v1.4.3
         with:
           publish-features: "true"
-          base-path-to-features: "./devcontainer-feature/src"
+          base-path-to-features: "./devcontainer-features/src"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

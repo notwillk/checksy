@@ -1,0 +1,93 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "rust"
+layer: "tool"
+stack: "systems"
+tags:
+  - "product"
+  - "cli"
+  - "provisioner"
+
+taskOptions:
+  cache: false
+
+tasks:
+  build:
+    description: "Build the optimized Rulesy binary"
+    command: "cargo build --locked --release"
+
+  compile:
+    description: "Build Rulesy and copy the binary into the project dist directory"
+    script: |
+      set -e
+      mkdir -p dist
+      cargo build --release --bin rulesy
+      cp target/release/rulesy dist/rulesy
+      echo "Rebuilt"
+
+  dev:
+    description: "Recompile Rulesy when project sources change"
+    script: |
+      echo "Watching src for changes. Press Ctrl+C to stop."
+      find src Cargo.toml -type f \( -name "*.rs" -o -name "Cargo.toml" \) | entr -r sh -c 'moon run rulesy:compile'
+    options:
+      persistent: true
+      runInCI: false
+
+  cross-compile:
+    description: "Build and package one supported release target"
+    command: "./scripts/cross-compile.sh"
+
+  format:
+    description: "Check Rust formatting"
+    command: "cargo fmt --all -- --check"
+
+  lint:
+    description: "Run Clippy"
+    command: "cargo clippy --locked --all-targets --all-features"
+
+  test:
+    description: "Run the complete Rulesy Rust suite"
+    command: "cargo test --locked --all-features --no-fail-fast"
+
+  get-version:
+    description: "Print the Rulesy release version"
+    script: |
+      VERSION="$(grep -Eo 'VERSION: &str = "[^"]+"' src/version.rs | sed -E 's/VERSION: &str = "([^"]+)"/\1/')"
+      if [ -z "$VERSION" ]; then
+        echo "Unable to determine version from version.rs" >&2
+        exit 1
+      fi
+      echo "$VERSION"
+
+  ensure-tag-matches-version:
+    description: "Require a vX.Y.Z tag matching the Rulesy release version"
+    command: "bash"
+    args:
+      - "-c"
+      - |
+        set -euo pipefail
+        if [ "$#" -ne 1 ]; then
+          echo "Usage: moon run rulesy:ensure-tag-matches-version -- <vX.Y.Z>" >&2
+          exit 2
+        fi
+        VERSION="$(grep -Eo 'VERSION: &str = "[^"]+"' src/version.rs | sed -E 's/VERSION: &str = "([^"]+)"/\1/')"
+        if [ -z "$VERSION" ]; then
+          echo "Unable to determine version from version.rs" >&2
+          exit 1
+        fi
+        VERSION="v$VERSION"
+        TAG="$1"
+        if [ "$TAG" != "$VERSION" ]; then
+          echo "Tag '$TAG' does not match version '$VERSION'" >&2
+          exit 1
+        fi
+      - "ensure-tag-matches-version"
+    options:
+      shell: false
+
+  release:
+    description: "Cut and push a Rulesy semantic-version release"
+    command: "./scripts/release.sh"
+    options:
+      runInCI: false

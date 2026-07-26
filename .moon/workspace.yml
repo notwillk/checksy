@@ -1,0 +1,14 @@
+$schema: "https://moonrepo.dev/schemas/workspace.json"
+
+versionConstraint: "=2.4.5"
+
+projects:
+  rulesy: "products/rulesy"
+  rulesyos: "products/rulesyos"
+  rulesy-compose: "products/rulesy-compose"
+  rulesy-workflow: "skills/rulesy-workflow"
+  rulesy-devcontainer-feature: "devcontainer-features"
+
+vcs:
+  defaultBranch: "main"
+  provider: "github"

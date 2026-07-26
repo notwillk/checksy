@@ -1,6 +1,5 @@
 # Rust
-/target/
-src/target/
+/products/rulesy/target/
 
 # Go
 # Binaries for programs and plugins
@@ -33,10 +32,14 @@ go.work.sum
 # .idea/
 # .vscode/
 
-dist
-artifacts
-.tmp
+/products/rulesy/dist/
+/devcontainer-features/dist/
+/.tmp/
 
-fixtures/remote-config/git/.git-cache/
+/products/rulesy/fixtures/remote-config/git/.git-cache/
 
 rulesy-workspace-eval
+
+# moon
+/.moon/cache/
+/.moon/docker/

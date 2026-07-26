@@ -21,11 +21,11 @@
 			"extensions": [
 				"github.vscode-github-actions",
 				"golang.go",
-				"skellock.just",
+				"moonrepo.moon-console",
 				"sst-dev.opencode"
 			]
 		}
 	},
-	"postCreateCommand": "rulesy --config=.devcontainer/rulesy.yaml check --fix --non-interactive",
+	"postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
 	"remoteUser": "vscode"
 }

@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../shared/lib.sh"
 
 missing=()
-for required_command in sudo curl tar sha256sum; do
+for required_command in sudo curl tar sha256sum xz; do
   command -v "$required_command" >/dev/null || missing+=("$required_command")
 done
 

@@ -1,0 +1,30 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "bash"
+layer: "tool"
+stack: "infrastructure"
+tags:
+  - "developer-tool"
+  - "devcontainer-feature"
+  - "rulesy-integration"
+
+taskOptions:
+  cache: false
+
+tasks:
+  build:
+    description: "Package the Rulesy Dev Container Feature"
+    command: "devcontainer features package src --output-folder dist --force-clean-output-folder"
+
+  lint:
+    description: "Check Feature shell syntax"
+    command:
+      - "bash"
+      - "-n"
+      - "src/rulesy/install.sh"
+      - "src/rulesy/test-version-resolution.sh"
+      - "src/rulesy/test.sh"
+
+  test:
+    description: "Run the Feature version-resolution tests"
+    command: "bash src/rulesy/test-version-resolution.sh"
