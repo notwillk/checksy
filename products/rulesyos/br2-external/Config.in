@@ -1,1 +1,5 @@
-# Intentionally empty: the bootstrap image uses only stock Buildroot packages.
+menu "RulesyOS"
+
+source "$BR2_EXTERNAL_RULESYOS_PATH/package/rulesy/Config.in"
+
+endmenu
