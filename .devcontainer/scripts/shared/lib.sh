@@ -21,6 +21,12 @@ workspace_root() {
   cd "$(devcontainer_config_dir)/.." && pwd
 }
 
+prepend_user_tool_paths() {
+  local cargo_home=${CARGO_HOME:-"$HOME/.cargo"}
+  PATH="$HOME/.local/opt/codex-cli/bin:$HOME/.local/bin:$cargo_home/bin:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+  export PATH
+}
+
 is_release_version() {
   [[ ${1:-} =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 }

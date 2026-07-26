@@ -26,6 +26,6 @@
 			]
 		}
 	},
-	"postCreateCommand": "rulesy --config=.devcontainer/rulesy.yaml check --fix --non-interactive",
+	"postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
 	"remoteUser": "vscode"
 }
