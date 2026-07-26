@@ -57,6 +57,16 @@ If the changed-file set exceeds the stated scope contract or the diff is
 materially larger than expected, stop and reduce it before continuing. Do not
 rationalize the larger diff after the fact.
 
+## Pull request size
+
+A pull request must change fewer than 300 files. This is a hard limit because
+larger pull requests cannot be reviewed by Copilot.
+
+Aim to keep each pull request below 200 changed files. Before opening or
+updating a pull request, verify its changed-file count against the base branch.
+If it would reach 300 files, split the work into independently reviewable pull
+requests first.
+
 ## Commands
 
 Run requested commands directly first. Do not invent wrappers or alternate
