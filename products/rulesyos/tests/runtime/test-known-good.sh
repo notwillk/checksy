@@ -30,8 +30,11 @@ download_artifact() {
 
   if [[ ! -f $destination ]]; then
     temporary_file=$(mktemp "$CACHE_DIR/.${filename}.XXXXXX")
-    curl --proto '=https' --tlsv1.2 --fail --show-error --location \
-      --output "$temporary_file" "$CIRROS_BASE_URL/$filename"
+    if ! curl --proto '=https' --tlsv1.2 --fail --show-error --location \
+      --output "$temporary_file" "$CIRROS_BASE_URL/$filename"; then
+      rm -f -- "$temporary_file"
+      return 1
+    fi
     actual_sha256=$(sha256sum "$temporary_file" | awk '{print $1}')
     if [[ $actual_sha256 != "$expected_sha256" ]]; then
       rm -f -- "$temporary_file"

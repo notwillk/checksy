@@ -5,7 +5,7 @@ This repository is the shared workspace for three independently owned products:
 | Product | Status | Responsibility |
 | --- | --- | --- |
 | [Rulesy](products/rulesy/README.md) | Implemented | Provision the current machine from trusted local YAML or stdin. |
-| [RulesyOS](products/rulesyos/README.md) | Design only | Boot and recover a verified Linux stage zero that invokes a released Rulesy binary. |
+| [RulesyOS](products/rulesyos/README.md) | Bootstrap infrastructure | Boot and recover a verified Linux stage zero that invokes a released Rulesy binary. |
 | [Rulesy Compose](products/rulesy-compose/README.md) | Design only | Build, validate, seal, and explicitly publish artifacts by invoking a real pinned Rulesy binary on the host. |
 
 The products share a repository and narrow versioned contracts, not one

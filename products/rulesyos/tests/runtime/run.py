@@ -136,7 +136,7 @@ def boot_built(args: argparse.Namespace) -> None:
         emulator.login(timeout=120)
         output, exit_code = emulator.run("printf 'RULESYOS_BUILDROOT_BOOT_OK\\n'")
         if exit_code != 0 or "RULESYOS_BUILDROOT_BOOT_OK" not in output:
-            raise SystemError("Buildroot guest command did not produce its marker")
+            raise RuntimeError("Buildroot guest command did not produce its marker")
     except Exception:
         print(f"Buildroot serial log: {log_base}-run.log", file=sys.stderr)
         raise

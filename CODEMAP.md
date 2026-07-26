@@ -45,7 +45,7 @@
 | Area | Owner | Notes |
 | --- | --- | --- |
 | `products/rulesy/` | Rulesy | Implemented product; detailed code map is in its architecture and prompt. |
-| `products/rulesyos/` | RulesyOS | Documentation-only until an approved implementation milestone. |
+| `products/rulesyos/` | RulesyOS | Bootstrap build/test infrastructure only; product functionality remains proposed. |
 | `products/rulesy-compose/` | Rulesy Compose | Documentation-only until an approved implementation milestone. |
 | `devcontainer-features/src/rulesy/` | Rulesy release integration | Preserves the published `rulesy` Feature identity. |
 | `.devcontainer/` | Repository development environment | Bootstraps Rulesy, then converges developer tools. |
