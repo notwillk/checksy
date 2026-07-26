@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../shared/lib.sh
-source "$SCRIPT_DIR/../shared/lib.sh"
-
 if ! command -v sudo >/dev/null || ! command -v apt-get >/dev/null; then
-  provision_error "RulesyOS build dependency installation requires sudo and apt-get"
+  printf '%s\n' \
+    'Rulesy devcontainer provisioning: RulesyOS build dependency installation requires sudo and apt-get' \
+    >&2
   exit 1
 fi
 if ! sudo -n true; then
-  provision_error "passwordless sudo is required for non-interactive provisioning"
+  printf '%s\n' \
+    'Rulesy devcontainer provisioning: passwordless sudo is required for non-interactive provisioning' \
+    >&2
   exit 1
 fi
 

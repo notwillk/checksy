@@ -23,7 +23,7 @@ tasks:
   lint:
     description: "Check RulesyOS bootstrap test syntax"
     script: |
-      bash -n scripts/build.sh scripts/prepare-buildroot.sh tests/runtime/test-built.sh tests/runtime/test-known-good.sh
+      bash -n scripts/build.sh scripts/prepare-buildroot.sh scripts/dependencies/build/check.sh scripts/dependencies/build/install.sh scripts/dependencies/kvm-test/check.sh scripts/dependencies/kvm-test/install.sh tests/runtime/test-built.sh tests/runtime/test-known-good.sh
       python3 -c 'from pathlib import Path; compile(Path("tests/runtime/run.py").read_text(), "tests/runtime/run.py", "exec")'
 
   test:

@@ -4,6 +4,8 @@ set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$(cd "$TESTS_DIR/.." && pwd)"
 DEVCONTAINER_DIR="$(cd "$SCRIPTS_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$DEVCONTAINER_DIR/.." && pwd)"
+RULESYOS_DEPENDENCY_SCRIPTS="$REPO_ROOT/products/rulesyos/scripts/dependencies"
 # shellcheck source=../shared/lib.sh
 source "$SCRIPTS_DIR/shared/lib.sh"
 load_tool_versions "$DEVCONTAINER_DIR/tool-versions.env"
@@ -325,38 +327,50 @@ grep -F 'leaving it unchanged' "$SCRIPTS_DIR/kvm/install.sh" >/dev/null || \
 grep -F 'name: RulesyOS build dependencies are installed' \
   "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
   fail "rulesy.yaml must provision RulesyOS build dependencies"
+grep -F 'check: exec bash ../products/rulesyos/scripts/dependencies/build/check.sh' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must check RulesyOS build dependencies from the RulesyOS project"
+grep -F 'fix: exec bash ../products/rulesyos/scripts/dependencies/build/install.sh' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must install RulesyOS build dependencies from the RulesyOS project"
 grep -A4 -F 'name: RulesyOS build dependencies are installed' \
   "$DEVCONTAINER_DIR/rulesy.yaml" |
   grep -F 'skip-if: '\''[ "${GITHUB_ACTIONS:-}" = "true" ]'\''' >/dev/null || \
   fail "RulesyOS build dependencies must remain disabled in GitHub Actions"
 for command_name in \
   bc bzip2 cpio file g++ gcc gnuinstall gzip make patch perl python3 rsync unzip wget; do
-  grep -F "$command_name" "$SCRIPTS_DIR/rulesyos-build/check.sh" >/dev/null || \
+  grep -F "$command_name" "$RULESYOS_DEPENDENCY_SCRIPTS/build/check.sh" >/dev/null || \
     fail "RulesyOS build dependency check must require $command_name"
 done
 grep -F 'bc build-essential bzip2 cpio file gnu-coreutils gzip patch perl python3' \
-  "$SCRIPTS_DIR/rulesyos-build/install.sh" >/dev/null || \
+  "$RULESYOS_DEPENDENCY_SCRIPTS/build/install.sh" >/dev/null || \
   fail "RulesyOS build dependency installer must install the required host packages"
 grep -F -- '--install /usr/bin/install install /usr/bin/gnuinstall 100' \
-  "$SCRIPTS_DIR/rulesyos-build/install.sh" >/dev/null || \
+  "$RULESYOS_DEPENDENCY_SCRIPTS/build/install.sh" >/dev/null || \
   fail "RulesyOS build dependency installer must select GNU install"
 grep -F 'name: RulesyOS KVM test dependencies are installed' \
   "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
   fail "rulesy.yaml must provision RulesyOS KVM test dependencies"
+grep -F 'check: exec bash ../products/rulesyos/scripts/dependencies/kvm-test/check.sh' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must check KVM test dependencies from the RulesyOS project"
+grep -F 'fix: exec bash ../products/rulesyos/scripts/dependencies/kvm-test/install.sh' \
+  "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
+  fail "rulesy.yaml must install KVM test dependencies from the RulesyOS project"
 grep -A5 -F 'name: RulesyOS KVM test dependencies are installed' \
   "$DEVCONTAINER_DIR/rulesy.yaml" |
   grep -F '[ "${GITHUB_ACTIONS:-}" = "true" ] ||' >/dev/null || \
   fail "RulesyOS KVM test dependencies must remain disabled in GitHub Actions"
 grep -F 'command -v qemu-system-x86_64' \
-  "$SCRIPTS_DIR/rulesyos-tests/check.sh" >/dev/null || \
+  "$RULESYOS_DEPENDENCY_SCRIPTS/kvm-test/check.sh" >/dev/null || \
   fail "QEMU check must require the x86-64 system emulator"
 grep -F "python3 -c 'import pexpect'" \
-  "$SCRIPTS_DIR/rulesyos-tests/check.sh" >/dev/null || \
+  "$RULESYOS_DEPENDENCY_SCRIPTS/kvm-test/check.sh" >/dev/null || \
   fail "RulesyOS test dependency check must require Python pexpect"
 grep -F 'qemu-system-x86 python3-pexpect' \
-  "$SCRIPTS_DIR/rulesyos-tests/install.sh" >/dev/null || \
+  "$RULESYOS_DEPENDENCY_SCRIPTS/kvm-test/install.sh" >/dev/null || \
   fail "RulesyOS test dependency installer must install QEMU and Python pexpect"
-if grep -F 'qemu-utils' "$SCRIPTS_DIR/rulesyos-tests/install.sh" >/dev/null; then
+if grep -F 'qemu-utils' "$RULESYOS_DEPENDENCY_SCRIPTS/kvm-test/install.sh" >/dev/null; then
   fail "RulesyOS bootstrap tests do not require qemu-utils"
 fi
 
@@ -505,10 +519,6 @@ expected_files=(
   moon/install.sh
   prerequisites/check.sh
   prerequisites/install.sh
-  rulesyos-build/check.sh
-  rulesyos-build/install.sh
-  rulesyos-tests/check.sh
-  rulesyos-tests/install.sh
   rustup/check.sh
   rustup/install.sh
   shared/lib.sh
@@ -526,7 +536,7 @@ for index in "${!expected_files[@]}"; do
   assert_equal "${expected_files[$index]}" "${actual_files[$index]}" "script layout entry $index"
 done
 
-expected_tools=(prerequisites kvm rulesyos-build rulesyos-tests entr moon rustup devcontainer-cli github-cli codex-cli)
+expected_tools=(prerequisites kvm entr moon rustup devcontainer-cli github-cli codex-cli)
 for tool in "${expected_tools[@]}"; do
   grep -F "check: exec bash ./scripts/$tool/check.sh" "$DEVCONTAINER_DIR/rulesy.yaml" >/dev/null || \
     fail "rulesy.yaml does not reference ./scripts/$tool/check.sh"
