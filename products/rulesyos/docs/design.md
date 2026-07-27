@@ -18,7 +18,7 @@ design. Host-side artifact composition belongs to the separate
 The implemented x86-64 development slice directly boots Linux `6.12.27` under
 KVM from a Buildroot `2025.02.16` image. Its GPT disk has a read-only root and
 a separate 64 MiB ext4 state partition. Permanent Rust stage zero `0.1.0`
-validates the runtime layout and released Rulesy `0.8.2`, materializes one
+validates the runtime layout and released Rulesy `0.8.3`, materializes one
 baked configuration, runs Rulesy on every boot, and writes atomic schema-v1
 status plus bounded root-only logs. The acceptance test boots the same disk
 twice and proves that the first boot applies the baked fix while the second is
@@ -465,8 +465,8 @@ Stage zero atomically replaces
   "sourceKind": "baked",
   "configDigest": "sha256:...",
   "candidateDigest": null,
-  "rulesyVersion": "0.8.2",
-  "rulesyDigest": "sha256:4f1ca0cd30e85d450247973d672460ed2141496bab4b656c0787d0f65e391f39",
+  "rulesyVersion": "0.8.3",
+  "rulesyDigest": "sha256:8ad81a0bbfde0d212c9efc1280a27c06bb00fb91cf7a24811729c931c0f50176",
   "rulesyExit": 0,
   "rulesySignal": null,
   "outcome": "converged",
