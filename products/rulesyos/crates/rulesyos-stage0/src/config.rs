@@ -2,9 +2,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 pub(crate) const RULESYOS_VERSION: &str = "0.1.0";
-pub(crate) const RULESY_VERSION: &str = "0.8.2";
+pub(crate) const RULESY_VERSION: &str = "0.8.3";
 pub(crate) const RULESY_SHA256: &str =
-    "4f1ca0cd30e85d450247973d672460ed2141496bab4b656c0787d0f65e391f39";
+    "8ad81a0bbfde0d212c9efc1280a27c06bb00fb91cf7a24811729c931c0f50176";
 pub(crate) const BAKED_CONFIG: &[u8] = include_bytes!("../assets/baked-rulesy.yaml");
 
 #[derive(Clone, Debug)]

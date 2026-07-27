@@ -27,7 +27,7 @@ boundaries are recorded in the [root architecture](../../ARCHITECTURE.md) and
 specified separately by [Rulesy Compose](../rulesy-compose/README.md).
 
 The current x86-64 reference image uses Buildroot `2025.02.16`, Linux
-`6.12.27`, the glibc target toolchain, released Rulesy `0.8.2`, and the
+`6.12.27`, the glibc target toolchain, released Rulesy `0.8.3`, and the
 independent Rust `rulesyos-stage0` `0.1.0` workspace. The
 [Rulesy release lock](rulesy-release.lock) pins and verifies the published
 archive and extracted binary rather than using a workspace build.

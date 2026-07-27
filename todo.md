@@ -270,7 +270,7 @@ interface, with Rulesy tasks defined in `products/rulesy/moon.yml`.
 
 ### Freeze the remaining RulesyOS cross-product contracts
 
-- [ ] Align Rulesy's Cargo package and CLI version authority, then have
+- [x] Align Rulesy's Cargo package and CLI version authority, then have
   RulesyOS consume a later release before making production or provenance
   claims.
 - [ ] Add and independently release a generic Rulesy bundle-root confinement

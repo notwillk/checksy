@@ -17,7 +17,7 @@ tasks:
     command: "./scripts/build.sh"
     options:
       runInCI: false
-      timeout: 3600
+      timeout: 7200
       outputStyle: "stream"
 
   clean:
@@ -51,7 +51,7 @@ tasks:
       ./tests/runtime/test-built.sh
     options:
       runInCI: false
-      timeout: 3600
+      timeout: 7200
       outputStyle: "stream"
 
   test-known-good:

@@ -136,7 +136,7 @@ mod tests {
             source_kind: "baked".to_owned(),
             config_digest: "sha256:config".to_owned(),
             candidate_digest: None,
-            rulesy_version: "0.8.2".to_owned(),
+            rulesy_version: "0.8.3".to_owned(),
             rulesy_digest: "sha256:rulesy".to_owned(),
             rulesy_exit: Some(0),
             rulesy_signal: None,

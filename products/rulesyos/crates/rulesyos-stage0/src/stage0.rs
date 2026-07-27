@@ -409,7 +409,7 @@ mod tests {
                 "#!/usr/bin/python3\n\
                  import json, os, pathlib, sys\n\
                  if sys.argv[1:] == ['--version']:\n\
-                 \x20   print('rulesy 0.8.2')\n\
+                 \x20   print('rulesy 0.8.3')\n\
                  \x20   if pathlib.Path('{}').exists():\n\
                  \x20       pathlib.Path(sys.argv[0]).unlink()\n\
                  \x20   raise SystemExit(0)\n\
@@ -441,7 +441,7 @@ mod tests {
                 lock: state.join("rulesyos/locks/stage0.lock"),
                 baked_config: BAKED_CONFIG.to_vec(),
                 rulesyos_version: "0.1.0".to_owned(),
-                rulesy_version: "0.8.2".to_owned(),
+                rulesy_version: "0.8.3".to_owned(),
                 rulesy_sha256: digest,
                 expected_uid: uid,
                 require_root: false,
@@ -553,7 +553,7 @@ mod tests {
             format!("sha256:{}", hex(&sha256(BAKED_CONFIG)))
         );
         assert_eq!(status.candidate_digest, None);
-        assert_eq!(status.rulesy_version, "0.8.2");
+        assert_eq!(status.rulesy_version, "0.8.3");
         assert_eq!(
             status.rulesy_digest,
             format!("sha256:{}", fixture.config.rulesy_sha256)
@@ -609,7 +609,7 @@ mod tests {
     #[test]
     fn mismatched_rulesy_version_is_firmware_degraded_and_fails_stage_zero() {
         let mut fixture = Fixture::new();
-        fixture.config.rulesy_version = "0.8.3".to_owned();
+        fixture.config.rulesy_version = "0.8.4".to_owned();
         let mut console = Vec::new();
         assert_eq!(execute(&fixture.config, &mut console), 1);
         let status = fixture.status();
