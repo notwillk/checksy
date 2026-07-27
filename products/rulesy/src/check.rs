@@ -572,16 +572,17 @@ fn expand_rule_files_with_root(
     let mut included: HashSet<String> = HashSet::new();
     for (patterns, include) in [(&positive, true), (&negative, false)] {
         for pattern in patterns {
-            for entry in glob_path_entries(&workdir_path.join(pattern), pattern, bundle_root)? {
+            let glob_path = workdir_path.join(pattern);
+            let mut apply_entry = |entry: PathBuf| -> Result<(), String> {
                 if let Some(bundle_root) = bundle_root {
                     ensure_confined_path_prefixes("pattern match", &entry, bundle_root)?;
                 }
                 if include && !entry.is_file() {
-                    continue;
+                    return Ok(());
                 }
                 let rel = match entry.strip_prefix(workdir_path) {
                     Ok(rel) => rel,
-                    Err(_) if bundle_root.is_none() => continue,
+                    Err(_) if bundle_root.is_none() => return Ok(()),
                     Err(_) => {
                         return Err(format!(
                             "pattern match '{}' is not relative to '{}'",
@@ -595,6 +596,17 @@ fn expand_rule_files_with_root(
                     included.insert(rel_str);
                 } else {
                     included.remove(&rel_str);
+                }
+                Ok(())
+            };
+
+            if bundle_root.is_some() {
+                for entry in glob_path_entries(&glob_path, pattern, bundle_root)? {
+                    apply_entry(entry)?;
+                }
+            } else if let Ok(matches) = glob::glob(glob_path.to_string_lossy().as_ref()) {
+                for entry in matches.flatten() {
+                    apply_entry(entry)?;
                 }
             }
         }
