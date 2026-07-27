@@ -1,8 +1,8 @@
 use crate::cache::CacheManager;
 use crate::check::{self, DiagnoseError, Report, RuleResult};
 use crate::config::{
-    decode_config, load_resolved, parse_git_remote, resolve_path, resolve_remote_path,
-    ResolvedDefinition,
+    decode_config, load_resolved, load_resolved_in_bundle, parse_git_remote, resolve_path,
+    resolve_remote_path, ResolvedDefinition,
 };
 use crate::git::GitCache;
 use crate::provision_lock::{ProvisioningLock, ProvisioningLockError};
@@ -53,6 +53,15 @@ fn run_with_lock_acquirer(
     let cmd = &remaining[0];
     let cmd_args = &remaining[1..];
 
+    if globals.bundle_root.is_some() && !matches!(cmd.as_str(), "check" | "diagnose") {
+        writeln!(
+            stderr,
+            "--bundle-root is only supported with check and diagnose"
+        )
+        .ok();
+        return 2;
+    }
+
     match cmd.as_str() {
         "check" => run_check(cmd_args.to_vec(), globals, stdout, stderr, acquire_lock),
         "diagnose" => run_diagnose(cmd_args.to_vec(), globals, stdout, stderr, acquire_lock),
@@ -75,6 +84,7 @@ fn run_with_lock_acquirer(
 struct GlobalFlags {
     config_path: Option<String>,
     stdin_config: bool,
+    bundle_root: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -105,6 +115,14 @@ fn parse_global_flags(args: &[String]) -> Result<(GlobalFlags, Vec<String>), Str
                 i += 1;
                 continue;
             }
+            "--bundle-root" => {
+                if i + 1 >= args.len() || args[i + 1].is_empty() {
+                    return Err("--bundle-root flag requires a value".to_string());
+                }
+                globals.bundle_root = Some(args[i + 1].clone());
+                i += 2;
+                continue;
+            }
             _ if arg.starts_with("--config=") => {
                 globals.config_path = Some(arg.trim_start_matches("--config=").to_string());
                 i += 1;
@@ -112,6 +130,15 @@ fn parse_global_flags(args: &[String]) -> Result<(GlobalFlags, Vec<String>), Str
             }
             _ if arg.starts_with("-config=") => {
                 globals.config_path = Some(arg.trim_start_matches("-config=").to_string());
+                i += 1;
+                continue;
+            }
+            _ if arg.starts_with("--bundle-root=") => {
+                let bundle_root = arg.trim_start_matches("--bundle-root=");
+                if bundle_root.is_empty() {
+                    return Err("--bundle-root flag requires a value".to_string());
+                }
+                globals.bundle_root = Some(bundle_root.to_string());
                 i += 1;
                 continue;
             }
@@ -151,6 +178,7 @@ fn run_check(
     let mut fail_severity = None;
     let mut apply_fixes = false;
     let mut non_interactive = false;
+    let bundle_root = globals.bundle_root.map(PathBuf::from);
 
     let mut i = 0;
     while i < args.len() {
@@ -205,7 +233,19 @@ fn run_check(
             String::new()
         }
     });
-    let resolved = match resolve_path(&config_path) {
+    let resolved = if bundle_root.is_some() {
+        Ok(if config_path.is_empty() {
+            [".rulesy.yaml", ".rulesy.yml"]
+                .into_iter()
+                .find(|candidate| std::fs::symlink_metadata(candidate).is_ok())
+                .map(str::to_string)
+        } else {
+            Some(config_path.clone())
+        })
+    } else {
+        resolve_path(&config_path)
+    };
+    let resolved = match resolved {
         Ok(Some(p)) => p,
         Ok(None) => {
             writeln!(stderr, "no configuration file found; specify --config or add .rulesy.yaml to the workspace").ok();
@@ -218,10 +258,23 @@ fn run_check(
     };
 
     let stdin_config = resolved == "-";
+    if stdin_config && bundle_root.is_some() {
+        writeln!(
+            stderr,
+            "--bundle-root requires file-backed configuration and cannot be used with stdin"
+        )
+        .ok();
+        return 2;
+    }
     let abs_config_path = if stdin_config {
         "-".to_string()
     } else {
-        match std::fs::canonicalize(&resolved) {
+        let resolved = if bundle_root.is_some() {
+            std::path::absolute(&resolved)
+        } else {
+            std::fs::canonicalize(&resolved)
+        };
+        match resolved {
             Ok(p) => p.to_string_lossy().to_string(),
             Err(e) => {
                 writeln!(stderr, "unable to resolve config path: {}", e).ok();
@@ -251,7 +304,7 @@ fn run_check(
         None => None,
     };
 
-    let prepared = match prepare_config(&abs_config_path, apply_fixes) {
+    let prepared = match prepare_config(&abs_config_path, apply_fixes, bundle_root.as_deref()) {
         Ok(prepared) => prepared,
         Err(e) => {
             writeln!(stderr, "failed to load config '{}': {}", abs_config_path, e).ok();
@@ -356,8 +409,12 @@ enum PreparedConfig {
 }
 
 /// Validate every locally available definition without mutating the legacy Git cache.
-fn prepare_config(abs_config_path: &str, apply_fixes: bool) -> Result<PreparedConfig, String> {
-    match load_resolved(abs_config_path) {
+fn prepare_config(
+    abs_config_path: &str,
+    apply_fixes: bool,
+    bundle_root: Option<&Path>,
+) -> Result<PreparedConfig, String> {
+    match load_for_check(abs_config_path, bundle_root) {
         Ok(config) => Ok(PreparedConfig::Ready(config)),
         Err(e) => {
             if !apply_fixes || !e.contains("git remote not cached") {
@@ -404,21 +461,22 @@ fn finish_prepared_config(
             // Re-read under the semaphore: another completed run may have
             // filled the cache, or the local definition may have changed while
             // this invocation was acquiring the lock.
-            let (config_dir, cache_path, remotes) = match prepare_config(abs_config_path, true)? {
-                PreparedConfig::Ready(config) => return Ok(config),
-                PreparedConfig::NeedsLegacyGit {
-                    config_dir,
-                    cache_path,
-                    remotes,
-                } => (config_dir, cache_path, remotes),
-            };
+            let (config_dir, cache_path, remotes) =
+                match prepare_config(abs_config_path, true, None)? {
+                    PreparedConfig::Ready(config) => return Ok(config),
+                    PreparedConfig::NeedsLegacyGit {
+                        config_dir,
+                        cache_path,
+                        remotes,
+                    } => (config_dir, cache_path, remotes),
+                };
 
             let cache_mgr = CacheManager::new(&config_dir, cache_path.as_deref());
             if remotes
                 .iter()
                 .all(|(repo, ref_)| cache_mgr.is_cached(repo, ref_))
             {
-                return load_resolved(abs_config_path);
+                return load_for_check(abs_config_path, None);
             }
 
             writeln!(stdout, "🔧 Caching missing git remotes...").ok();
@@ -443,9 +501,21 @@ fn finish_prepared_config(
             }
 
             writeln!(stdout, "✅ Git remotes cached, retrying...").ok();
-            load_resolved(abs_config_path)
+            load_for_check(abs_config_path, None)
         }
     }
+}
+
+fn load_for_check(
+    abs_config_path: &str,
+    bundle_root: Option<&Path>,
+) -> Result<ResolvedDefinition, String> {
+    let mut config = match bundle_root {
+        Some(bundle_root) => load_resolved_in_bundle(abs_config_path, bundle_root)?,
+        None => load_resolved(abs_config_path)?,
+    };
+    check::preflight_confined_patterns(&mut config)?;
+    Ok(config)
 }
 
 fn run_init(
@@ -797,6 +867,10 @@ fn print_usage(stdout: &mut dyn Write) {
         stdout,
         "  --config string   path to config file (defaults to .rulesy.yaml)"
     );
+    let _ = writeln!(
+        stdout,
+        "  --bundle-root DIR  confine check configs, includes, and pattern scripts"
+    );
     let _ = writeln!(stdout, "  --stdin-config    read config from stdin");
     let _ = writeln!(stdout);
     let _ = writeln!(stdout, "Available Commands:");
@@ -1026,6 +1100,7 @@ fn check_with_fixes(
     stderr: &mut dyn Write,
 ) -> Result<Report, DiagnoseError> {
     let mut results = vec![];
+    let bundle_root = definition.bundle_root.clone();
 
     for resolved in definition
         .preconditions
@@ -1046,9 +1121,16 @@ fn check_with_fixes(
 
     for group in definition.pattern_groups {
         let workdir = group.origin.base_dir.to_string_lossy();
-        let file_paths = check::expand_rule_files(workdir.as_ref(), &group.patterns)
-            .map_err(DiagnoseError::Configuration)?;
+        let file_paths = match group.selected_files {
+            Some(selected_files) => selected_files,
+            None => check::expand_rule_files(workdir.as_ref(), &group.patterns)
+                .map_err(DiagnoseError::Configuration)?,
+        };
         for rel_path in file_paths {
+            if let Some(bundle_root) = bundle_root.as_deref() {
+                check::ensure_confined_rule_file(workdir.as_ref(), &rel_path, bundle_root)
+                    .map_err(DiagnoseError::Configuration)?;
+            }
             let result = check::run_rule_file_supervised(workdir.as_ref(), &rel_path)?;
             print_rule_outcome(&result, fail_severity, stdout, stderr);
             results.push(result);
@@ -1247,8 +1329,53 @@ mod tests {
             assert!(stdout.contains(command), "help omitted {command}");
         }
         assert!(stdout.contains("--non-interactive"));
+        assert!(stdout.contains("--bundle-root"));
         assert!(stdout.contains("interactive-fix"));
         assert!(!stdout.contains("apply"));
+    }
+
+    #[test]
+    fn bundle_root_requires_a_value_and_a_check_command() {
+        let (code, _, stderr) = invoke(&["--bundle-root"]);
+        assert_eq!(code, 2);
+        assert!(stderr.contains("--bundle-root flag requires a value"));
+
+        let (code, _, stderr) = invoke(&["--bundle-root=.", "schema"]);
+        assert_eq!(code, 2);
+        assert!(stderr.contains("only supported with check and diagnose"));
+    }
+
+    #[test]
+    fn confined_preflight_precedes_the_provisioning_lock() {
+        let directory = tempfile::tempdir().unwrap();
+        let bundle = directory.path().join("bundle");
+        std::fs::create_dir(&bundle).unwrap();
+        let config = bundle.join("root.yaml");
+        std::fs::write(&config, "patterns:\n  - ../outside/*.sh\n").unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut acquired = false;
+
+        let code = run_with_lock_acquirer(
+            vec![
+                "--bundle-root".to_string(),
+                bundle.to_string_lossy().into_owned(),
+                "--config".to_string(),
+                config.to_string_lossy().into_owned(),
+                "check".to_string(),
+                "--fix".to_string(),
+            ],
+            &mut stdout,
+            &mut stderr,
+            &mut || {
+                acquired = true;
+                Err(ProvisioningLockError::Held)
+            },
+        );
+
+        assert_eq!(code, 2);
+        assert!(!acquired);
+        assert!(String::from_utf8_lossy(&stderr).contains("escapes bundle root"));
     }
 
     #[test]
@@ -1622,6 +1749,7 @@ mod tests {
         let child_config = child.join("child.yaml");
         let definition = ResolvedDefinition {
             root_origin: origin(root_config.clone()),
+            bundle_root: None,
             cache_path: None,
             check_severity: None,
             fail_severity: None,
@@ -1661,6 +1789,7 @@ mod tests {
             pattern_groups: vec![ResolvedPatternGroup {
                 patterns: vec!["scripts/*.sh".to_string()],
                 origin: origin(child_config),
+                selected_files: None,
             }],
         };
         let mut stdout = Vec::new();
