@@ -21,11 +21,13 @@ pub(crate) struct ResolvedRule {
 pub(crate) struct ResolvedPatternGroup {
     pub(crate) patterns: Vec<String>,
     pub(crate) origin: DefinitionOrigin,
+    pub(crate) selected_files: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedDefinition {
     pub(crate) root_origin: DefinitionOrigin,
+    pub(crate) bundle_root: Option<PathBuf>,
     pub(crate) cache_path: Option<String>,
     pub(crate) check_severity: Option<Severity>,
     pub(crate) fail_severity: Option<Severity>,
@@ -76,6 +78,8 @@ struct ResolutionState {
     completed: HashSet<PathBuf>,
     pattern_groups: Vec<ResolvedPatternGroup>,
     display_root: Option<PathBuf>,
+    bundle_root: Option<PathBuf>,
+    bundle_root_alias: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy)]
@@ -114,16 +118,56 @@ pub fn resolve_path(explicit: &str) -> Result<Option<String>, String> {
 }
 
 pub fn load(path: &str) -> Result<Config, String> {
-    load_resolved_with_mode(path, ResolutionMode::LegacyPublicPaths)
+    load_resolved_with_mode(path, ResolutionMode::LegacyPublicPaths, None)
         .map(ResolvedDefinition::into_config)
 }
 
 pub(crate) fn load_resolved(path: &str) -> Result<ResolvedDefinition, String> {
-    load_resolved_with_mode(path, ResolutionMode::CanonicalOrigins)
+    load_resolved_with_mode(path, ResolutionMode::CanonicalOrigins, None)
 }
 
-fn load_resolved_with_mode(path: &str, mode: ResolutionMode) -> Result<ResolvedDefinition, String> {
+pub(crate) fn load_resolved_in_bundle(
+    path: &str,
+    bundle_root: &Path,
+) -> Result<ResolvedDefinition, String> {
+    let supplied_root = std::path::absolute(bundle_root)
+        .map_err(|error| format!("resolve bundle root '{}': {error}", bundle_root.display()))?;
+    let bundle_root = supplied_root
+        .canonicalize()
+        .map_err(|error| format!("resolve bundle root '{}': {error}", bundle_root.display()))?;
+    if !bundle_root.is_dir() {
+        return Err(format!(
+            "bundle root '{}' is not a directory",
+            bundle_root.display()
+        ));
+    }
     if path == "-" {
+        return load_resolved_with_mode(
+            path,
+            ResolutionMode::CanonicalOrigins,
+            Some((supplied_root, bundle_root)),
+        );
+    }
+
+    let supplied_path =
+        std::path::absolute(path).map_err(|error| format!("resolve config '{}': {error}", path))?;
+    let confined_path = rebase_bundle_alias(&supplied_path, &supplied_root, &bundle_root);
+    load_resolved_with_mode(
+        confined_path.to_string_lossy().as_ref(),
+        ResolutionMode::CanonicalOrigins,
+        Some((supplied_root, bundle_root)),
+    )
+}
+
+fn load_resolved_with_mode(
+    path: &str,
+    mode: ResolutionMode,
+    bundle_root: Option<(PathBuf, PathBuf)>,
+) -> Result<ResolvedDefinition, String> {
+    if path == "-" {
+        if bundle_root.is_some() {
+            return Err("bundle-root confinement requires file-backed configuration".to_string());
+        }
         let mut stdin = std::io::stdin();
         let mut buffer = String::new();
         stdin
@@ -136,11 +180,16 @@ fn load_resolved_with_mode(path: &str, mode: ResolutionMode) -> Result<ResolvedD
     }
 
     let mut state = ResolutionState::default();
+    if let Some((alias, canonical)) = bundle_root {
+        state.bundle_root_alias = Some(alias);
+        state.bundle_root = Some(canonical);
+    }
     let fragment = resolve_file(Path::new(path), None, mode, &mut state)?
         .expect("the root definition cannot already be completed");
 
     Ok(ResolvedDefinition {
         root_origin: fragment.origin,
+        bundle_root: state.bundle_root,
         cache_path: fragment.cache_path,
         check_severity: fragment.check_severity,
         fail_severity: fragment.fail_severity,
@@ -199,12 +248,14 @@ fn resolve_stdin(data: &str, base_dir: PathBuf) -> Result<ResolvedDefinition, St
         .then(|| ResolvedPatternGroup {
             patterns: config.patterns,
             origin: origin.clone(),
+            selected_files: None,
         })
         .into_iter()
         .collect();
 
     Ok(ResolvedDefinition {
         root_origin: origin,
+        bundle_root: None,
         cache_path: config.cache_path,
         check_severity: config.check_severity,
         fail_severity: config.fail_severity,
@@ -220,9 +271,12 @@ fn resolve_file(
     mode: ResolutionMode,
     state: &mut ResolutionState,
 ) -> Result<Option<ResolvedFragment>, String> {
-    let canonical = path
-        .canonicalize()
-        .map_err(|error| format!("read config: {error}"))?;
+    let canonical = match state.bundle_root.as_deref() {
+        Some(bundle_root) => canonicalize_in_bundle("config", path, bundle_root)?,
+        None => path
+            .canonicalize()
+            .map_err(|error| format!("read config: {error}"))?,
+    };
     if state.display_root.is_none() {
         state.display_root = canonical.parent().map(Path::to_path_buf);
     }
@@ -275,6 +329,7 @@ fn resolve_file(
         state.pattern_groups.push(ResolvedPatternGroup {
             patterns: std::mem::take(&mut config.patterns),
             origin: origin.clone(),
+            selected_files: None,
         });
     }
 
@@ -347,7 +402,20 @@ fn resolve_rule_list(
             .remote
             .as_deref()
             .expect("an include rule has a remote path");
-        let resolved_path = resolve_remote_path(config_dir, cache_path, remote_path)?;
+        if state.bundle_root.is_some() && parse_git_remote(remote_path).is_some() {
+            return Err(format!(
+                "git remote include '{}' is not supported with --bundle-root",
+                remote_path
+            ));
+        }
+        let resolved_path = if let (Some(alias), Some(bundle_root)) = (
+            state.bundle_root_alias.as_deref(),
+            state.bundle_root.as_deref(),
+        ) {
+            rebase_bundle_alias(&config_dir.join(remote_path), alias, bundle_root)
+        } else {
+            resolve_remote_path(config_dir, cache_path, remote_path)?
+        };
         let Some(child) = resolve_file(&resolved_path, Some(parent_defaults), mode, state)? else {
             continue;
         };
@@ -356,6 +424,71 @@ fn resolve_rule_list(
         resolved_rules.extend(child.rules);
     }
     Ok(resolved_rules)
+}
+
+fn rebase_bundle_alias(path: &Path, alias: &Path, bundle_root: &Path) -> PathBuf {
+    path.strip_prefix(alias)
+        .map(|relative| bundle_root.join(relative))
+        .unwrap_or_else(|_| path.to_path_buf())
+}
+
+pub(crate) fn canonicalize_in_bundle(
+    kind: &str,
+    path: &Path,
+    bundle_root: &Path,
+) -> Result<PathBuf, String> {
+    canonicalize_in_bundle_inner(kind, path, bundle_root, 0)
+}
+
+fn canonicalize_in_bundle_inner(
+    kind: &str,
+    path: &Path,
+    bundle_root: &Path,
+    symlink_depth: usize,
+) -> Result<PathBuf, String> {
+    if symlink_depth > 40 {
+        return Err(format!(
+            "resolve {kind} '{}': too many symlinks",
+            path.display()
+        ));
+    }
+    let relative = path.strip_prefix(bundle_root).map_err(|_| {
+        format!(
+            "{kind} '{}' escapes bundle root '{}'",
+            path.display(),
+            bundle_root.display()
+        )
+    })?;
+    let mut prefix = bundle_root.to_path_buf();
+    for component in relative.components() {
+        prefix.push(component.as_os_str());
+        let metadata = std::fs::symlink_metadata(&prefix)
+            .map_err(|error| format!("resolve {kind} '{}': {error}", prefix.display()))?;
+        if metadata.file_type().is_symlink() {
+            let target = std::fs::read_link(&prefix)
+                .map_err(|error| format!("resolve {kind} '{}': {error}", prefix.display()))?;
+            let target = if target.is_absolute() {
+                target
+            } else {
+                prefix
+                    .parent()
+                    .expect("a bundle path has a parent")
+                    .join(target)
+            };
+            canonicalize_in_bundle_inner(kind, &target, bundle_root, symlink_depth + 1)?;
+        }
+        prefix = prefix
+            .canonicalize()
+            .map_err(|error| format!("resolve {kind} '{}': {error}", prefix.display()))?;
+        if prefix.strip_prefix(bundle_root).is_err() {
+            return Err(format!(
+                "{kind} '{}' escapes bundle root '{}'",
+                prefix.display(),
+                bundle_root.display()
+            ));
+        }
+    }
+    Ok(prefix)
 }
 
 impl ResolutionState {

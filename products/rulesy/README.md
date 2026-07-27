@@ -451,6 +451,33 @@ generated schema validates its structural constraints. The checked-in
 three validation layers and the compiled CLI, including timeout syntax,
 type/null rejection, the `2h` ceiling, and rejection of timeouts on includes.
 
+### Bundle-root confinement
+
+An external verifier can opt into a closed file-backed configuration boundary:
+
+```bash
+rulesy --bundle-root=/verified/bundle --config=/verified/bundle/rulesy.yaml check
+```
+
+`--bundle-root DIR` requires an existing directory. Rulesy canonicalizes that
+directory, the root configuration, every local include, existing literal
+pattern prefix, and pattern match. It rejects traversal or any symlink hop that
+leaves the root, while allowing relative paths that stay inside; absolute
+patterns, recursive `**` patterns, stdin configuration, and `git+` includes are
+rejected.
+
+Positive and negative patterns are validated and frozen before the provisioning
+lock or any configured command, then each selected script is rechecked just
+before execution. Violations exit `2` even with `--no-fail`. The flag is limited
+to file-backed `check` and deprecated `diagnose`; omitting it preserves existing
+local and Git behavior.
+
+This mode confines only the files Rulesy itself resolves: configuration
+definitions and pattern scripts. It does not authenticate a bundle, inspect
+paths embedded in opaque Bash, constrain command filesystem or network access,
+or cover templates and other undeclared assets. The caller must authenticate
+the complete bundle and keep it stable while Rulesy runs.
+
 `timeout` accepts only `^[1-9][0-9]*(ms|s|m|h)$`, with an inclusive runtime
 range from `1ms` through `2h`. Numeric overflow and the upper bound are runtime
 validation constraints because Draft 7 cannot compute a mixed-unit duration.

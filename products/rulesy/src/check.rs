@@ -1,9 +1,9 @@
-use crate::config::{ResolvedDefinition, ResolvedRule};
+use crate::config::{canonicalize_in_bundle, ResolvedDefinition, ResolvedRule};
 use crate::process_runner::{self, ProcessError, ProcessLimits};
 use crate::schema::{severity_order, Config, Rule, Severity};
 use std::collections::HashSet;
 use std::fmt;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 const DEFAULT_RULE_SEVERITY: Severity = Severity::Error;
@@ -306,6 +306,7 @@ pub(crate) fn diagnose_resolved_supervised(
     fail_severity: Severity,
 ) -> Result<Report, DiagnoseError> {
     let mut results = Vec::new();
+    let bundle_root = definition.bundle_root.clone();
 
     for resolved in definition
         .preconditions
@@ -327,9 +328,16 @@ pub(crate) fn diagnose_resolved_supervised(
 
     for group in definition.pattern_groups {
         let workdir = group.origin.base_dir.to_string_lossy();
-        let file_paths = expand_rule_files(workdir.as_ref(), &group.patterns)
-            .map_err(DiagnoseError::Configuration)?;
+        let file_paths = match group.selected_files {
+            Some(selected_files) => selected_files,
+            None => expand_rule_files(workdir.as_ref(), &group.patterns)
+                .map_err(DiagnoseError::Configuration)?,
+        };
         for rel_path in file_paths {
+            if let Some(bundle_root) = bundle_root.as_deref() {
+                ensure_confined_rule_file(workdir.as_ref(), &rel_path, bundle_root)
+                    .map_err(DiagnoseError::Configuration)?;
+            }
             results.push(run_rule_file_supervised(workdir.as_ref(), &rel_path)?);
         }
     }
@@ -504,10 +512,38 @@ pub(crate) fn run_rule_interactive_supervised(
 }
 
 pub fn expand_rule_files(workdir: &str, patterns: &[String]) -> Result<Vec<String>, String> {
+    expand_rule_files_with_root(workdir, patterns, None)
+}
+
+pub(crate) fn preflight_confined_patterns(
+    definition: &mut ResolvedDefinition,
+) -> Result<(), String> {
+    let Some(bundle_root) = definition.bundle_root.clone() else {
+        return Ok(());
+    };
+
+    for group in &mut definition.pattern_groups {
+        let workdir = group.origin.base_dir.to_string_lossy();
+        group.selected_files = Some(expand_rule_files_with_root(
+            workdir.as_ref(),
+            &group.patterns,
+            Some(&bundle_root),
+        )?);
+    }
+
+    Ok(())
+}
+
+fn expand_rule_files_with_root(
+    workdir: &str,
+    patterns: &[String],
+    bundle_root: Option<&Path>,
+) -> Result<Vec<String>, String> {
     if patterns.is_empty() {
         return Ok(vec![]);
     }
 
+    let workdir_path = Path::new(workdir);
     let mut positive = vec![];
     let mut negative = vec![];
 
@@ -517,9 +553,15 @@ pub fn expand_rule_files(workdir: &str, patterns: &[String]) -> Result<Vec<Strin
             continue;
         }
         if let Some(negated) = s.strip_prefix('!') {
-            negative.push(negated.to_string());
+            negative.push(negated.trim().to_string());
         } else {
             positive.push(s.to_string());
+        }
+    }
+
+    if let Some(bundle_root) = bundle_root {
+        for pattern in positive.iter().chain(negative.iter()) {
+            validate_confined_pattern(workdir_path, pattern, bundle_root)?;
         }
     }
 
@@ -528,27 +570,30 @@ pub fn expand_rule_files(workdir: &str, patterns: &[String]) -> Result<Vec<Strin
     }
 
     let mut included: HashSet<String> = HashSet::new();
-
-    for pat in &positive {
-        let glob_path = Path::new(workdir).join(pat);
-        if let Ok(matches) = glob::glob(glob_path.to_string_lossy().as_ref()) {
-            for entry in matches.flatten() {
-                if entry.is_file() {
-                    if let Ok(rel) = entry.strip_prefix(workdir) {
-                        let rel_str = rel.to_string_lossy().replace('\\', "/");
-                        included.insert(rel_str);
-                    }
+    for (patterns, include) in [(&positive, true), (&negative, false)] {
+        for pattern in patterns {
+            for entry in glob_path_entries(&workdir_path.join(pattern), pattern, bundle_root)? {
+                if let Some(bundle_root) = bundle_root {
+                    ensure_confined_path_prefixes("pattern match", &entry, bundle_root)?;
                 }
-            }
-        }
-    }
-
-    for pat in &negative {
-        let glob_path = Path::new(workdir).join(pat.trim());
-        if let Ok(matches) = glob::glob(glob_path.to_string_lossy().as_ref()) {
-            for entry in matches.flatten() {
-                if let Ok(rel) = entry.strip_prefix(workdir) {
-                    let rel_str = rel.to_string_lossy().replace('\\', "/");
+                if include && !entry.is_file() {
+                    continue;
+                }
+                let rel = match entry.strip_prefix(workdir_path) {
+                    Ok(rel) => rel,
+                    Err(_) if bundle_root.is_none() => continue,
+                    Err(_) => {
+                        return Err(format!(
+                            "pattern match '{}' is not relative to '{}'",
+                            entry.display(),
+                            workdir_path.display()
+                        ));
+                    }
+                };
+                let rel_str = rel.to_string_lossy().replace('\\', "/");
+                if include {
+                    included.insert(rel_str);
+                } else {
                     included.remove(&rel_str);
                 }
             }
@@ -558,6 +603,141 @@ pub fn expand_rule_files(workdir: &str, patterns: &[String]) -> Result<Vec<Strin
     let mut out: Vec<String> = included.into_iter().collect();
     out.sort();
     Ok(out)
+}
+
+fn glob_path_entries(
+    glob_path: &Path,
+    pattern: &str,
+    bundle_root: Option<&Path>,
+) -> Result<Vec<PathBuf>, String> {
+    let matches = match glob::glob(glob_path.to_string_lossy().as_ref()) {
+        Ok(matches) => matches,
+        Err(error) => {
+            return if bundle_root.is_some() {
+                Err(format!("expand confined pattern '{pattern}': {error}"))
+            } else {
+                Ok(Vec::new())
+            };
+        }
+    };
+
+    matches
+        .filter_map(|entry| match entry {
+            Ok(entry) => Some(Ok(entry)),
+            Err(error) if bundle_root.is_some() => {
+                Some(Err(format!("walk confined pattern '{pattern}': {error}")))
+            }
+            Err(_) => None,
+        })
+        .collect()
+}
+
+fn validate_confined_pattern(
+    workdir: &Path,
+    pattern: &str,
+    bundle_root: &Path,
+) -> Result<(), String> {
+    let path = Path::new(pattern);
+    let rejected = || {
+        format!(
+            "pattern '{pattern}' escapes bundle root '{}'",
+            bundle_root.display()
+        )
+    };
+    let mut minimum_depth = workdir
+        .strip_prefix(bundle_root)
+        .expect("pattern origin was already confined")
+        .components()
+        .count();
+    let mut literal_prefix = workdir.to_path_buf();
+    let mut prefix_complete = false;
+
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => {
+                return Err(rejected());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if minimum_depth == 0 {
+                    return Err(rejected());
+                }
+                minimum_depth -= 1;
+                if !prefix_complete {
+                    literal_prefix.push("..");
+                }
+            }
+            Component::Normal(component) => {
+                let component = component.to_string_lossy();
+                if component == "**" {
+                    return Err(format!(
+                        "recursive pattern '{pattern}' is not supported with bundle root confinement"
+                    ));
+                }
+                let has_glob = component.contains(['*', '?', '[']);
+                minimum_depth += 1;
+                if !prefix_complete {
+                    prefix_complete = has_glob;
+                    if !has_glob {
+                        literal_prefix.push(component.as_ref());
+                    }
+                }
+            }
+        }
+    }
+
+    let mut existing_prefix = literal_prefix.as_path();
+    loop {
+        match std::fs::symlink_metadata(existing_prefix) {
+            Ok(_) => break,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                existing_prefix = existing_prefix
+                    .parent()
+                    .expect("pattern origin exists under the bundle root");
+            }
+            Err(error) => {
+                return Err(format!(
+                    "inspect confined pattern prefix '{}': {error}",
+                    existing_prefix.display()
+                ));
+            }
+        }
+    }
+    ensure_confined_path_prefixes("pattern prefix", existing_prefix, bundle_root)?;
+
+    let mut glob_prefix = workdir.to_path_buf();
+    let mut components = path.components().peekable();
+    let mut contains_glob = false;
+    while let Some(component) = components.next() {
+        glob_prefix.push(component.as_os_str());
+        if let Component::Normal(component) = component {
+            contains_glob |= component.to_string_lossy().contains(['*', '?', '[']);
+        }
+        if contains_glob && components.peek().is_some() {
+            for matched_prefix in glob_path_entries(&glob_prefix, pattern, Some(bundle_root))? {
+                ensure_confined_path_prefixes("pattern prefix", &matched_prefix, bundle_root)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn ensure_confined_rule_file(
+    workdir: &str,
+    relative_path: &str,
+    bundle_root: &Path,
+) -> Result<(), String> {
+    let path = Path::new(workdir).join(relative_path);
+    ensure_confined_path_prefixes("pattern script", &path, bundle_root)
+}
+
+fn ensure_confined_path_prefixes(
+    kind: &str,
+    path: &Path,
+    bundle_root: &Path,
+) -> Result<(), String> {
+    canonicalize_in_bundle(kind, path, bundle_root).map(|_| ())
 }
 
 pub fn run_rule_file(workdir: &str, rel_path: &str) -> RuleResult {
@@ -726,6 +906,7 @@ mod tests {
         let child_config = child.join("child.yaml");
         let definition = ResolvedDefinition {
             root_origin: origin(root_config.clone()),
+            bundle_root: None,
             cache_path: None,
             check_severity: None,
             fail_severity: None,
@@ -747,10 +928,12 @@ mod tests {
                 ResolvedPatternGroup {
                     patterns: vec!["scripts/*.sh".to_string()],
                     origin: origin(root_config),
+                    selected_files: None,
                 },
                 ResolvedPatternGroup {
                     patterns: vec!["scripts/*.sh".to_string()],
                     origin: origin(child_config),
+                    selected_files: None,
                 },
             ],
         };

@@ -295,6 +295,20 @@ types only after validation. Rules form a closed union between a remote-only
 include and an executable check. Stdin configurations are required to be
 self-contained and cannot include another definition.
 
+The additive `--bundle-root DIR` mode is limited to file-backed `check` and
+`diagnose`. It canonicalizes the caller-supplied directory and rejects a root
+definition, local include, existing literal pattern prefix, or pattern match
+outside it. Confined mode rejects `git+` includes and stdin, validates positive
+and negative patterns, rejects unsafe recursive `**` traversal, and freezes
+selected scripts before the provisioning lock or any configured command.
+Execution rechecks each selected script against the same root. Without the flag,
+loading and legacy Git behavior are unchanged.
+
+This boundary covers only paths Rulesy resolves itself. Configured Bash remains
+trusted, opaque, and unsandboxed; acquisition, authentication, manifests,
+undeclared assets, and keeping the verified tree stable remain caller
+responsibilities.
+
 `rulesy schema` uses Schemars to generate a deterministic Draft 7 schema from
 that same strict model. Structural fixture cases must agree between generated
 schema validation and typed deserialization. YAML duplicate keys and multiple
@@ -322,7 +336,7 @@ and exercises the compiled binary without a public network.
   - `version`: Output version string
 - **Fix mode**: Implements ordinary and interactive repair/retry logic for
   failed checks; parses command-local `--non-interactive`
-- **Global flags**: `--config`, `--stdin-config` parsing
+- **Global flags**: Parses `--config`, `--stdin-config`, and `--bundle-root`
 
 ### config.rs (Configuration Layer)
 - **Path resolution**: Auto-detect `.rulesy.yaml` or explicit path
@@ -331,6 +345,8 @@ and exercises the compiled binary without a public network.
 - **Remote expansion**: Recursive config inclusion (file & git)
 - **Include recursion**: An active canonical-path chain detects cycles while a
   separate completed set deduplicates later repeated definitions
+- **Bundle boundary**: The confined loader checks every raw definition hop
+  before its canonical read and rejects legacy Git locators
 - **Compatibility API**: Public `load()` still projects to a flat `Config`, and
   public `diagnose(Options)` uses its caller-supplied single working directory;
   origin-aware execution belongs to the CLI-resolved path
@@ -390,10 +406,12 @@ main.rs
   → cli::run()
     → run_check() [cli.rs]
       → resolve_path() [config.rs]      # Find config file
-      → load_resolved() [config.rs]     # Strictly decode & retain origins
+      → load_resolved() / load_resolved_in_bundle()
+                                        # Strictly decode & retain origins
         → resolve_file()                # Recursive loading
           → resolve_rule_list()         # Expand includes with origin
             → resolve_remote_path()     # File or git cache path
+      → preflight_confined_patterns()   # Optional frozen, contained scripts
       → ResolvedDefinition              # Root policy plus origin-scoped work
       → diagnose_resolved_supervised() / check_with_fixes()
         → precondition phase            # Filter & run
@@ -574,7 +592,8 @@ run_install() [cli.rs]
 
 ### CLI Entry (Primary)
 - **Binary**: `rulesy` (main.rs → cli::run)
-- **Global flags**: `--config PATH`, `--stdin-config`
+- **Global flags**: `--config PATH`, `--stdin-config`, and check/diagnose-only
+  `--bundle-root DIR`
 - **Check/diagnose flags**: `--fix`, `--non-interactive`, severity controls, and
   `--no-fail`
 - **Commands**: check, install, init, schema, version, diagnose (deprecated)
